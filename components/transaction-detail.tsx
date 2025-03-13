@@ -114,15 +114,14 @@ export default function TransactionDetail() {
         if (typeof window !== "undefined") {
           const params = new URLSearchParams(window.location.search);
           // 獲取交易 ID 和 LINE 參數
-          const transactionId = params.get("id") || "1";
-          const lineIdParam = params.get("id") || "";
+          const recordId = params.get("recordId") || "1";
           const lineTypeParam = params.get("type") || "";
           
           // 設置 LINE 參數
-          setLineId(lineIdParam);
+          setLineId(recordId);
           setLineType(lineTypeParam);
 
-          const transactionData = await getTransactionById(transactionId);
+          const transactionData = await getTransactionById(recordId);
           if (transactionData) {
             setTransaction(transactionData);
             setEditAmount(Math.abs(transactionData.amount).toString());
@@ -898,11 +897,24 @@ export default function TransactionDetail() {
           
           {/* LINE 參數顯示 */}
           {(lineId || lineType) && (
-            <div className="mt-4 p-3 bg-gray-100 rounded-xl">
-              <p className="text-xs text-gray-500 mb-2">LINE 參數資訊</p>
-              <div className="text-sm text-gray-600">
-                {lineId && <p className="mb-1">ID: {lineId}</p>}
-                {lineType && <p>Type: {lineType}</p>}
+            <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-gray-700">LINE 參數資訊</p>
+                <div className="h-px flex-1 bg-gray-200 mx-2"></div>
+              </div>
+              <div className="space-y-2">
+                {lineId && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-500">記錄 ID</span>
+                    <span className="text-sm font-medium text-gray-700">{lineId}</span>
+                  </div>
+                )}
+                {lineType && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-500">交易類型</span>
+                    <span className="text-sm font-medium text-gray-700">{lineType}</span>
+                  </div>
+                )}
               </div>
             </div>
           )}
