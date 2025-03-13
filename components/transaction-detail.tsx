@@ -15,47 +15,6 @@ import {
 import { initializeLiff, closeLiff } from "@/utils/liff";
 import { useRouter } from "next/navigation";
 
-// Add custom animation styles
-const animationStyles = `
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-fadeIn {
-  animation: fadeIn 0.3s ease-in-out;
-}
-
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.8); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-.animate-scaleIn {
-  animation: scaleIn 0.2s ease-out;
-}
-
-@keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-  100% { transform: scale(1); }
-}
-
-.animate-pulse-once {
-  animation: pulse 0.3s ease-in-out;
-}
-
-/* Hide scrollbar */
-::-webkit-scrollbar {
-  display: none;
-}
-
-* {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-`;
-
 // 交易數據類型
 interface Transaction {
   id: string;
@@ -119,27 +78,31 @@ export default function TransactionDetail() {
   const [editAmount, setEditAmount] = useState("");
   const [editNote, setEditNote] = useState("");
   const [editDate, setEditDate] = useState("");
-  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [calendarDate, setCalendarDate] = useState(new Date(2025, 6, 6));
   const [categories, setCategories] = useState<string[]>(defaultCategories);
   const [newCategory, setNewCategory] = useState("");
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [isLiffInitialized, setIsLiffInitialized] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  const [lineId, setLineId] = useState<string>("");
+  const [lineType, setLineType] = useState<string>("");
   const router = useRouter();
 
-  // Move the style tag to a separate component or add it to the global CSS
+  // Mark component as mounted on client-side
   useEffect(() => {
-    // Add the animation styles to the document head
-    const styleElement = document.createElement("style");
-    styleElement.innerHTML = animationStyles;
-    document.head.appendChild(styleElement);
+    setIsMounted(true);
+  }, []);
 
-    return () => {
-      // Clean up the style element when the component unmounts
-      document.head.removeChild(styleElement);
-    };
+  // Initialize calendar date on client-side only
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setCalendarDate(new Date());
+    }
   }, []);
 
   useEffect(() => {
+    if (!isMounted) return;
+    
     setIsLoading(true);
 
     async function initialize() {
@@ -148,25 +111,32 @@ export default function TransactionDetail() {
 
       try {
         // Only access window in client-side code
-        const transactionId =
-          typeof window !== "undefined"
-            ? new URLSearchParams(window.location.search).get("id") || "1"
-            : "1";
+        if (typeof window !== "undefined") {
+          const params = new URLSearchParams(window.location.search);
+          // 獲取交易 ID 和 LINE 參數
+          const transactionId = params.get("id") || "1";
+          const lineIdParam = params.get("id") || "";
+          const lineTypeParam = params.get("type") || "";
+          
+          // 設置 LINE 參數
+          setLineId(lineIdParam);
+          setLineType(lineTypeParam);
 
-        const transactionData = await getTransactionById(transactionId);
-        if (transactionData) {
-          setTransaction(transactionData);
-          setEditAmount(Math.abs(transactionData.amount).toString());
-          setEditNote(transactionData.note);
-          setEditDate(transactionData.date);
+          const transactionData = await getTransactionById(transactionId);
+          if (transactionData) {
+            setTransaction(transactionData);
+            setEditAmount(Math.abs(transactionData.amount).toString());
+            setEditNote(transactionData.note);
+            setEditDate(transactionData.date);
 
-          // 解析日期字符串為 Date 對象
-          const dateParts = transactionData.date.match(/(\d+)年(\d+)月(\d+)日/);
-          if (dateParts) {
-            const year = parseInt(dateParts[1]);
-            const month = parseInt(dateParts[2]) - 1; // JavaScript 月份從 0 開始
-            const day = parseInt(dateParts[3]);
-            setCalendarDate(new Date(year, month, day));
+            // 解析日期字符串為 Date 對象
+            const dateParts = transactionData.date.match(/(\d+)年(\d+)月(\d+)日/);
+            if (dateParts) {
+              const year = parseInt(dateParts[1]);
+              const month = parseInt(dateParts[2]) - 1; // JavaScript 月份從 0 開始
+              const day = parseInt(dateParts[3]);
+              setCalendarDate(new Date(year, month, day));
+            }
           }
         }
       } catch (error) {
@@ -177,7 +147,7 @@ export default function TransactionDetail() {
     }
 
     initialize();
-  }, []);
+  }, [isMounted]);
 
   const handleTypeChange = async (type: "expense" | "income") => {
     if (!transaction) return;
@@ -458,7 +428,8 @@ export default function TransactionDetail() {
 
   // 生成年份選項
   const generateYearOptions = () => {
-    const currentYear = new Date().getFullYear();
+    // Use a fixed year for server-side rendering
+    const currentYear = isMounted ? new Date().getFullYear() : 2025;
     const years = [];
     for (let i = currentYear - 5; i <= currentYear + 5; i++) {
       years.push(i);
@@ -477,6 +448,13 @@ export default function TransactionDetail() {
 
   // 生成月曆
   const renderCalendar = () => {
+    // Don't render calendar on server-side
+    if (!isMounted) {
+      return Array(42).fill(null).map((_, i) => (
+        <div key={`placeholder-${i}`} className="h-8"></div>
+      ));
+    }
+
     const year = calendarDate.getFullYear();
     const month = calendarDate.getMonth();
     const daysInMonth = getDaysInMonth(year, month);
@@ -778,7 +756,7 @@ export default function TransactionDetail() {
 
                     <div className="flex space-x-2">
                       <select
-                        value={calendarDate.getFullYear()}
+                        value={isMounted ? calendarDate.getFullYear() : 2025}
                         onChange={handleYearChange}
                         className="px-2 py-1 pr-4 border border-gray-200 rounded-lg bg-white focus:outline-none"
                       >
@@ -790,7 +768,7 @@ export default function TransactionDetail() {
                       </select>
 
                       <select
-                        value={calendarDate.getMonth()}
+                        value={isMounted ? calendarDate.getMonth() : 0}
                         onChange={handleMonthChange}
                         className="px-2 py-1 pr-4 border border-gray-200 rounded-lg bg-white focus:outline-none"
                       >
@@ -917,6 +895,17 @@ export default function TransactionDetail() {
             <Trash2 size={20} className="mr-2" />
             刪除
           </button>
+          
+          {/* LINE 參數顯示 */}
+          {(lineId || lineType) && (
+            <div className="mt-4 p-3 bg-gray-100 rounded-xl">
+              <p className="text-xs text-gray-500 mb-2">LINE 參數資訊</p>
+              <div className="text-sm text-gray-600">
+                {lineId && <p className="mb-1">ID: {lineId}</p>}
+                {lineType && <p>Type: {lineType}</p>}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
