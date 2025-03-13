@@ -12,7 +12,7 @@ import {
   Edit,
   X,
 } from "lucide-react";
-import { initializeLiff, closeLiff } from "@/utils/liff";
+import { initializeLiff, closeLiff, getLiffUrlParams } from "@/utils/liff";
 import { useRouter } from "next/navigation";
 
 // 交易數據類型
@@ -121,11 +121,18 @@ export default function TransactionDetail() {
           params.forEach((value, key) => {
             debugParams[key] = value;
           });
-          setDebugInfo({ url, params: debugParams });
+          
+          // 嘗試從 LIFF 獲取參數
+          const liffParams = getLiffUrlParams();
+          console.log("LIFF Parameters:", liffParams);
+          
+          // 合併參數
+          const allParams = { ...debugParams, ...liffParams };
+          setDebugInfo({ url, params: allParams });
           
           // 獲取交易 ID 和 LINE 參數
-          const recordId = params.get("recordId") || "";
-          const lineTypeParam = params.get("type") || "";
+          const recordId = params.get("recordId") || liffParams.recordId || "";
+          const lineTypeParam = params.get("type") || liffParams.type || "";
           
           console.log("URL Parameters:", { recordId, type: lineTypeParam, fullUrl: url });
           
