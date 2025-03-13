@@ -78,6 +78,22 @@ export function getLiffUrlParams() {
     params.forEach((value, key) => {
       result[key] = value;
     });
+    
+    // 檢查是否有 liff.state 參數
+    const liffState = params.get("liff.state");
+    if (liffState) {
+      try {
+        // 嘗試解析 liff.state 參數
+        const stateParams = new URLSearchParams(liffState);
+        stateParams.forEach((value, key) => {
+          result[key] = value;
+        });
+        console.log("Parsed liff.state parameters:", result);
+      } catch (error) {
+        console.error("Failed to parse liff.state", error);
+      }
+    }
+    
     return result;
   }
   
@@ -91,6 +107,22 @@ export function getLiffUrlParams() {
       params.forEach((value, key) => {
         result[key] = value;
       });
+      
+      // 檢查是否有 liff.state 參數
+      const liffState = params.get("liff.state");
+      if (liffState) {
+        try {
+          // 嘗試解析 liff.state 參數
+          const stateParams = new URLSearchParams(liffState);
+          stateParams.forEach((value, key) => {
+            result[key] = value;
+          });
+          console.log("Parsed liff.state parameters:", result);
+        } catch (error) {
+          console.error("Failed to parse liff.state", error);
+        }
+      }
+      
       return result;
     } catch (error) {
       console.error("Failed to get LIFF URL parameters", error);
