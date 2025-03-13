@@ -5,50 +5,55 @@ let isInitialized = false;
 
 // 初始化 LIFF
 export async function initializeLiff() {
+  // 避免重複初始化
   if (isInitialized) {
-    return true;
-  }
-
-  // Get LIFF ID from environment variable
-  const liffId = process.env.NEXT_PUBLIC_LIFF_ID || "";
-
-  // Skip LIFF initialization if no LIFF ID is provided or in development mode
-  if (!liffId || process.env.NODE_ENV === "development") {
-    console.log(
-      "Skipping LIFF initialization: No LIFF ID provided or in development mode"
-    );
-    
-    // 在開發模式下，嘗試從 URL 獲取參數
-    if (typeof window !== "undefined") {
-      console.log("Development mode: URL =", window.location.href);
-      console.log("Development mode: Search params =", window.location.search);
-    }
-    
-    return true; // Return true to prevent errors in the app flow
+    console.log("LIFF already initialized");
+    return;
   }
 
   try {
-    await liff.init({ liffId });
+    const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+    if (!liffId) {
+      throw new Error("LIFF ID is required");
+    }
+
+    // 在開發模式下，記錄更多信息
+    if (process.env.NODE_ENV === "development") {
+      console.log("Initializing LIFF in development mode");
+      console.log("LIFF ID:", liffId);
+    }
+
+    // 初始化 LIFF
+    await liff.init({
+      liffId: liffId,
+      withLoginOnExternalBrowser: true
+    });
+
     isInitialized = true;
-    console.log("LIFF initialized successfully");
-    
-    // 檢查 LIFF URL 參數
+    console.log("LIFF initialization completed");
+
+    // 在 LIFF 客戶端中，獲取 token
     if (liff.isInClient()) {
       try {
-        const token = liff.getDecodedIDToken();
-        console.log("LIFF token:", token);
-        // 安全地訪問 URL
-        const url = window.location.href;
-        console.log("LIFF URL:", url);
+        const token = liff.getAccessToken();
+        if (token) {
+          console.log("LIFF token retrieved successfully");
+        }
       } catch (error) {
-        console.error("Failed to get LIFF token", error);
+        console.error("Failed to get LIFF token:", error);
       }
+    } else {
+      console.log("Not in LIFF client");
     }
-    
-    return true;
+
+    // 記錄當前環境信息
+    console.log("LIFF isInClient:", liff.isInClient());
+    console.log("LIFF isLoggedIn:", liff.isLoggedIn());
+    console.log("LIFF Context:", await liff.getContext());
+
   } catch (error) {
-    console.error("LIFF initialization failed", error);
-    return false;
+    console.error("LIFF initialization failed:", error);
+    throw error;
   }
 }
 
@@ -79,21 +84,6 @@ export function getLiffUrlParams() {
       result[key] = value;
     });
     
-    // 檢查是否有 liff.state 參數
-    const liffState = params.get("liff.state");
-    if (liffState) {
-      try {
-        // 嘗試解析 liff.state 參數
-        const stateParams = new URLSearchParams(liffState);
-        stateParams.forEach((value, key) => {
-          result[key] = value;
-        });
-        console.log("Parsed liff.state parameters:", result);
-      } catch (error) {
-        console.error("Failed to parse liff.state", error);
-      }
-    }
-    
     // 在開發模式下，如果沒有提供 recordId 和 type 參數，則使用預設值
     if (!result.recordId && !params.has("recordId")) {
       result.recordId = "14";
@@ -108,35 +98,39 @@ export function getLiffUrlParams() {
     return result;
   }
   
-  // 在 LIFF 環境中，嘗試從 LIFF 獲取參數
+  // 在 LIFF 環境中
   if (isInitialized && liff.isInClient()) {
     try {
-      // 嘗試從 LIFF URL 獲取參數
-      const url = new URL(window.location.href);
-      const params = url.searchParams;
+      // 首先嘗試從 URL 獲取參數
+      const params = new URLSearchParams(window.location.search);
       const result: Record<string, string> = {};
+      
+      // 獲取所有 URL 參數
       params.forEach((value, key) => {
         result[key] = value;
       });
       
-      // 檢查是否有 liff.state 參數
-      const liffState = params.get("liff.state");
-      if (liffState) {
-        try {
-          // 嘗試解析 liff.state 參數
-          const stateParams = new URLSearchParams(liffState);
-          stateParams.forEach((value, key) => {
-            result[key] = value;
-          });
-          console.log("Parsed liff.state parameters:", result);
-        } catch (error) {
-          console.error("Failed to parse liff.state", error);
+      // 如果沒有找到必要的參數，嘗試從 liff.state 獲取
+      if (!result.recordId || !result.type) {
+        const liffState = params.get("liff.state");
+        if (liffState) {
+          try {
+            const stateParams = new URLSearchParams(liffState);
+            stateParams.forEach((value, key) => {
+              result[key] = value;
+            });
+          } catch (error) {
+            console.error("Failed to parse liff.state", error);
+          }
         }
       }
       
+      // 記錄最終獲取到的參數
+      console.log("Final LIFF parameters:", result);
       return result;
     } catch (error) {
       console.error("Failed to get LIFF URL parameters", error);
+      return {};
     }
   }
   

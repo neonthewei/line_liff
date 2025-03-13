@@ -83,10 +83,12 @@ export default function TransactionDetail() {
     setIsLoading(true);
 
     async function initialize() {
-      const liffInitialized = await initializeLiff();
-      setIsLiffInitialized(liffInitialized);
-
       try {
+        const liffInitialized = await initializeLiff();
+        if (liffInitialized !== undefined) {
+          setIsLiffInitialized(liffInitialized);
+        }
+
         // Only access window in client-side code
         if (typeof window !== "undefined") {
           const url = window.location.href;
