@@ -14,26 +14,8 @@ import {
 } from "lucide-react";
 import { initializeLiff, closeLiff, getLiffUrlParams } from "@/utils/liff";
 import { useRouter } from "next/navigation";
-
-// 交易數據類型
-interface Transaction {
-  id: string;
-  category: string;
-  amount: number;
-  date: string;
-  type: "expense" | "income";
-  note: string;
-}
-
-// 模擬交易數據
-const defaultTransaction: Transaction = {
-  id: "1",
-  category: "餐飲",
-  amount: -28.0,
-  date: "2025年07月06日",
-  type: "expense",
-  note: "吃飯",
-};
+import { Transaction } from "@/types/transaction";
+import { fetchTransactionById, updateTransactionApi, deleteTransactionApi } from "@/utils/api";
 
 // 預設類別選項
 const defaultCategories = [
@@ -49,23 +31,15 @@ const defaultCategories = [
   "其他",
 ];
 
-// 獲取交易詳情
-async function getTransactionById(id: string): Promise<Transaction | null> {
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  return defaultTransaction;
-}
-
-// 更新交易
-async function updateTransaction(transaction: Transaction): Promise<boolean> {
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  return true;
-}
-
-// 刪除交易
-async function deleteTransaction(id: string): Promise<boolean> {
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  return true;
-}
+// 模擬交易數據 (僅在 API 請求失敗時使用)
+const defaultTransaction: Transaction = {
+  id: "1",
+  category: "餐飲",
+  amount: -28.0,
+  date: "2025年07月06日",
+  type: "expense",
+  note: "吃飯",
+};
 
 export default function TransactionDetail() {
   const [transaction, setTransaction] = useState<Transaction | null>(null);
@@ -140,25 +114,47 @@ export default function TransactionDetail() {
           setLineId(recordId);
           setLineType(lineTypeParam);
 
-          const transactionData = await getTransactionById(recordId || "1");
-          if (transactionData) {
-            setTransaction(transactionData);
-            setEditAmount(Math.abs(transactionData.amount).toString());
-            setEditNote(transactionData.note);
-            setEditDate(transactionData.date);
+          // 從 API 獲取交易數據
+          if (recordId && lineTypeParam) {
+            const transactionData = await fetchTransactionById(recordId, lineTypeParam);
+            if (transactionData) {
+              setTransaction(transactionData);
+              setEditAmount(Math.abs(transactionData.amount).toString());
+              setEditNote(transactionData.note);
+              setEditDate(transactionData.date);
 
-            // 解析日期字符串為 Date 對象
-            const dateParts = transactionData.date.match(/(\d+)年(\d+)月(\d+)日/);
-            if (dateParts) {
-              const year = parseInt(dateParts[1]);
-              const month = parseInt(dateParts[2]) - 1; // JavaScript 月份從 0 開始
-              const day = parseInt(dateParts[3]);
-              setCalendarDate(new Date(year, month, day));
+              // 解析日期字符串為 Date 對象
+              const dateParts = transactionData.date.match(/(\d+)年(\d+)月(\d+)日/);
+              if (dateParts) {
+                const year = parseInt(dateParts[1]);
+                const month = parseInt(dateParts[2]) - 1; // JavaScript 月份從 0 開始
+                const day = parseInt(dateParts[3]);
+                setCalendarDate(new Date(year, month, day));
+              }
+            } else {
+              // 如果 API 請求失敗，使用默認數據
+              console.warn("Using default transaction data");
+              setTransaction(defaultTransaction);
+              setEditAmount(Math.abs(defaultTransaction.amount).toString());
+              setEditNote(defaultTransaction.note);
+              setEditDate(defaultTransaction.date);
             }
+          } else {
+            // 如果沒有 recordId 或 type，使用默認數據
+            console.warn("No recordId or type provided, using default transaction data");
+            setTransaction(defaultTransaction);
+            setEditAmount(Math.abs(defaultTransaction.amount).toString());
+            setEditNote(defaultTransaction.note);
+            setEditDate(defaultTransaction.date);
           }
         }
       } catch (error) {
         console.error("Failed to fetch transaction", error);
+        // 使用默認數據
+        setTransaction(defaultTransaction);
+        setEditAmount(Math.abs(defaultTransaction.amount).toString());
+        setEditNote(defaultTransaction.note);
+        setEditDate(defaultTransaction.date);
       } finally {
         setIsLoading(false);
       }
@@ -180,7 +176,7 @@ export default function TransactionDetail() {
     setTransaction(updatedTransaction);
 
     try {
-      await updateTransaction(updatedTransaction);
+      await updateTransactionApi(updatedTransaction);
     } catch (error) {
       console.error("Failed to update transaction type", error);
     }
@@ -190,7 +186,7 @@ export default function TransactionDetail() {
     if (!transaction) return;
     if (confirm("確定要刪除這筆交易嗎？")) {
       try {
-        const success = await deleteTransaction(transaction.id);
+        const success = await deleteTransactionApi(transaction.id, transaction.type);
 
         if (success) {
           // In development mode or when LIFF is not initialized, just navigate to home
@@ -208,7 +204,7 @@ export default function TransactionDetail() {
   const handleConfirm = async () => {
     if (!transaction) return;
     try {
-      const success = await updateTransaction(transaction);
+      const success = await updateTransactionApi(transaction);
 
       if (success) {
         // In development mode or when LIFF is not initialized, just navigate to home
@@ -242,7 +238,7 @@ export default function TransactionDetail() {
       setIsEditingAmount(false);
 
       try {
-        await updateTransaction(updatedTransaction);
+        await updateTransactionApi(updatedTransaction);
       } catch (error) {
         console.error("Failed to update amount", error);
       }
@@ -279,7 +275,7 @@ export default function TransactionDetail() {
     setIsEditingDate(false);
 
     try {
-      await updateTransaction(updatedTransaction);
+      await updateTransactionApi(updatedTransaction);
     } catch (error) {
       console.error("Failed to update date", error);
     }
@@ -321,7 +317,7 @@ export default function TransactionDetail() {
     // }
 
     try {
-      await updateTransaction(updatedTransaction);
+      await updateTransactionApi(updatedTransaction);
     } catch (error) {
       console.error("Failed to update category", error);
     }
@@ -386,7 +382,7 @@ export default function TransactionDetail() {
     setIsEditingNote(false);
 
     try {
-      await updateTransaction(updatedTransaction);
+      await updateTransactionApi(updatedTransaction);
     } catch (error) {
       console.error("Failed to update note", error);
     }
