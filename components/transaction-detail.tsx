@@ -86,6 +86,7 @@ export default function TransactionDetail() {
   const [isMounted, setIsMounted] = useState(false);
   const [lineId, setLineId] = useState<string>("");
   const [lineType, setLineType] = useState<string>("");
+  const [debugInfo, setDebugInfo] = useState<{url: string, params: Record<string, string>}>({ url: "", params: {} });
   const router = useRouter();
 
   // Mark component as mounted on client-side
@@ -112,16 +113,27 @@ export default function TransactionDetail() {
       try {
         // Only access window in client-side code
         if (typeof window !== "undefined") {
+          const url = window.location.href;
           const params = new URLSearchParams(window.location.search);
+          
+          // 保存調試信息
+          const debugParams: Record<string, string> = {};
+          params.forEach((value, key) => {
+            debugParams[key] = value;
+          });
+          setDebugInfo({ url, params: debugParams });
+          
           // 獲取交易 ID 和 LINE 參數
-          const recordId = params.get("recordId") || "1";
+          const recordId = params.get("recordId") || "";
           const lineTypeParam = params.get("type") || "";
+          
+          console.log("URL Parameters:", { recordId, type: lineTypeParam, fullUrl: url });
           
           // 設置 LINE 參數
           setLineId(recordId);
           setLineType(lineTypeParam);
 
-          const transactionData = await getTransactionById(recordId);
+          const transactionData = await getTransactionById(recordId || "1");
           if (transactionData) {
             setTransaction(transactionData);
             setEditAmount(Math.abs(transactionData.amount).toString());
@@ -918,6 +930,31 @@ export default function TransactionDetail() {
               </div>
             </div>
           )}
+          
+          {/* 調試信息 */}
+          <div className="mt-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium text-yellow-700">調試信息</p>
+              <div className="h-px flex-1 bg-yellow-200 mx-2"></div>
+            </div>
+            <div className="space-y-2 overflow-hidden">
+              <div className="flex flex-col">
+                <span className="text-sm text-yellow-700">完整 URL:</span>
+                <span className="text-xs text-yellow-600 break-all">{debugInfo.url}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm text-yellow-700">解析參數:</span>
+                <div className="text-xs text-yellow-600">
+                  {Object.entries(debugInfo.params).map(([key, value]) => (
+                    <div key={key} className="flex justify-between">
+                      <span>{key}:</span>
+                      <span>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
