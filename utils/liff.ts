@@ -94,6 +94,17 @@ export function getLiffUrlParams() {
       }
     }
     
+    // 在開發模式下，如果沒有提供 recordId 和 type 參數，則使用預設值
+    if (!result.recordId && !params.has("recordId")) {
+      result.recordId = "14";
+      console.log("Using default recordId:", result.recordId);
+    }
+    
+    if (!result.type && !params.has("type")) {
+      result.type = "expense";
+      console.log("Using default type:", result.type);
+    }
+    
     return result;
   }
   

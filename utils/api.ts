@@ -8,7 +8,8 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const headers = {
   "Content-Type": "application/json",
   "apikey": SUPABASE_KEY,
-  "Authorization": `Bearer ${SUPABASE_KEY}`,
+//   "Authorization": `Bearer ${SUPABASE_KEY}`,
+//   "Prefer": "return=minimal"
 };
 
 /**
@@ -23,20 +24,32 @@ export async function fetchTransactionById(id: string, type: string): Promise<Tr
     const endpoint = type === "income" ? "incomes" : "expenses";
     
     // 構建 API URL
-    const url = `${SUPABASE_URL}/${endpoint}?id=eq.${id}&select=*`;
+    const url = `${SUPABASE_URL}/${endpoint}?id=eq.${id}`;
     
-    console.log(`Fetching transaction from: ${url}`);
+    console.log("Making API request with:");
+    console.log("URL:", url);
+    console.log("Headers:", JSON.stringify(headers, null, 2));
     
     // 發送 API 請求
-    const response = await fetch(url, { headers });
+    const response = await fetch(url, { 
+      method: "GET",
+      headers,
+      cache: "no-cache" // 禁用緩存
+    });
     
+    console.log("Response status:", response.status);
+    console.log("Response status text:", response.statusText);
+    
+    // 如果響應不成功，記錄更多信息
     if (!response.ok) {
-      throw new Error(`API request failed with status ${response.status}`);
+      const errorText = await response.text();
+      console.error("Error response body:", errorText);
+      throw new Error(`API request failed with status ${response.status}: ${errorText}`);
     }
     
     // 解析響應數據
     const data = await response.json();
-    console.log("API response:", data);
+    console.log("API response data:", JSON.stringify(data, null, 2));
     
     // 檢查是否有數據
     if (!data || data.length === 0) {
@@ -45,17 +58,21 @@ export async function fetchTransactionById(id: string, type: string): Promise<Tr
     }
     
     // 獲取第一個結果
-    const transaction = data[0];
+    const apiTransaction = data[0];
     
     // 轉換為應用程序的交易格式
-    return {
-      id: transaction.id.toString(),
-      category: transaction.category || "其他",
-      amount: type === "expense" ? -Math.abs(transaction.amount) : Math.abs(transaction.amount),
-      date: formatDate(transaction.date || new Date().toISOString()),
-      type: type === "income" ? "income" : "expense",
-      note: transaction.note || "",
+    const result: Transaction = {
+      id: apiTransaction.id.toString(),
+      category: apiTransaction.category || "其他",
+      amount: type === "expense" ? -Math.abs(apiTransaction.amount) : Math.abs(apiTransaction.amount),
+      date: formatDate(apiTransaction.datetime || new Date().toISOString()),
+      type: (type === "income" ? "income" : "expense") as "income" | "expense",
+      note: apiTransaction.memo || "",
+      isFixed: apiTransaction.is_fixed || false,
     };
+    
+    console.log("Transformed transaction data:", result);
+    return result;
   } catch (error) {
     console.error("Error fetching transaction:", error);
     return null;
@@ -75,17 +92,19 @@ export async function updateTransactionApi(transaction: Transaction): Promise<bo
     // 構建 API URL
     const url = `${SUPABASE_URL}/${endpoint}?id=eq.${transaction.id}`;
     
-    // 準備要更新的數據
+    // 準備要更新的數據 - 映射到 API 期望的字段名稱
     const updateData = {
       category: transaction.category,
       amount: Math.abs(transaction.amount), // 存儲絕對值
-      date: parseDateToISOString(transaction.date),
-      note: transaction.note,
-      // 添加更新時間
-      updated_at: new Date().toISOString(),
+      datetime: parseDateToISOString(transaction.date), // 使用 datetime 而不是 date
+      memo: transaction.note, // 使用 memo 而不是 note
+      is_fixed: transaction.isFixed, // 添加是否為固定支出/收入
     };
     
-    console.log(`Updating transaction at: ${url}`, updateData);
+    console.log("Making update API request with:");
+    console.log("URL:", url);
+    console.log("Headers:", JSON.stringify(headers, null, 2));
+    console.log("Data:", JSON.stringify(updateData, null, 2));
     
     // 發送 API 請求
     const response = await fetch(url, {
@@ -94,8 +113,13 @@ export async function updateTransactionApi(transaction: Transaction): Promise<bo
       body: JSON.stringify(updateData),
     });
     
+    console.log("Update response status:", response.status);
+    console.log("Update response status text:", response.statusText);
+
     if (!response.ok) {
-      throw new Error(`API request failed with status ${response.status}`);
+      const errorText = await response.text();
+      console.error("Update error response body:", errorText);
+      throw new Error(`Update API request failed with status ${response.status}: ${errorText}`);
     }
     
     console.log("Transaction updated successfully");
@@ -120,7 +144,9 @@ export async function deleteTransactionApi(id: string, type: string): Promise<bo
     // 構建 API URL
     const url = `${SUPABASE_URL}/${endpoint}?id=eq.${id}`;
     
-    console.log(`Deleting transaction at: ${url}`);
+    console.log("Making delete API request with:");
+    console.log("URL:", url);
+    console.log("Headers:", JSON.stringify(headers, null, 2));
     
     // 發送 API 請求
     const response = await fetch(url, {
@@ -128,8 +154,13 @@ export async function deleteTransactionApi(id: string, type: string): Promise<bo
       headers,
     });
     
+    console.log("Delete response status:", response.status);
+    console.log("Delete response status text:", response.statusText);
+
     if (!response.ok) {
-      throw new Error(`API request failed with status ${response.status}`);
+      const errorText = await response.text();
+      console.error("Delete error response body:", errorText);
+      throw new Error(`Delete API request failed with status ${response.status}: ${errorText}`);
     }
     
     console.log("Transaction deleted successfully");

@@ -39,6 +39,7 @@ const defaultTransaction: Transaction = {
   date: "2025年07月06日",
   type: "expense",
   note: "吃飯",
+  isFixed: false,
 };
 
 export default function TransactionDetail() {
@@ -61,6 +62,7 @@ export default function TransactionDetail() {
   const [lineId, setLineId] = useState<string>("");
   const [lineType, setLineType] = useState<string>("");
   const [debugInfo, setDebugInfo] = useState<{url: string, params: Record<string, string>}>({ url: "", params: {} });
+  const [debugClickCount, setDebugClickCount] = useState(0);
   const router = useRouter();
 
   // Mark component as mounted on client-side
@@ -108,7 +110,7 @@ export default function TransactionDetail() {
           const recordId = params.get("recordId") || liffParams.recordId || "";
           const lineTypeParam = params.get("type") || liffParams.type || "";
           
-          console.log("URL Parameters:", { recordId, type: lineTypeParam, fullUrl: url });
+          console.log("Final Parameters:", { recordId, type: lineTypeParam });
           
           // 設置 LINE 參數
           setLineId(recordId);
@@ -116,8 +118,12 @@ export default function TransactionDetail() {
 
           // 從 API 獲取交易數據
           if (recordId && lineTypeParam) {
+            setIsLoading(true);
+            console.log(`Fetching transaction with ID: ${recordId}, Type: ${lineTypeParam}`);
+            
             const transactionData = await fetchTransactionById(recordId, lineTypeParam);
             if (transactionData) {
+              console.log("Transaction data loaded successfully:", transactionData);
               setTransaction(transactionData);
               setEditAmount(Math.abs(transactionData.amount).toString());
               setEditNote(transactionData.note);
@@ -133,7 +139,7 @@ export default function TransactionDetail() {
               }
             } else {
               // 如果 API 請求失敗，使用默認數據
-              console.warn("Using default transaction data");
+              console.warn("API request failed, using default transaction data");
               setTransaction(defaultTransaction);
               setEditAmount(Math.abs(defaultTransaction.amount).toString());
               setEditNote(defaultTransaction.note);
@@ -532,434 +538,474 @@ export default function TransactionDetail() {
   if (!transaction) return <div>找不到交易記錄</div>;
 
   return (
-    <div className="w-full max-w-md mx-auto pb-6 pt-4">
-      <div className="space-y-4 px-4">
-        {/* 類別 */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <div className="flex flex-col">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600 pl-2">類型</span>
+    <>
+      <div 
+        className="fixed inset-0 z-0"
+        onClick={() => setDebugClickCount(prev => prev + 1)}
+      />
+      <div className="w-full max-w-md mx-auto pb-6 pt-4 relative z-10">
+        <div className="space-y-4 px-4">
+          {/* 類別 */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="flex flex-col">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600 pl-2">類型</span>
+                <div
+                  className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
+                  onClick={handleToggleEditCategory}
+                  tabIndex={0}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && handleToggleEditCategory()
+                  }
+                  aria-label="展開類型選單"
+                >
+                  <span className="text-gray-800">{transaction.category}</span>
+                  {isEditingCategory ? (
+                    <ChevronUp className="ml-2 text-gray-400" />
+                  ) : (
+                    <ChevronDown className="ml-2 text-gray-400" />
+                  )}
+                </div>
+              </div>
+
+              {/* 類別選擇器 */}
               <div
-                className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
-                onClick={handleToggleEditCategory}
-                tabIndex={0}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && handleToggleEditCategory()
-                }
-                aria-label="展開類型選單"
+                className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                  isEditingCategory
+                    ? "max-h-96 opacity-100 mt-4"
+                    : "max-h-0 opacity-0"
+                }`}
               >
-                <span className="text-gray-800">{transaction.category}</span>
-                {isEditingCategory ? (
-                  <ChevronUp className="ml-2 text-gray-400" />
+                {!isAddingCategory ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      {categories.map((category, index) => (
+                        <div
+                          key={index}
+                          className={`relative py-2 rounded-xl text-center ${
+                            category === transaction.category
+                              ? "bg-[#22c55e] text-white"
+                              : "bg-gray-200 text-gray-600"
+                          }`}
+                        >
+                          {isCategoryEditMode ? (
+                            // 編輯模式下點擊刪除類別
+                            <button
+                              className="w-full h-full flex items-center justify-center"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteCategory(category);
+                              }}
+                              aria-label={`刪除${category}類型`}
+                            >
+                              <span>{category}</span>
+                              <X
+                                size={18}
+                                className="absolute right-2 animate-fadeIn hover:text-red-500 transition-colors duration-200"
+                              />
+                            </button>
+                          ) : (
+                            // 非編輯模式下點擊選擇類別
+                            <button
+                              className="w-full h-full"
+                              onClick={() => handleSelectCategory(category)}
+                            >
+                              {category}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* 新增類別按鈕，僅在編輯模式顯示 */}
+                      {isCategoryEditMode && (
+                        <button
+                          className="py-2 rounded-xl text-center bg-blue-100 text-blue-600 flex items-center justify-center transition-all duration-300 ease-in-out animate-scaleIn"
+                          onClick={handleAddCategory}
+                        >
+                          <Plus size={16} className="mr-1 animate-pulse-once" />
+                          <span>新增</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* 編輯按鈕 - 移至底部並佔滿整行 */}
+                    <button
+                      className={`w-full py-2 rounded-xl flex items-center justify-center transition-all duration-300 ease-in-out transform ${
+                        isCategoryEditMode
+                          ? "bg-blue-100 text-blue-600"
+                          : "bg-gray-100 text-gray-600"
+                      }`}
+                      onClick={handleToggleCategoryEditMode}
+                    >
+                      <div className="flex items-center justify-center transition-all duration-300 ease-in-out">
+                        {isCategoryEditMode ? (
+                          <>
+                            <Check size={16} className="mr-1 animate-fadeIn" />
+                            <span className="animate-fadeIn">完成</span>
+                          </>
+                        ) : (
+                          <>
+                            <Edit size={16} className="mr-1 animate-fadeIn" />
+                            <span className="animate-fadeIn">編輯</span>
+                          </>
+                        )}
+                      </div>
+                    </button>
+                  </div>
                 ) : (
-                  <ChevronDown className="ml-2 text-gray-400" />
+                  <div className="mt-3">
+                    <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-2">
+                      <input
+                        type="text"
+                        value={newCategory}
+                        onChange={handleNewCategoryChange}
+                        placeholder="輸入新類型"
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none"
+                        autoFocus
+                        onKeyDown={(e) =>
+                          e.key === "Enter" && handleSaveNewCategory()
+                        }
+                      />
+                      <div className="flex space-x-2">
+                        <button
+                          className="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg"
+                          onClick={handleSaveNewCategory}
+                        >
+                          確定
+                        </button>
+                        <button
+                          className="flex-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg"
+                          onClick={handleCancelAddCategory}
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 金額、日期、屬性組合在一起 */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm space-y-4">
+            {/* 金額 */}
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600 pl-2">金額</span>
+              <div className="flex items-center">
+                {isEditingAmount ? (
+                  <div className="flex items-center">
+                    {transaction.type === "expense" && (
+                      <span className="text-gray-800">-</span>
+                    )}
+                    <span className="text-gray-800 mr-[0.5rem]">$</span>
+                    <div className="relative inline-block">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        pattern="[0-9]*\.?[0-9]*"
+                        value={editAmount}
+                        onChange={handleAmountChange}
+                        onBlur={handleSaveAmount}
+                        onKeyDown={(e) => handleKeyDown(e, handleSaveAmount)}
+                        className="w-32 px-2 py-1 rounded-lg text-right focus:outline-none"
+                        autoFocus
+                      />
+                      <div className="absolute inset-0 pointer-events-none border border-gray-300 rounded-lg"></div>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
+                    onClick={handleStartEditAmount}
+                    tabIndex={0}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && handleStartEditAmount()
+                    }
+                    aria-label="編輯金額"
+                  >
+                    {transaction.type === "expense" && (
+                      <span className="text-gray-800">-</span>
+                    )}
+                    <span className="text-gray-800 mr-[0.5rem]">$</span>
+                    <span className="text-gray-800">
+                      {Math.abs(transaction.amount)}
+                    </span>
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* 類別選擇器 */}
-            <div
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                isEditingCategory
-                  ? "max-h-96 opacity-100 mt-4"
-                  : "max-h-0 opacity-0"
-              }`}
-            >
-              {!isAddingCategory ? (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-2">
-                    {categories.map((category, index) => (
-                      <div
-                        key={index}
-                        className={`relative py-2 rounded-xl text-center ${
-                          category === transaction.category
-                            ? "bg-[#22c55e] text-white"
-                            : "bg-gray-200 text-gray-600"
-                        }`}
-                      >
-                        {isCategoryEditMode ? (
-                          // 編輯模式下點擊刪除類別
-                          <button
-                            className="w-full h-full flex items-center justify-center"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteCategory(category);
-                            }}
-                            aria-label={`刪除${category}類型`}
-                          >
-                            <span>{category}</span>
-                            <X
-                              size={18}
-                              className="absolute right-2 animate-fadeIn hover:text-red-500 transition-colors duration-200"
-                            />
-                          </button>
-                        ) : (
-                          // 非編輯模式下點擊選擇類別
-                          <button
-                            className="w-full h-full"
-                            onClick={() => handleSelectCategory(category)}
-                          >
-                            {category}
-                          </button>
-                        )}
-                      </div>
-                    ))}
+            {/* 分隔線 */}
+            <div className="border-t border-gray-100"></div>
 
-                    {/* 新增類別按鈕，僅在編輯模式顯示 */}
-                    {isCategoryEditMode && (
+            {/* 日期 */}
+            <div className="flex flex-col">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600 pl-2">日期</span>
+                <div
+                  className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
+                  onClick={handleToggleEditDate}
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === "Enter" && handleToggleEditDate()}
+                  aria-label="編輯日期"
+                >
+                  <span className="text-gray-800">{transaction.date}</span>
+                  {isEditingDate ? (
+                    <ChevronUp className="ml-2 text-gray-400" />
+                  ) : (
+                    <ChevronDown className="ml-2 text-gray-400" />
+                  )}
+                </div>
+              </div>
+
+              {/* 日曆選擇器 */}
+              <div
+                className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                  isEditingDate
+                    ? "max-h-96 opacity-100 mt-4"
+                    : "max-h-0 opacity-0"
+                }`}
+              >
+                <div className="bg-gray-50 rounded-2xl p-4">
+                  <div className="rounded-lg">
+                    {/* 年月選擇器 */}
+                    <div className="flex items-center justify-between mb-4">
                       <button
-                        className="py-2 rounded-xl text-center bg-blue-100 text-blue-600 flex items-center justify-center transition-all duration-300 ease-in-out animate-scaleIn"
-                        onClick={handleAddCategory}
+                        onClick={handlePrevMonth}
+                        className="p-1 rounded-full"
+                        aria-label="上個月"
                       >
-                        <Plus size={16} className="mr-1 animate-pulse-once" />
-                        <span>新增</span>
+                        <ChevronLeft size={20} />
                       </button>
-                    )}
-                  </div>
 
-                  {/* 編輯按鈕 - 移至底部並佔滿整行 */}
-                  <button
-                    className={`w-full py-2 rounded-xl flex items-center justify-center transition-all duration-300 ease-in-out transform ${
-                      isCategoryEditMode
-                        ? "bg-blue-100 text-blue-600"
-                        : "bg-gray-100 text-gray-600"
-                    }`}
-                    onClick={handleToggleCategoryEditMode}
-                  >
-                    <div className="flex items-center justify-center transition-all duration-300 ease-in-out">
-                      {isCategoryEditMode ? (
-                        <>
-                          <Check size={16} className="mr-1 animate-fadeIn" />
-                          <span className="animate-fadeIn">完成</span>
-                        </>
-                      ) : (
-                        <>
-                          <Edit size={16} className="mr-1 animate-fadeIn" />
-                          <span className="animate-fadeIn">編輯</span>
-                        </>
+                      <div className="flex space-x-2">
+                        <select
+                          value={isMounted ? calendarDate.getFullYear() : 2025}
+                          onChange={handleYearChange}
+                          className="px-2 py-1 pr-4 border border-gray-200 rounded-lg bg-white focus:outline-none"
+                        >
+                          {generateYearOptions().map((year) => (
+                            <option key={year} value={year}>
+                              {year}年
+                            </option>
+                          ))}
+                        </select>
+
+                        <select
+                          value={isMounted ? calendarDate.getMonth() : 0}
+                          onChange={handleMonthChange}
+                          className="px-2 py-1 pr-4 border border-gray-200 rounded-lg bg-white focus:outline-none"
+                        >
+                          {generateMonthOptions().map((month) => (
+                            <option key={month} value={month}>
+                              {getMonthName(month)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button
+                        onClick={handleNextMonth}
+                        className="p-1 rounded-full"
+                        aria-label="下個月"
+                      >
+                        <ChevronRight size={20} />
+                      </button>
+                    </div>
+
+                    {/* 星期標題 */}
+                    <div className="grid grid-cols-7 mb-2">
+                      {["日", "一", "二", "三", "四", "五", "六"].map(
+                        (day, index) => (
+                          <div
+                            key={index}
+                            className="text-center text-gray-500 text-sm"
+                          >
+                            {day}
+                          </div>
+                        )
                       )}
                     </div>
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-3">
-                  <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-2">
-                    <input
-                      type="text"
-                      value={newCategory}
-                      onChange={handleNewCategoryChange}
-                      placeholder="輸入新類型"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none"
-                      autoFocus
-                      onKeyDown={(e) =>
-                        e.key === "Enter" && handleSaveNewCategory()
-                      }
-                    />
-                    <div className="flex space-x-2">
-                      <button
-                        className="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg"
-                        onClick={handleSaveNewCategory}
-                      >
-                        確定
-                      </button>
-                      <button
-                        className="flex-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg"
-                        onClick={handleCancelAddCategory}
-                      >
-                        取消
-                      </button>
+
+                    {/* 日曆主體 */}
+                    <div className="grid grid-cols-7 gap-1">
+                      {renderCalendar()}
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
+            </div>
+
+            {/* 分隔線 */}
+            <div className="border-t border-gray-100"></div>
+
+            {/* 交易類型 */}
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600 pl-2">屬性</span>
+              <div className="flex gap-2">
+                <button
+                  className={`px-6 py-1 rounded-xl min-w-[5rem] ${
+                    transaction.type === "expense"
+                      ? "bg-[#22c55e] text-white"
+                      : "bg-gray-200 text-gray-600"
+                  }`}
+                  onClick={() => handleTypeChange("expense")}
+                >
+                  支出
+                </button>
+                <button
+                  className={`px-6 py-1 rounded-xl min-w-[5rem] ${
+                    transaction.type === "income"
+                      ? "bg-[#22c55e] text-white"
+                      : "bg-gray-200 text-gray-600"
+                  }`}
+                  onClick={() => handleTypeChange("income")}
+                >
+                  收入
+                </button>
+              </div>
+            </div>
+
+            {/* 分隔線 */}
+            <div className="border-t border-gray-100"></div>
+
+            {/* 固定支出/收入 */}
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600 pl-2">固定{transaction.type === "expense" ? "支出" : "收入"}</span>
+              <button
+                role="switch"
+                aria-checked={transaction.isFixed}
+                className={`relative inline-flex h-7 w-[5rem] items-center rounded-xl transition-colors duration-200 ease-in-out focus:outline-none ${
+                  transaction.isFixed ? "bg-[#22c55e]" : "bg-gray-200"
+                }`}
+                onClick={() => {
+                  const updatedTransaction = {
+                    ...transaction,
+                    isFixed: !transaction.isFixed,
+                  };
+                  setTransaction(updatedTransaction);
+                  updateTransactionApi(updatedTransaction);
+                }}
+              >
+                <span
+                  className={`inline-block h-5 w-9 transform rounded-lg bg-white transition-transform duration-200 ease-in-out ${
+                    transaction.isFixed ? "translate-x-[2.5rem]" : "translate-x-1"
+                  }`}
+                />
+              </button>
             </div>
           </div>
-        </div>
 
-        {/* 金額、日期、屬性組合在一起 */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm space-y-4">
-          {/* 金額 */}
-          <div className="flex items-center justify-between">
-            <span className="text-gray-600 pl-2">金額</span>
-            <div className="flex items-center">
-              {isEditingAmount ? (
-                <div className="flex items-center">
-                  {transaction.type === "expense" && (
-                    <span className="text-gray-800">-</span>
-                  )}
-                  <span className="text-gray-800 mr-[0.5rem]">$</span>
+          {/* 備註 */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600 pl-2">備註</span>
+              <div className="flex items-center">
+                {isEditingNote ? (
                   <div className="relative inline-block">
                     <input
                       type="text"
-                      inputMode="decimal"
-                      pattern="[0-9]*\.?[0-9]*"
-                      value={editAmount}
-                      onChange={handleAmountChange}
-                      onBlur={handleSaveAmount}
-                      onKeyDown={(e) => handleKeyDown(e, handleSaveAmount)}
-                      className="w-32 px-2 py-1 rounded-lg text-right focus:outline-none"
+                      value={editNote}
+                      onChange={handleNoteChange}
+                      onBlur={handleSaveNote}
+                      onKeyDown={(e) => handleKeyDown(e, handleSaveNote)}
+                      className="w-48 px-2 py-1 rounded-lg text-right focus:outline-none"
                       autoFocus
                     />
                     <div className="absolute inset-0 pointer-events-none border border-gray-300 rounded-lg"></div>
                   </div>
-                </div>
-              ) : (
-                <div
-                  className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
-                  onClick={handleStartEditAmount}
-                  tabIndex={0}
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && handleStartEditAmount()
-                  }
-                  aria-label="編輯金額"
-                >
-                  {transaction.type === "expense" && (
-                    <span className="text-gray-800">-</span>
-                  )}
-                  <span className="text-gray-800 mr-[0.5rem]">$</span>
-                  <span className="text-gray-800">
-                    {Math.abs(transaction.amount)}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 分隔線 */}
-          <div className="border-t border-gray-100"></div>
-
-          {/* 日期 */}
-          <div className="flex flex-col">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600 pl-2">日期</span>
-              <div
-                className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
-                onClick={handleToggleEditDate}
-                tabIndex={0}
-                onKeyDown={(e) => e.key === "Enter" && handleToggleEditDate()}
-                aria-label="編輯日期"
-              >
-                <span className="text-gray-800">{transaction.date}</span>
-                {isEditingDate ? (
-                  <ChevronUp className="ml-2 text-gray-400" />
                 ) : (
-                  <ChevronDown className="ml-2 text-gray-400" />
+                  <div
+                    className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
+                    onClick={handleStartEditNote}
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === "Enter" && handleStartEditNote()}
+                    aria-label="編輯備註"
+                  >
+                    <span className="text-gray-800">{transaction.note}</span>
+                  </div>
                 )}
               </div>
             </div>
+          </div>
 
-            {/* 日曆選擇器 */}
-            <div
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                isEditingDate
-                  ? "max-h-96 opacity-100 mt-4"
-                  : "max-h-0 opacity-0"
-              }`}
+          {/* 按鈕區域 */}
+          <div className="space-y-4 mt-8">
+            {/* 確認按鈕 */}
+            <button
+              onClick={handleConfirm}
+              className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center"
             >
-              <div className="bg-gray-50 rounded-2xl p-4">
-                <div className="rounded-lg">
-                  {/* 年月選擇器 */}
-                  <div className="flex items-center justify-between mb-4">
-                    <button
-                      onClick={handlePrevMonth}
-                      className="p-1 rounded-full"
-                      aria-label="上個月"
-                    >
-                      <ChevronLeft size={20} />
-                    </button>
+              <Check size={20} className="mr-2" />
+              完成
+            </button>
 
-                    <div className="flex space-x-2">
-                      <select
-                        value={isMounted ? calendarDate.getFullYear() : 2025}
-                        onChange={handleYearChange}
-                        className="px-2 py-1 pr-4 border border-gray-200 rounded-lg bg-white focus:outline-none"
-                      >
-                        {generateYearOptions().map((year) => (
-                          <option key={year} value={year}>
-                            {year}年
-                          </option>
-                        ))}
-                      </select>
-
-                      <select
-                        value={isMounted ? calendarDate.getMonth() : 0}
-                        onChange={handleMonthChange}
-                        className="px-2 py-1 pr-4 border border-gray-200 rounded-lg bg-white focus:outline-none"
-                      >
-                        {generateMonthOptions().map((month) => (
-                          <option key={month} value={month}>
-                            {getMonthName(month)}
-                          </option>
-                        ))}
-                      </select>
+            {/* 刪除按鈕 */}
+            <button
+              onClick={handleDelete}
+              className="w-full py-3 rounded-2xl bg-red-500 text-white flex items-center justify-center"
+            >
+              <Trash2 size={20} className="mr-2" />
+              刪除
+            </button>
+            
+            {/* LINE 參數顯示和調試信息 */}
+            {debugClickCount >= 5 && (
+              <>
+                {/* LINE 參數顯示 */}
+                {(lineId || lineType) && (
+                  <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-medium text-gray-700">LINE 參數資訊</p>
+                      <div className="h-px flex-1 bg-gray-200 mx-2"></div>
                     </div>
-
-                    <button
-                      onClick={handleNextMonth}
-                      className="p-1 rounded-full"
-                      aria-label="下個月"
-                    >
-                      <ChevronRight size={20} />
-                    </button>
-                  </div>
-
-                  {/* 星期標題 */}
-                  <div className="grid grid-cols-7 mb-2">
-                    {["日", "一", "二", "三", "四", "五", "六"].map(
-                      (day, index) => (
-                        <div
-                          key={index}
-                          className="text-center text-gray-500 text-sm"
-                        >
-                          {day}
+                    <div className="space-y-2">
+                      {lineId && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-500">記錄 ID</span>
+                          <span className="text-sm font-medium text-gray-700">{lineId}</span>
                         </div>
-                      )
-                    )}
-                  </div>
-
-                  {/* 日曆主體 */}
-                  <div className="grid grid-cols-7 gap-1">
-                    {renderCalendar()}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* 分隔線 */}
-          <div className="border-t border-gray-100"></div>
-
-          {/* 交易類型 */}
-          <div className="flex items-center justify-between">
-            <span className="text-gray-600 pl-2">屬性</span>
-            <div className="flex gap-2">
-              <button
-                className={`px-6 py-1 rounded-xl min-w-[5rem] ${
-                  transaction.type === "expense"
-                    ? "bg-[#22c55e] text-white"
-                    : "bg-gray-200 text-gray-600"
-                }`}
-                onClick={() => handleTypeChange("expense")}
-              >
-                支出
-              </button>
-              <button
-                className={`px-6 py-1 rounded-xl min-w-[5rem] ${
-                  transaction.type === "income"
-                    ? "bg-[#22c55e] text-white"
-                    : "bg-gray-200 text-gray-600"
-                }`}
-                onClick={() => handleTypeChange("income")}
-              >
-                收入
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 備註 */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-gray-600 pl-2">備註</span>
-            <div className="flex items-center">
-              {isEditingNote ? (
-                <div className="relative inline-block">
-                  <input
-                    type="text"
-                    value={editNote}
-                    onChange={handleNoteChange}
-                    onBlur={handleSaveNote}
-                    onKeyDown={(e) => handleKeyDown(e, handleSaveNote)}
-                    className="w-48 px-2 py-1 rounded-lg text-right focus:outline-none"
-                    autoFocus
-                  />
-                  <div className="absolute inset-0 pointer-events-none border border-gray-300 rounded-lg"></div>
-                </div>
-              ) : (
-                <div
-                  className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
-                  onClick={handleStartEditNote}
-                  tabIndex={0}
-                  onKeyDown={(e) => e.key === "Enter" && handleStartEditNote()}
-                  aria-label="編輯備註"
-                >
-                  <span className="text-gray-800">{transaction.note}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 按鈕區域 */}
-        <div className="space-y-4 mt-8">
-          {/* 確認按鈕 */}
-          <button
-            onClick={handleConfirm}
-            className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center"
-          >
-            <Check size={20} className="mr-2" />
-            完成
-          </button>
-
-          {/* 刪除按鈕 */}
-          <button
-            onClick={handleDelete}
-            className="w-full py-3 rounded-2xl bg-red-500 text-white flex items-center justify-center"
-          >
-            <Trash2 size={20} className="mr-2" />
-            刪除
-          </button>
-          
-          {/* LINE 參數顯示 */}
-          {(lineId || lineType) && (
-            <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-medium text-gray-700">LINE 參數資訊</p>
-                <div className="h-px flex-1 bg-gray-200 mx-2"></div>
-              </div>
-              <div className="space-y-2">
-                {lineId && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">記錄 ID</span>
-                    <span className="text-sm font-medium text-gray-700">{lineId}</span>
-                  </div>
-                )}
-                {lineType && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">交易類型</span>
-                    <span className="text-sm font-medium text-gray-700">{lineType}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {/* 調試信息 */}
-          <div className="mt-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-medium text-yellow-700">調試信息</p>
-              <div className="h-px flex-1 bg-yellow-200 mx-2"></div>
-            </div>
-            <div className="space-y-2 overflow-hidden">
-              <div className="flex flex-col">
-                <span className="text-sm text-yellow-700">完整 URL:</span>
-                <span className="text-xs text-yellow-600 break-all">{debugInfo.url}</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm text-yellow-700">解析參數:</span>
-                <div className="text-xs text-yellow-600">
-                  {Object.entries(debugInfo.params).map(([key, value]) => (
-                    <div key={key} className="flex justify-between">
-                      <span>{key}:</span>
-                      <span>{value}</span>
+                      )}
+                      {lineType && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-500">交易類型</span>
+                          <span className="text-sm font-medium text-gray-700">{lineType}</span>
+                        </div>
+                      )}
                     </div>
-                  ))}
+                  </div>
+                )}
+                
+                {/* 調試信息 */}
+                <div className="mt-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium text-yellow-700">調試信息</p>
+                    <div className="h-px flex-1 bg-yellow-200 mx-2"></div>
+                  </div>
+                  <div className="space-y-2 overflow-hidden">
+                    <div className="flex flex-col">
+                      <span className="text-sm text-yellow-700">完整 URL:</span>
+                      <span className="text-xs text-yellow-600 break-all">{debugInfo.url}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm text-yellow-700">解析參數:</span>
+                      <div className="text-xs text-yellow-600">
+                        {Object.entries(debugInfo.params).map(([key, value]) => (
+                          <div key={key} className="flex justify-between">
+                            <span>{key}:</span>
+                            <span>{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </>
+            )}
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -1,9 +1,10 @@
 // 交易類型定義
-export interface Transaction {
+export type Transaction = {
   id: string;
   category: string;
   amount: number;
   date: string;
-  type: "expense" | "income";
+  type: "income" | "expense";
   note: string;
-} 
+  isFixed: boolean;
+}; 
