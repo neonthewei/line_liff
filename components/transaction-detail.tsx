@@ -1200,12 +1200,26 @@ export default function TransactionDetail() {
                   onChange={(e) => {
                     const updatedTransaction = { ...transaction, note: e.target.value };
                     setTransaction(updatedTransaction);
+                    
+                    // 自动调整高度
+                    e.target.style.height = "auto";
+                    e.target.style.height = e.target.scrollHeight + "px";
+                  }}
+                  onFocus={(e) => {
+                    // 聚焦时确保高度适应内容
+                    e.target.style.height = "auto";
+                    e.target.style.height = e.target.scrollHeight + "px";
                   }}
                   onBlur={() => {
                     // 移除自動儲存
                   }}
-                  className="w-full px-3 py-2 rounded-lg focus:outline-none border border-gray-300 min-h-[80px] text-gray-800"
+                  className="w-full px-3 py-2 rounded-lg focus:outline-none border border-gray-300 text-gray-800 resize-none overflow-hidden"
+                  style={{ 
+                    height: "38px", // 初始高度设为一行
+                    minHeight: "38px" // 最小高度为一行
+                  }}
                   placeholder="輸入備註"
+                  rows={1}
                 />
               </div>
             </div>
