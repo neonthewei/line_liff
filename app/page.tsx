@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { initializeLiff } from "@/utils/liff";
+import { initializeLiff, navigateInLiff } from "@/utils/liff";
 import type { Transaction } from "@/types/transaction";
 import MonthSelector from "@/components/month-selector";
 import { fetchTransactionsByUser, fetchMonthlySummary } from "@/utils/api";
@@ -128,6 +128,14 @@ export default function Home() {
     setActiveTab(tab);
   };
 
+  // 處理交易點擊，使用 LIFF 導航
+  const handleTransactionClick = (id: string, type: string) => {
+    console.log(`點擊交易: id=${id}, type=${type}`);
+    
+    // 使用 LIFF 導航而不是 Next.js 路由
+    navigateInLiff("/transaction", { id, type });
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-100">
       <main className="flex-1 container max-w-md mx-auto px-5 py-4">
@@ -168,10 +176,7 @@ export default function Home() {
                 currentDate={currentDate} 
                 activeTab={activeTab}
                 isLoading={isLoading}
-                onTransactionClick={(id: string, type: string) => {
-                  console.log(`點擊交易: id=${id}, type=${type}`);
-                  router.push(`/transaction?id=${id}&type=${type}`);
-                }}
+                onTransactionClick={handleTransactionClick}
               />
             )}
           </>

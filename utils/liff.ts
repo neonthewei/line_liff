@@ -7,6 +7,9 @@ let isInitialized = false;
 const DEV_MODE = process.env.NODE_ENV === "development";
 const BYPASS_LIFF = DEV_MODE && (process.env.NEXT_PUBLIC_BYPASS_LIFF === "true");
 
+// LIFF ID
+const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || "2007052419-6KyqOAoX";
+
 // 初始化 LIFF
 export async function initializeLiff() {
   // 避免重複初始化
@@ -33,7 +36,8 @@ export async function initializeLiff() {
         login: () => console.log("LIFF login called in dev mode"),
         getAccessToken: () => "dev-token",
         getContext: async () => ({ type: "external" }),
-        closeWindow: () => console.log("LIFF closeWindow called in dev mode")
+        closeWindow: () => console.log("LIFF closeWindow called in dev mode"),
+        openWindow: (params: { url: string, external: boolean }) => console.log("LIFF openWindow called in dev mode with params:", params),
       };
     }
     
@@ -42,7 +46,7 @@ export async function initializeLiff() {
   }
 
   try {
-    const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+    const liffId = LIFF_ID;
     if (!liffId) {
       throw new Error("LIFF ID is required");
     }
@@ -91,6 +95,37 @@ export function closeLiff() {
   // Only close if in LIFF client
   if (liff.isInClient()) {
     liff.closeWindow();
+  }
+}
+
+// 在 LIFF 中導航到另一個頁面
+export function navigateInLiff(path: string, params: Record<string, string> = {}) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  
+  // 構建完整 URL
+  const baseUrl = window.location.origin;
+  const url = new URL(path, baseUrl);
+  
+  // 添加參數
+  Object.entries(params).forEach(([key, value]) => {
+    url.searchParams.append(key, value);
+  });
+  
+  // 在開發模式下記錄
+  if (DEV_MODE) {
+    console.log("Navigating in LIFF to:", url.toString());
+  }
+  
+  // 在 LIFF 客戶端中使用 openWindow，否則使用普通導航
+  if (isInitialized && !BYPASS_LIFF && liff.isInClient()) {
+    liff.openWindow({
+      url: url.toString(),
+      external: false
+    });
+  } else {
+    window.location.href = url.toString();
   }
 }
 
