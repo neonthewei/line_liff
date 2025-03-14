@@ -97,14 +97,14 @@ export function getLiffUrlParams() {
       result[key] = value;
     });
     
-    // 處理 recordid 參數，轉換為 id
-    if (result.recordid && !result.id) {
-      result.id = result.recordid;
-      console.log("Converting recordid to id:", result.id);
+    // 處理 recordId 參數，轉換為 id（注意大寫 I）
+    if (result.recordId && !result.id) {
+      result.id = result.recordId;
+      console.log("Converting recordId to id:", result.id);
     }
     
     // 在開發模式下，如果沒有提供 id 和 type 參數，則使用預設值
-    if (!result.id && !params.has("id") && !params.has("recordid")) {
+    if (!result.id && !params.has("id") && !params.has("recordId")) {
       result.id = "14";
       console.log("Using default id:", result.id);
     }
@@ -129,10 +129,10 @@ export function getLiffUrlParams() {
         result[key] = value;
       });
       
-      // 處理 recordid 參數，轉換為 id
-      if (result.recordid && !result.id) {
-        result.id = result.recordid;
-        console.log("Converting recordid to id:", result.id);
+      // 處理 recordId 參數，轉換為 id（注意大寫 I）
+      if (result.recordId && !result.id) {
+        result.id = result.recordId;
+        console.log("Converting recordId to id:", result.id);
       }
       
       // 如果沒有找到必要的參數，嘗試從 liff.state 獲取
@@ -145,10 +145,10 @@ export function getLiffUrlParams() {
               result[key] = value;
             });
             
-            // 處理 liff.state 中的 recordid 參數
-            if (result.recordid && !result.id) {
-              result.id = result.recordid;
-              console.log("Converting recordid to id from liff.state:", result.id);
+            // 處理 liff.state 中的 recordId 參數（注意大寫 I）
+            if (result.recordId && !result.id) {
+              result.id = result.recordId;
+              console.log("Converting recordId to id from liff.state:", result.id);
             }
           } catch (error) {
             console.error("Failed to parse liff.state", error);
@@ -173,14 +173,14 @@ export function getLiffUrlParams() {
       result[key] = value;
     });
     
-    // 處理 recordid 參數，轉換為 id
-    if (result.recordid && !result.id) {
-      result.id = result.recordid;
-      console.log("Converting recordid to id in bypass mode:", result.id);
+    // 處理 recordId 參數，轉換為 id（注意大寫 I）
+    if (result.recordId && !result.id) {
+      result.id = result.recordId;
+      console.log("Converting recordId to id in bypass mode:", result.id);
     }
     
     // 如果沒有提供 id 和 type 參數，則使用預設值
-    if (!result.id && !params.has("id") && !params.has("recordid")) {
+    if (!result.id && !params.has("id") && !params.has("recordId")) {
       result.id = "14";
       console.log("Using default id in bypass mode:", result.id);
     }
