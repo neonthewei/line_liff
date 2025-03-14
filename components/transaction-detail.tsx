@@ -15,6 +15,7 @@ import {
   Share2,
 } from "lucide-react";
 import { initializeLiff, closeLiff, getLiffUrlParams } from "@/utils/liff";
+import liff from "@line/liff";
 import { useRouter } from "next/navigation";
 import { Transaction } from "@/types/transaction";
 import { fetchTransactionById, updateTransactionApi, deleteTransactionApi } from "@/utils/api";
@@ -205,8 +206,12 @@ export default function TransactionDetail() {
 
         if (success) {
           showToastNotification("刪除成功！", "success", 1500, () => {
-            // 刪除成功後導航回首頁
-            router.push("/");
+            // 刪除成功後關閉 LIFF 視窗
+            closeLiff();
+            // 如果不在 LIFF 環境中，則導航回首頁
+            if (!liff.isInClient()) {
+              router.push("/");
+            }
           });
         } else {
           showToastNotification("刪除失敗，請稍後再試", "error");
@@ -224,7 +229,10 @@ export default function TransactionDetail() {
       const success = await updateTransactionApi(transaction);
 
       if (success) {
-        showToastNotification("儲存成功！", "success");
+        showToastNotification("儲存成功！", "success", 1500, () => {
+          // 更新成功後關閉 LIFF 視窗
+          closeLiff();
+        });
       } else {
         showToastNotification("儲存失敗，請稍後再試", "error");
       }
