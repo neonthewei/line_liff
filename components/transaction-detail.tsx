@@ -110,14 +110,14 @@ export default function TransactionDetail() {
           params: { ...params } // 創建一個新對象，避免引用問題
         });
         
-        // 獲取交易 ID 和類型
-        const id = params.id;
+        // 獲取交易 ID 和類型 - 支持 recordid 或 id 參數
+        const id = params.recordid || params.id;
         const type = params.type || "expense";
         
         console.log("Transaction ID:", id, "Type:", type);
         
         if (!id) {
-          console.error("No transaction ID provided");
+          console.error("No transaction ID provided (checked both 'id' and 'recordid' parameters)");
           setIsLoading(false);
           return;
         }
@@ -143,7 +143,8 @@ export default function TransactionDetail() {
         // 即使初始化失敗，也嘗試使用 URL 參數
         try {
           const params = new URLSearchParams(window.location.search);
-          const id = params.get("id") || "14"; // 使用預設值
+          // 支持 recordid 或 id 參數
+          const id = params.get("recordid") || params.get("id") || "14"; // 使用預設值
           const type = params.get("type") || "expense"; // 使用預設值
           
           console.log("Fallback: Using URL parameters directly:", { id, type });
@@ -631,7 +632,7 @@ export default function TransactionDetail() {
           <div className="flex flex-col mt-4">
             <span className="text-sm text-yellow-700">可能的問題:</span>
             <ul className="text-xs text-yellow-600 list-disc pl-5 mt-1">
-              <li>確認 ID 參數是否正確 (當前值: "{debugInfo.params.id || '未提供'}")</li>
+              <li>確認 ID 參數是否正確 (recordid: "{debugInfo.params.recordid || '未提供'}", id: "{debugInfo.params.id || '未提供'}")</li>
               <li>確認 type 參數是否為 "expense" 或 "income" (當前值: "{debugInfo.params.type || '未提供'}")</li>
               <li>檢查 Supabase 數據庫中是否存在此 ID 的記錄</li>
               <li>檢查網絡連接是否正常</li>
@@ -1301,27 +1302,29 @@ export default function TransactionDetail() {
                   </div>
                 )}
                 
-                {/* 調試信息 */}
+                {/* 簡化的調試信息 - 移除重複內容 */}
                 <div className="mt-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-medium text-yellow-700">調試信息</p>
                     <div className="h-px flex-1 bg-yellow-200 mx-2"></div>
                   </div>
-                  <div className="space-y-2 overflow-hidden">
+                  <div className="space-y-2">
                     <div className="flex flex-col">
-                      <span className="text-sm text-yellow-700">完整 URL:</span>
-                      <span className="text-xs text-yellow-600 break-all">{debugInfo.url}</span>
+                      <span className="text-sm text-yellow-700">交易ID:</span>
+                      <span className="text-xs text-yellow-600">{transaction?.id || '未找到'}</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-sm text-yellow-700">解析參數:</span>
-                      <div className="text-xs text-yellow-600">
-                        {Object.entries(debugInfo.params).map(([key, value]) => (
-                          <div key={key} className="flex justify-between">
-                            <span>{key}:</span>
-                            <span>{value}</span>
-                          </div>
-                        ))}
-                      </div>
+                      <span className="text-sm text-yellow-700">交易類型:</span>
+                      <span className="text-xs text-yellow-600">{transaction?.type || '未找到'}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm text-yellow-700">點擊查看更多調試信息:</span>
+                      <button 
+                        onClick={() => setTransaction(null)} 
+                        className="text-xs text-blue-600 underline mt-1"
+                      >
+                        顯示完整調試頁面
+                      </button>
                     </div>
                   </div>
                 </div>
