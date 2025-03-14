@@ -19,6 +19,9 @@ const headers = {
  */
 export async function fetchTransactionById(id: string, type: string): Promise<Transaction | null> {
   try {
+    // 記錄輸入參數
+    console.log(`Fetching transaction with id=${id}, type=${type}`);
+    
     // 根據類型選擇 API 端點
     const endpoint = type === "income" ? "incomes" : "expenses";
     
@@ -58,6 +61,12 @@ export async function fetchTransactionById(id: string, type: string): Promise<Tr
     
     // 獲取第一個結果
     const apiTransaction = data[0];
+    
+    // 檢查 API 返回的數據是否完整
+    if (!apiTransaction.id) {
+      console.error("API returned incomplete data:", apiTransaction);
+      return null;
+    }
     
     // 轉換為應用程序的交易格式
     const result: Transaction = {

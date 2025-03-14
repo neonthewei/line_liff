@@ -110,6 +110,7 @@ export default function TransactionDetail() {
         
         if (!id) {
           console.error("No transaction ID provided");
+          setIsLoading(false);
           return;
         }
         
@@ -117,19 +118,16 @@ export default function TransactionDetail() {
         const data = await fetchTransactionById(id, type);
         
         if (data) {
+          console.log("Transaction data found:", data);
           setTransaction(data);
           // 重置編輯狀態
           setEditAmount("");
           setEditNote("");
           setEditFixedInterval("");
         } else {
-          // 如果 API 請求失敗，使用默認數據
-          console.warn("Using default transaction data");
-          setTransaction({
-            ...defaultTransaction,
-            id,
-            type: type as "income" | "expense",
-          });
+          console.warn("No transaction data found");
+          // 不再使用默認數據，而是將 transaction 設為 null，顯示錯誤頁面
+          setTransaction(null);
         }
       } catch (error) {
         console.error("Error initializing:", error);
@@ -140,27 +138,27 @@ export default function TransactionDetail() {
           const id = params.get("id") || "14"; // 使用預設值
           const type = params.get("type") || "expense"; // 使用預設值
           
+          console.log("Fallback: Using URL parameters directly:", { id, type });
+          
           // 獲取交易數據
           const data = await fetchTransactionById(id, type);
           
           if (data) {
+            console.log("Fallback: Transaction data found:", data);
             setTransaction(data);
             // 重置編輯狀態
             setEditAmount("");
             setEditNote("");
             setEditFixedInterval("");
           } else {
-            // 如果 API 請求失敗，使用默認數據
-            setTransaction({
-              ...defaultTransaction,
-              id,
-              type: type as "income" | "expense",
-            });
+            console.warn("Fallback: No transaction data found");
+            // 不再使用默認數據，而是將 transaction 設為 null，顯示錯誤頁面
+            setTransaction(null);
           }
         } catch (innerError) {
           console.error("Failed to recover from initialization error:", innerError);
-          // 使用默認數據
-          setTransaction(defaultTransaction);
+          // 將 transaction 設為 null，顯示錯誤頁面
+          setTransaction(null);
         }
       } finally {
         setIsLoading(false);
@@ -609,6 +607,24 @@ export default function TransactionDetail() {
                 </div>
               ))}
             </div>
+          </div>
+          <div className="flex flex-col mt-4">
+            <span className="text-sm text-yellow-700">可能的問題:</span>
+            <ul className="text-xs text-yellow-600 list-disc pl-5 mt-1">
+              <li>確認 ID 參數是否正確 (當前: {debugInfo.params.id || '未提供'})</li>
+              <li>確認 type 參數是否為 "expense" 或 "income" (當前: {debugInfo.params.type || '未提供'})</li>
+              <li>檢查 Supabase 數據庫中是否存在此 ID 的記錄</li>
+              <li>檢查網絡連接是否正常</li>
+              <li>檢查 API 密鑰是否有效</li>
+            </ul>
+          </div>
+          <div className="flex flex-col mt-4">
+            <span className="text-sm text-yellow-700">嘗試解決方法:</span>
+            <ul className="text-xs text-yellow-600 list-disc pl-5 mt-1">
+              <li>返回首頁，重新選擇交易記錄</li>
+              <li>刷新頁面重試</li>
+              <li>檢查控制台日誌獲取更多錯誤信息</li>
+            </ul>
           </div>
         </div>
       </div>
