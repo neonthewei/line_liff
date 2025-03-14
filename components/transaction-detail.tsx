@@ -102,11 +102,19 @@ export default function TransactionDetail() {
         
         // 獲取 URL 參數
         const params = getLiffUrlParams();
-        setDebugInfo({ url: window.location.href, params });
+        console.log("URL parameters:", params);
+        
+        // 確保 debugInfo 被正確設置
+        setDebugInfo({ 
+          url: typeof window !== 'undefined' ? window.location.href : '',
+          params: { ...params } // 創建一個新對象，避免引用問題
+        });
         
         // 獲取交易 ID 和類型
         const id = params.id;
         const type = params.type || "expense";
+        
+        console.log("Transaction ID:", id, "Type:", type);
         
         if (!id) {
           console.error("No transaction ID provided");
@@ -139,6 +147,12 @@ export default function TransactionDetail() {
           const type = params.get("type") || "expense"; // 使用預設值
           
           console.log("Fallback: Using URL parameters directly:", { id, type });
+          
+          // 更新 debugInfo
+          setDebugInfo({
+            url: typeof window !== 'undefined' ? window.location.href : '',
+            params: { id, type }
+          });
           
           // 獲取交易數據
           const data = await fetchTransactionById(id, type);
@@ -609,10 +623,16 @@ export default function TransactionDetail() {
             </div>
           </div>
           <div className="flex flex-col mt-4">
+            <span className="text-sm text-yellow-700">debugInfo 內容:</span>
+            <pre className="text-xs text-yellow-600 overflow-auto mt-1 bg-yellow-100 p-2 rounded">
+              {JSON.stringify(debugInfo, null, 2)}
+            </pre>
+          </div>
+          <div className="flex flex-col mt-4">
             <span className="text-sm text-yellow-700">可能的問題:</span>
             <ul className="text-xs text-yellow-600 list-disc pl-5 mt-1">
-              <li>確認 ID 參數是否正確 (當前: {debugInfo.params.id || '未提供'})</li>
-              <li>確認 type 參數是否為 "expense" 或 "income" (當前: {debugInfo.params.type || '未提供'})</li>
+              <li>確認 ID 參數是否正確 (當前值: "{debugInfo.params.id || '未提供'}")</li>
+              <li>確認 type 參數是否為 "expense" 或 "income" (當前值: "{debugInfo.params.type || '未提供'}")</li>
               <li>檢查 Supabase 數據庫中是否存在此 ID 的記錄</li>
               <li>檢查網絡連接是否正常</li>
               <li>檢查 API 密鑰是否有效</li>
