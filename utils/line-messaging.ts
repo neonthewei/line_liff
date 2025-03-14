@@ -48,7 +48,7 @@ export const sendUpdateNotification = async (transaction: Transaction): Promise<
     await liff.sendMessages([
       {
         type: "text",
-        text: `📝 交易已更新！\n\n類別：${transaction.category}\n金額：${amountPrefix}${formattedAmount}\n日期：${transaction.date}\n備註：${transaction.note || '無'}`
+        text: `交易已更新👍\n\n類別：${transaction.category}\n金額：${amountPrefix}${formattedAmount}\n日期：${transaction.date}\n備註：${transaction.note || '無'}${transaction.isFixed ? `\n定期：每 ${transaction.fixedInterval || 1} ${transaction.fixedFrequency === "day" ? "日" : transaction.fixedFrequency === "week" ? "週" : "月"}` : ''}`
       }
     ]);
     
@@ -85,7 +85,7 @@ export const sendDeleteNotification = async (transaction: Transaction): Promise<
     await liff.sendMessages([
       {
         type: "text",
-        text: `🗑️ 交易已刪除！\n\n類別：${transaction.category}\n金額：${amountPrefix}${formattedAmount}\n日期：${transaction.date}`
+        text: `交易已刪除💀\n\n類別：${transaction.category}\n金額：${amountPrefix}${formattedAmount}\n日期：${transaction.date}\n備註：${transaction.note || '無'}${transaction.isFixed ? `\n定期：每 ${transaction.fixedInterval || 1} ${transaction.fixedFrequency === "day" ? "日" : transaction.fixedFrequency === "week" ? "週" : "月"}` : ''}`
       }
     ]);
     

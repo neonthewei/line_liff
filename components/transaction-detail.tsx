@@ -637,19 +637,7 @@ export default function TransactionDetail() {
         onClick={() => setDebugClickCount(prev => prev + 1)}
       />
       <div className="w-full max-w-md mx-auto pb-6 relative z-10">
-        {/* 頂部標題和返回按鈕 */}
-        <div className="bg-white sticky top-0 z-20 px-4 py-4 flex items-center border-b border-gray-100 shadow-sm">
-          <button 
-            onClick={() => router.push("/")}
-            className="p-1"
-            aria-label="返回"
-          >
-            <ArrowLeft size={24} className="text-gray-600" />
-          </button>
-          <h1 className="text-xl font-medium text-gray-800 flex-1 text-center mr-8">
-            編輯帳目
-          </h1>
-        </div>
+ 
 
         <div className="space-y-4 px-4 mt-4">
           {/* 類別 */}
