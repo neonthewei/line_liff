@@ -111,6 +111,7 @@ export default function TransactionDetail() {
         
         if (!id) {
           console.error("No transaction ID provided");
+          setIsLoading(false);
           return;
         }
         
@@ -124,13 +125,9 @@ export default function TransactionDetail() {
           setEditNote("");
           setEditFixedInterval("");
         } else {
-          // 如果 API 請求失敗，使用默認數據
-          console.warn("Using default transaction data");
-          setTransaction({
-            ...defaultTransaction,
-            id,
-            type: type as "income" | "expense",
-          });
+          // 如果找不到數據，保持 transaction 為 null
+          console.warn("Transaction not found");
+          setTransaction(null);
         }
       } catch (error) {
         console.error("Error initializing:", error);
@@ -138,8 +135,14 @@ export default function TransactionDetail() {
         // 即使初始化失敗，也嘗試使用 URL 參數
         try {
           const params = new URLSearchParams(window.location.search);
-          const id = params.get("id") || "14"; // 使用預設值
-          const type = params.get("type") || "expense"; // 使用預設值
+          const id = params.get("id") || "";
+          const type = params.get("type") || "expense";
+          
+          if (!id) {
+            console.error("No transaction ID provided in URL");
+            setTransaction(null);
+            return;
+          }
           
           // 獲取交易數據
           const data = await fetchTransactionById(id, type);
@@ -151,17 +154,14 @@ export default function TransactionDetail() {
             setEditNote("");
             setEditFixedInterval("");
           } else {
-            // 如果 API 請求失敗，使用默認數據
-            setTransaction({
-              ...defaultTransaction,
-              id,
-              type: type as "income" | "expense",
-            });
+            // 如果找不到數據，保持 transaction 為 null
+            console.warn("Transaction not found");
+            setTransaction(null);
           }
         } catch (innerError) {
           console.error("Failed to recover from initialization error:", innerError);
-          // 使用默認數據
-          setTransaction(defaultTransaction);
+          // 數據獲取失敗，保持 transaction 為 null
+          setTransaction(null);
         }
       } finally {
         setIsLoading(false);
@@ -581,42 +581,42 @@ export default function TransactionDetail() {
       <div className="flex justify-center items-center h-screen">載入中...</div>
     );
   if (!transaction) return (
-    <div className="w-full max-w-md mx-auto p-4">
-      <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
-        <div className="text-xl font-medium text-gray-800 mb-4">找不到交易記錄</div>
-        <p className="text-gray-600 mb-6">無法找到您請求的交易記錄，請確認交易 ID 是否正確。</p>
-        <button 
-          onClick={() => router.push("/")}
-          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg"
-        >
-          返回首頁
-        </button>
+    <div className="w-full max-w-md mx-auto p-4 flex flex-col justify-center items-center h-screen">
+      <div
+        className="fixed inset-0 z-0"
+        onClick={() => setDebugClickCount(prev => prev + 1)}
+      />
+      <div className="text-center">
+        <div className="text-2xl font-medium text-gray-800 mb-4">找不到交易記錄</div>
+        <p className="text-gray-600 mb-6">您可能已經刪除帳目了</p>
       </div>
       
-      {/* 調試信息 - 直接顯示，不需要點擊 */}
-      <div className="mt-8 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-sm font-medium text-yellow-700">調試信息</p>
-          <div className="h-px flex-1 bg-yellow-200 mx-2"></div>
-        </div>
-        <div className="space-y-2 overflow-hidden">
-          <div className="flex flex-col">
-            <span className="text-sm text-yellow-700">完整 URL:</span>
-            <span className="text-xs text-yellow-600 break-all">{debugInfo.url}</span>
+      {/* 調試信息 - 點擊五次才會顯示 */}
+      {debugClickCount >= 5 && (
+        <div className="mt-8 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-medium text-yellow-700">調試信息</p>
+            <div className="h-px flex-1 bg-yellow-200 mx-2"></div>
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm text-yellow-700">解析參數:</span>
-            <div className="text-xs text-yellow-600">
-              {Object.entries(debugInfo.params).map(([key, value]) => (
-                <div key={key} className="flex justify-between">
-                  <span>{key}:</span>
-                  <span>{value}</span>
-                </div>
-              ))}
+          <div className="space-y-2 overflow-hidden">
+            <div className="flex flex-col">
+              <span className="text-sm text-yellow-700">完整 URL:</span>
+              <span className="text-xs text-yellow-600 break-all">{debugInfo.url}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm text-yellow-700">解析參數:</span>
+              <div className="text-xs text-yellow-600">
+                {Object.entries(debugInfo.params).map(([key, value]) => (
+                  <div key={key} className="flex justify-between">
+                    <span>{key}:</span>
+                    <span>{value}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 
