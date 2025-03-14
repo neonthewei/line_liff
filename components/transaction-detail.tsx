@@ -638,13 +638,12 @@ export default function TransactionDetail() {
         </div>
       )}
       
-      <div className="fixed inset-0 z-0"
+      <div className="fixed inset-0 z-0 bg-[#F1F2F5]"
         onClick={() => setDebugClickCount(prev => prev + 1)}
       />
       <div className="w-full max-w-md mx-auto pb-6 relative z-10">
  
-
-        <div className="space-y-4 px-4 mt-4">
+        <div className="space-y-4 px-[20px] mt-[20px]">
           {/* 類別 */}
           <div className="bg-white rounded-2xl p-4 shadow-sm">
             <div className="flex flex-col">

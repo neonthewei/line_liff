@@ -1,170 +1,177 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Plus } from "lucide-react";
+import { initializeLiff } from "@/utils/liff";
+import type { Transaction } from "@/types/transaction";
+import MonthSelector from "@/components/month-selector";
+import { fetchTransactionsByUser, fetchMonthlySummary } from "@/utils/api";
+import MonthSummary from "@/components/month-summary";
+import TabSelector from "@/components/tab-selector";
+import TransactionList from "@/components/transaction-list";
 
-// 模擬交易數據
-const mockTransactions = [
-  {
-    id: "1",
-    category: "餐飲",
-    amount: -120,
-    date: "2023年05月15日",
-    type: "expense",
-    note: "午餐",
-  },
-  {
-    id: "2",
-    category: "購物",
-    amount: -580,
-    date: "2023年05月14日",
-    type: "expense",
-    note: "衣服",
-  },
-  {
-    id: "3",
-    category: "薪資",
-    amount: 25000,
-    date: "2023年05月10日",
-    type: "income",
-    note: "五月薪資",
-  },
-  {
-    id: "4",
-    category: "交通",
-    amount: -70,
-    date: "2023年05月08日",
-    type: "expense",
-    note: "計程車",
-  },
-  {
-    id: "5",
-    category: "娛樂",
-    amount: -350,
-    date: "2023年05月05日",
-    type: "expense",
-    note: "電影",
-  },
-  {
-    id: "6",
-    category: "獎金",
-    amount: 3000,
-    date: "2023年05月01日",
-    type: "income",
-    note: "專案獎金",
-  },
-];
+// LIFF 類型聲明
+declare global {
+  interface Window {
+    liff: any; // LIFF SDK interface
+  }
+}
 
 export default function Home() {
   const router = useRouter();
-  const [transactions] = useState(mockTransactions);
+  const [isLiffInitialized, setIsLiffInitialized] = useState(false);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [activeTab, setActiveTab] = useState<"general" | "fixed">("general");
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [summary, setSummary] = useState({
+    totalExpense: 0,
+    totalIncome: 0,
+    balance: 0,
+  });
+  const [error, setError] = useState<string | null>(null);
 
-  // 按日期分組交易
-  const groupedTransactions = transactions.reduce((groups, transaction) => {
-    const date = transaction.date;
-    if (!groups[date]) {
-      groups[date] = [];
-    }
-    groups[date].push(transaction);
-    return groups;
-  }, {} as Record<string, typeof transactions>);
-
-  // 計算總收入和支出
-  const totals = transactions.reduce(
-    (acc, transaction) => {
-      if (transaction.amount > 0) {
-        acc.income += transaction.amount;
-      } else {
-        acc.expense += Math.abs(transaction.amount);
+  // 初始化 LIFF 和获取用戶ID
+  useEffect(() => {
+    const initLiff = async () => {
+      try {
+        const isInitialized = await initializeLiff();
+        setIsLiffInitialized(isInitialized);
+        
+        if (!isInitialized) {
+          throw new Error("LIFF 初始化失敗");
+        }
+        
+        // 檢查是否在 LIFF 環境中
+        if (!window.liff.isInClient() && !window.liff.isLoggedIn()) {
+          // 如果不在 LIFF 環境中且未登入，則嘗試登入
+          window.liff.login();
+          return;
+        }
+        
+        // 獲取用戶資料
+        try {
+          const profile = await window.liff.getProfile();
+          if (profile && profile.userId) {
+            setUserId(profile.userId);
+            console.log("成功獲取用戶ID:", profile.userId);
+          } else {
+            throw new Error("無法獲取用戶資料");
+          }
+        } catch (profileError) {
+          console.error("獲取用戶資料失敗", profileError);
+          setError("無法獲取用戶資料，請確保您已登入LINE並授權應用程式");
+        }
+      } catch (error) {
+        console.error("LIFF 初始化失敗", error);
+        setError("LINE應用程式初始化失敗，請重新載入頁面或確認您的網路連接");
       }
-      return acc;
-    },
-    { income: 0, expense: 0 }
-  );
+    };
 
-  const handleTransactionClick = (id: string, type: string) => {
-    router.push(`/transaction?id=${id}&type=${type}`);
+    initLiff();
+  }, []);
+
+  // 获取交易数据
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      setError(null);
+      
+      if (!userId) {
+        setIsLoading(false);
+        return;
+      }
+      
+      try {
+        console.log(`開始獲取用戶 ${userId} 的交易數據，日期: ${currentDate.toISOString()}`);
+        
+        // 獲取所選月份的交易數據
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth() + 1; // JavaScript 月份從 0 開始，API需要 1-12
+        
+        // 並行獲取交易數據和月度摘要
+        const [transactionsData, summaryData] = await Promise.all([
+          fetchTransactionsByUser(userId, year, month),
+          fetchMonthlySummary(userId, year, month)
+        ]);
+        
+        console.log(`成功獲取 ${transactionsData.length} 筆交易數據`);
+        setTransactions(transactionsData);
+        setSummary(summaryData);
+      } catch (error) {
+        console.error("獲取交易數據失敗", error);
+        setError("獲取數據失敗，請稍後再試");
+        setTransactions([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (userId) {
+      fetchData();
+    }
+  }, [userId, currentDate]);
+
+  const handleMonthChange = (newDate: Date) => {
+    console.log(`切換月份至: ${newDate.toISOString()}`);
+    setCurrentDate(newDate);
+  };
+
+  const handleTabChange = (tab: "general" | "fixed") => {
+    console.log(`切換標籤至: ${tab}`);
+    setActiveTab(tab);
   };
 
   return (
-    <div className="w-full max-w-md mx-auto pb-20">
-      {/* 頂部標題 */}
-      <div className="bg-white sticky top-0 z-20 px-4 py-4 flex items-center border-b border-gray-100 shadow-sm">
-        <h1 className="text-xl font-medium text-gray-800 flex-1 text-center">
-          記帳明細
-        </h1>
-      </div>
-
-      {/* 總覽卡片 */}
-      <div className="bg-white p-4 mb-4">
-        <div className="flex justify-between items-center mb-2">
-          <h2 className="text-lg font-medium text-gray-800">本月總覽</h2>
-          <span className="text-sm text-gray-500">2023年05月</span>
-        </div>
-        <div className="flex justify-between">
-          <div>
-            <p className="text-sm text-gray-500">收入</p>
-            <p className="text-lg text-green-500">${totals.income}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">支出</p>
-            <p className="text-lg text-red-500">${totals.expense}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500">結餘</p>
-            <p className="text-lg text-blue-500">
-              ${totals.income - totals.expense}
+    <div className="flex flex-col min-h-screen bg-gray-100">
+      <main className="flex-1 container max-w-md mx-auto px-5 py-4">
+        {!isLiffInitialized || !userId ? (
+          <div className="flex flex-col items-center justify-center h-[80vh]">
+            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p className="text-gray-600 text-center">
+              {error || "正在連接到LINE，請稍候..."}
             </p>
+            {error && (
+              <button 
+                onClick={() => window.location.reload()}
+                className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                重新載入
+              </button>
+            )}
           </div>
-        </div>
-      </div>
+        ) : (
+          <>
+            <MonthSelector currentDate={currentDate} onMonthChange={handleMonthChange} />
 
-      {/* 交易列表 */}
-      <div className="space-y-4 px-4">
-        {Object.entries(groupedTransactions).map(([date, dayTransactions]) => (
-          <div key={date} className="bg-white rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
-              <h3 className="text-sm font-medium text-gray-600">{date}</h3>
-            </div>
-            <div>
-              {dayTransactions.map((transaction) => (
-                <div
-                  key={transaction.id}
-                  className="px-4 py-3 border-b border-gray-100 last:border-b-0 flex items-center justify-between cursor-pointer hover:bg-gray-50"
-                  onClick={() => handleTransactionClick(transaction.id, transaction.type)}
-                >
-                  <div className="flex items-center">
-                    <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center mr-3">
-                      <span className="text-sm">{transaction.category.charAt(0)}</span>
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-800">{transaction.category}</p>
-                      <p className="text-xs text-gray-500">{transaction.note}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center">
-                    <span className={`mr-2 ${transaction.amount > 0 ? "text-green-500" : "text-red-500"}`}>
-                      {transaction.amount > 0 ? "+" : "-"}${Math.abs(transaction.amount)}
-                    </span>
-                    <ChevronRight size={16} className="text-gray-400" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+            <MonthSummary 
+              currentDate={currentDate} 
+              summary={summary} 
+              isLoading={isLoading} 
+            />
 
-      {/* 新增按鈕 */}
-      <div className="fixed bottom-6 right-6">
-        <button
-          className="w-14 h-14 rounded-full bg-green-500 text-white flex items-center justify-center shadow-lg"
-          onClick={() => router.push("/transaction/new")}
-        >
-          <Plus size={24} />
-        </button>
-      </div>
+            <TabSelector activeTab={activeTab} onTabChange={handleTabChange} />
+
+            {error ? (
+              <div className="mt-4 p-4 bg-red-50 text-red-500 rounded-xl text-center">
+                {error}
+              </div>
+            ) : (
+              <TransactionList 
+                transactions={transactions} 
+                currentDate={currentDate} 
+                activeTab={activeTab}
+                isLoading={isLoading}
+                onTransactionClick={(id: string, type: string) => {
+                  console.log(`點擊交易: id=${id}, type=${type}`);
+                  router.push(`/transaction?id=${id}&type=${type}`);
+                }}
+              />
+            )}
+          </>
+        )}
+      </main>
     </div>
   );
 }

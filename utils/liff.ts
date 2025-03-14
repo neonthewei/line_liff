@@ -9,16 +9,35 @@ const BYPASS_LIFF = DEV_MODE && (process.env.NEXT_PUBLIC_BYPASS_LIFF === "true")
 
 // 初始化 LIFF
 export async function initializeLiff() {
-  // 在開發模式下，如果設置了繞過 LIFF，則直接返回
-  if (BYPASS_LIFF) {
-    console.log("LIFF initialization bypassed in development mode");
-    isInitialized = true;
-    return true;
-  }
-
   // 避免重複初始化
   if (isInitialized) {
     console.log("LIFF already initialized");
+    return true;
+  }
+
+  // 在開發模式下，如果設置了繞過 LIFF，則直接返回
+  if (BYPASS_LIFF) {
+    console.log("LIFF initialization bypassed in development mode");
+    
+    // 在開發模式下模擬 LIFF 對象
+    if (typeof window !== "undefined" && !window.liff) {
+      window.liff = {
+        isInClient: () => false,
+        isLoggedIn: () => true,
+        getProfile: async () => ({ 
+          userId: "dev-user-id", 
+          displayName: "Dev User",
+          pictureUrl: "",
+          statusMessage: ""
+        }),
+        login: () => console.log("LIFF login called in dev mode"),
+        getAccessToken: () => "dev-token",
+        getContext: async () => ({ type: "external" }),
+        closeWindow: () => console.log("LIFF closeWindow called in dev mode")
+      };
+    }
+    
+    isInitialized = true;
     return true;
   }
 
@@ -35,7 +54,6 @@ export async function initializeLiff() {
     }
 
     // 初始化 LIFF
-    // 注意：要使用 liff.sendMessages() 功能，需要在 LINE Developers 控制台中為 LIFF 應用啟用 chat_message.write 權限
     await liff.init({
       liffId: liffId,
       withLoginOnExternalBrowser: true
@@ -61,11 +79,18 @@ export async function initializeLiff() {
     // 記錄當前環境信息
     console.log("LIFF isInClient:", liff.isInClient());
     console.log("LIFF isLoggedIn:", liff.isLoggedIn());
-    console.log("LIFF Context:", await liff.getContext());
+    
+    try {
+      const context = await liff.getContext();
+      console.log("LIFF Context:", context);
+    } catch (error) {
+      console.error("Failed to get LIFF context:", error);
+    }
     
     return true;
   } catch (error) {
     console.error("LIFF initialization failed:", error);
+    isInitialized = false;
     return false;
   }
 }
