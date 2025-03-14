@@ -1,4 +1,5 @@
 import { Transaction } from "@/types/transaction";
+import { sendUpdateNotification, sendDeleteNotification } from "./line-messaging";
 
 // Supabase API 配置
 const SUPABASE_URL = "https://hsezmdybryhvtmfagpwz.supabase.co/rest/v1";
@@ -67,6 +68,8 @@ export async function fetchTransactionById(id: string, type: string): Promise<Tr
       type: (type === "income" ? "income" : "expense") as "income" | "expense",
       note: apiTransaction.memo || "",
       isFixed: apiTransaction.is_fixed || false,
+      fixedFrequency: apiTransaction.frequency as "day" | "week" | "month" || undefined,
+      fixedInterval: apiTransaction.interval || undefined,
     };
     
     console.log("Transformed transaction data:", result);
@@ -97,6 +100,8 @@ export async function updateTransactionApi(transaction: Transaction): Promise<bo
       datetime: parseDateToISOString(transaction.date), // 使用 datetime 而不是 date
       memo: transaction.note, // 使用 memo 而不是 note
       is_fixed: transaction.isFixed, // 添加是否為固定支出/收入
+      frequency: transaction.fixedFrequency, // 固定支出/收入頻率
+      interval: transaction.fixedInterval, // 固定支出/收入間隔
     };
     
     console.log("Making update API request with:");
@@ -121,6 +126,15 @@ export async function updateTransactionApi(transaction: Transaction): Promise<bo
     }
     
     console.log("Transaction updated successfully");
+    
+    // 發送 LINE 通知
+    try {
+      await sendUpdateNotification(transaction);
+    } catch (notificationError) {
+      console.error("Failed to send LINE notification:", notificationError);
+      // 即使通知發送失敗，我們仍然認為更新成功
+    }
+    
     return true;
   } catch (error) {
     console.error("Error updating transaction:", error);
@@ -136,6 +150,12 @@ export async function updateTransactionApi(transaction: Transaction): Promise<bo
  */
 export async function deleteTransactionApi(id: string, type: string): Promise<boolean> {
   try {
+    // 先獲取交易詳情，以便在刪除後發送通知
+    const transaction = await fetchTransactionById(id, type);
+    if (!transaction) {
+      throw new Error(`Transaction with id ${id} and type ${type} not found`);
+    }
+    
     // 根據類型選擇 API 端點
     const endpoint = type === "income" ? "incomes" : "expenses";
     
@@ -162,6 +182,15 @@ export async function deleteTransactionApi(id: string, type: string): Promise<bo
     }
     
     console.log("Transaction deleted successfully");
+    
+    // 發送 LINE 通知
+    try {
+      await sendDeleteNotification(transaction);
+    } catch (notificationError) {
+      console.error("Failed to send LINE notification:", notificationError);
+      // 即使通知發送失敗，我們仍然認為刪除成功
+    }
+    
     return true;
   } catch (error) {
     console.error("Error deleting transaction:", error);

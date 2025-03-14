@@ -7,4 +7,6 @@ export type Transaction = {
   type: "income" | "expense";
   note: string;
   isFixed: boolean;
+  fixedFrequency?: "day" | "week" | "month"; // 固定支出/收入頻率
+  fixedInterval?: number; // 固定支出/收入間隔（數字）
 }; 

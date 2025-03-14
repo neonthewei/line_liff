@@ -11,11 +11,14 @@ import {
   Plus,
   Edit,
   X,
+  ArrowLeft,
+  Share2,
 } from "lucide-react";
 import { initializeLiff, closeLiff, getLiffUrlParams } from "@/utils/liff";
 import { useRouter } from "next/navigation";
 import { Transaction } from "@/types/transaction";
 import { fetchTransactionById, updateTransactionApi, deleteTransactionApi } from "@/utils/api";
+import { shareTransactionToFriends } from "@/utils/line-messaging";
 
 // 預設類別選項
 const defaultCategories = [
@@ -40,6 +43,8 @@ const defaultTransaction: Transaction = {
   type: "expense",
   note: "吃飯",
   isFixed: false,
+  fixedFrequency: undefined,
+  fixedInterval: 1,
 };
 
 export default function TransactionDetail() {
@@ -63,6 +68,13 @@ export default function TransactionDetail() {
   const [lineType, setLineType] = useState<string>("");
   const [debugInfo, setDebugInfo] = useState<{url: string, params: Record<string, string>}>({ url: "", params: {} });
   const [debugClickCount, setDebugClickCount] = useState(0);
+  const [isFixedExpanded, setIsFixedExpanded] = useState(false);
+  const [editFixedInterval, setEditFixedInterval] = useState("");
+  const [isHidden, setIsHidden] = useState(true);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState<"success" | "error">("success");
+  const [isSharing, setIsSharing] = useState(false);
   const router = useRouter();
 
   // Mark component as mounted on client-side
@@ -84,85 +96,72 @@ export default function TransactionDetail() {
 
     async function initialize() {
       try {
+        // 初始化 LIFF
         const liffInitialized = await initializeLiff();
-        if (liffInitialized !== undefined) {
-          setIsLiffInitialized(liffInitialized);
+        console.log("LIFF initialization result:", liffInitialized);
+        
+        // 獲取 URL 參數
+        const params = getLiffUrlParams();
+        setDebugInfo({ url: window.location.href, params });
+        
+        // 獲取交易 ID 和類型
+        const id = params.id;
+        const type = params.type || "expense";
+        
+        if (!id) {
+          console.error("No transaction ID provided");
+          return;
         }
-
-        // Only access window in client-side code
-        if (typeof window !== "undefined") {
-          const url = window.location.href;
-          const params = new URLSearchParams(window.location.search);
-          
-          // 保存調試信息
-          const debugParams: Record<string, string> = {};
-          params.forEach((value, key) => {
-            debugParams[key] = value;
+        
+        // 獲取交易數據
+        const data = await fetchTransactionById(id, type);
+        
+        if (data) {
+          setTransaction(data);
+          // 重置編輯狀態
+          setEditAmount("");
+          setEditNote("");
+          setEditFixedInterval("");
+        } else {
+          // 如果 API 請求失敗，使用默認數據
+          console.warn("Using default transaction data");
+          setTransaction({
+            ...defaultTransaction,
+            id,
+            type: type as "income" | "expense",
           });
-          
-          // 嘗試從 LIFF 獲取參數
-          const liffParams = getLiffUrlParams();
-          console.log("LIFF Parameters:", liffParams);
-          
-          // 合併參數
-          const allParams = { ...debugParams, ...liffParams };
-          setDebugInfo({ url, params: allParams });
-          
-          // 獲取交易 ID 和 LINE 參數
-          const recordId = params.get("recordId") || liffParams.recordId || "";
-          const lineTypeParam = params.get("type") || liffParams.type || "";
-          
-          console.log("Final Parameters:", { recordId, type: lineTypeParam });
-          
-          // 設置 LINE 參數
-          setLineId(recordId);
-          setLineType(lineTypeParam);
-
-          // 從 API 獲取交易數據
-          if (recordId && lineTypeParam) {
-            setIsLoading(true);
-            console.log(`Fetching transaction with ID: ${recordId}, Type: ${lineTypeParam}`);
-            
-            const transactionData = await fetchTransactionById(recordId, lineTypeParam);
-            if (transactionData) {
-              console.log("Transaction data loaded successfully:", transactionData);
-              setTransaction(transactionData);
-              setEditAmount(Math.abs(transactionData.amount).toString());
-              setEditNote(transactionData.note);
-              setEditDate(transactionData.date);
-
-              // 解析日期字符串為 Date 對象
-              const dateParts = transactionData.date.match(/(\d+)年(\d+)月(\d+)日/);
-              if (dateParts) {
-                const year = parseInt(dateParts[1]);
-                const month = parseInt(dateParts[2]) - 1; // JavaScript 月份從 0 開始
-                const day = parseInt(dateParts[3]);
-                setCalendarDate(new Date(year, month, day));
-              }
-            } else {
-              // 如果 API 請求失敗，使用默認數據
-              console.warn("API request failed, using default transaction data");
-              setTransaction(defaultTransaction);
-              setEditAmount(Math.abs(defaultTransaction.amount).toString());
-              setEditNote(defaultTransaction.note);
-              setEditDate(defaultTransaction.date);
-            }
-          } else {
-            // 如果沒有 recordId 或 type，使用默認數據
-            console.warn("No recordId or type provided, using default transaction data");
-            setTransaction(defaultTransaction);
-            setEditAmount(Math.abs(defaultTransaction.amount).toString());
-            setEditNote(defaultTransaction.note);
-            setEditDate(defaultTransaction.date);
-          }
         }
       } catch (error) {
-        console.error("Failed to fetch transaction", error);
-        // 使用默認數據
-        setTransaction(defaultTransaction);
-        setEditAmount(Math.abs(defaultTransaction.amount).toString());
-        setEditNote(defaultTransaction.note);
-        setEditDate(defaultTransaction.date);
+        console.error("Error initializing:", error);
+        
+        // 即使初始化失敗，也嘗試使用 URL 參數
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const id = params.get("id") || "14"; // 使用預設值
+          const type = params.get("type") || "expense"; // 使用預設值
+          
+          // 獲取交易數據
+          const data = await fetchTransactionById(id, type);
+          
+          if (data) {
+            setTransaction(data);
+            // 重置編輯狀態
+            setEditAmount("");
+            setEditNote("");
+            setEditFixedInterval("");
+          } else {
+            // 如果 API 請求失敗，使用默認數據
+            setTransaction({
+              ...defaultTransaction,
+              id,
+              type: type as "income" | "expense",
+            });
+          }
+        } catch (innerError) {
+          console.error("Failed to recover from initialization error:", innerError);
+          // 使用默認數據
+          setTransaction(defaultTransaction);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -182,12 +181,20 @@ export default function TransactionDetail() {
           : Math.abs(transaction.amount),
     };
     setTransaction(updatedTransaction);
+  };
 
-    try {
-      await updateTransactionApi(updatedTransaction);
-    } catch (error) {
-      console.error("Failed to update transaction type", error);
-    }
+  // 顯示 Toast 通知的輔助函數
+  const showToastNotification = (message: string, type: "success" | "error", duration = 3000, callback?: () => void) => {
+    setToastMessage(message);
+    setToastType(type);
+    setShowToast(true);
+    
+    setTimeout(() => {
+      setShowToast(false);
+      if (callback) {
+        callback();
+      }
+    }, duration);
   };
 
   const handleDelete = async () => {
@@ -197,14 +204,16 @@ export default function TransactionDetail() {
         const success = await deleteTransactionApi(transaction.id, transaction.type);
 
         if (success) {
-          // In development mode or when LIFF is not initialized, just navigate to home
-          router.push("/");
+          showToastNotification("刪除成功！", "success", 1500, () => {
+            // 刪除成功後導航回首頁
+            router.push("/");
+          });
         } else {
-          alert("刪除失敗，請稍後再試");
+          showToastNotification("刪除失敗，請稍後再試", "error");
         }
       } catch (error) {
         console.error("刪除交易失敗", error);
-        alert("刪除失敗，請稍後再試");
+        showToastNotification("刪除失敗，請稍後再試", "error");
       }
     }
   };
@@ -215,14 +224,13 @@ export default function TransactionDetail() {
       const success = await updateTransactionApi(transaction);
 
       if (success) {
-        // In development mode or when LIFF is not initialized, just navigate to home
-        router.push("/");
+        showToastNotification("儲存成功！", "success");
       } else {
-        alert("儲存失敗，請稍後再試");
+        showToastNotification("儲存失敗，請稍後再試", "error");
       }
     } catch (error) {
       console.error("儲存交易失敗", error);
-      alert("儲存失敗，請稍後再試");
+      showToastNotification("儲存失敗，請稍後再試", "error");
     }
   };
 
@@ -244,12 +252,6 @@ export default function TransactionDetail() {
       };
       setTransaction(updatedTransaction);
       setIsEditingAmount(false);
-
-      try {
-        await updateTransactionApi(updatedTransaction);
-      } catch (error) {
-        console.error("Failed to update amount", error);
-      }
     } else {
       // 如果輸入無效，重置為原始值
       setIsEditingAmount(false);
@@ -281,12 +283,6 @@ export default function TransactionDetail() {
     setEditDate(formattedDate);
     setCalendarDate(date);
     setIsEditingDate(false);
-
-    try {
-      await updateTransactionApi(updatedTransaction);
-    } catch (error) {
-      console.error("Failed to update date", error);
-    }
   };
 
   // 開始編輯類別
@@ -317,18 +313,6 @@ export default function TransactionDetail() {
     if (!transaction) return;
     const updatedTransaction = { ...transaction, category };
     setTransaction(updatedTransaction);
-
-    // 如果不在編輯模式，選擇後關閉下拉選單
-    // 移除自動關閉下拉選單的邏輯，讓用戶自己點擊關閉
-    // if (!isCategoryEditMode) {
-    //   setIsEditingCategory(false)
-    // }
-
-    try {
-      await updateTransactionApi(updatedTransaction);
-    } catch (error) {
-      console.error("Failed to update category", error);
-    }
   };
 
   // 刪除類別
@@ -388,12 +372,6 @@ export default function TransactionDetail() {
     const updatedTransaction = { ...transaction, note: editNote };
     setTransaction(updatedTransaction);
     setIsEditingNote(false);
-
-    try {
-      await updateTransactionApi(updatedTransaction);
-    } catch (error) {
-      console.error("Failed to update note", error);
-    }
   };
 
   // 處理金額輸入變更
@@ -533,6 +511,66 @@ export default function TransactionDetail() {
     return monthNames[month];
   };
 
+  const handleToggleFixedExpanded = () => {
+    setIsFixedExpanded(!isFixedExpanded);
+  };
+
+  const handleFixedFrequencyChange = (frequency: "day" | "week" | "month") => {
+    if (!transaction) return;
+    
+    // 確保間隔已設定
+    const fixedInterval = transaction.fixedInterval || 1;
+    
+    const updatedTransaction = {
+      ...transaction,
+      fixedFrequency: frequency,
+      fixedInterval: fixedInterval,
+    };
+    setTransaction(updatedTransaction);
+  };
+
+  const handleStartEditFixedInterval = () => {
+    if (!transaction || transaction.fixedInterval === undefined) {
+      setEditFixedInterval("1"); // 預設間隔為 1
+    } else {
+      setEditFixedInterval(transaction.fixedInterval.toString());
+    }
+  };
+
+  const handleFixedIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // 只允許數字
+    const value = e.target.value.replace(/[^0-9]/g, "");
+    // 確保值至少為 1
+    const numValue = parseInt(value, 10);
+    if (value === "" || isNaN(numValue)) {
+      setEditFixedInterval(value);
+    } else {
+      setEditFixedInterval(numValue.toString());
+    }
+  };
+
+  const handleSaveFixedInterval = async () => {
+    if (!transaction) return;
+    
+    const fixedInterval = parseInt(editFixedInterval, 10);
+    if (isNaN(fixedInterval) || fixedInterval <= 0) {
+      setEditFixedInterval("1");
+      return;
+    }
+    
+    // 確保頻率已設定
+    const fixedFrequency = transaction.fixedFrequency || "month";
+    
+    const updatedTransaction = {
+      ...transaction,
+      fixedInterval: fixedInterval,
+      fixedFrequency: fixedFrequency,
+    };
+    
+    setTransaction(updatedTransaction);
+    setEditFixedInterval("");
+  };
+
   if (isLoading)
     return (
       <div className="flex justify-center items-center h-screen">載入中...</div>
@@ -541,12 +579,41 @@ export default function TransactionDetail() {
 
   return (
     <>
-      <div 
-        className="fixed inset-0 z-0"
+      {/* Toast 通知 */}
+      {showToast && (
+        <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg transition-all duration-300 ${
+          toastType === "success" ? "bg-green-500 text-white" : "bg-red-500 text-white"
+        }`}>
+          <div className="flex items-center">
+            {toastType === "success" ? (
+              <Check className="mr-2" size={18} />
+            ) : (
+              <X className="mr-2" size={18} />
+            )}
+            <span>{toastMessage}</span>
+          </div>
+        </div>
+      )}
+      
+      <div className="fixed inset-0 z-0"
         onClick={() => setDebugClickCount(prev => prev + 1)}
       />
-      <div className="w-full max-w-md mx-auto pb-6 pt-4 relative z-10">
-        <div className="space-y-4 px-4">
+      <div className="w-full max-w-md mx-auto pb-6 relative z-10">
+        {/* 頂部標題和返回按鈕 */}
+        <div className="bg-white sticky top-0 z-20 px-4 py-4 flex items-center border-b border-gray-100 shadow-sm">
+          <button 
+            onClick={() => router.push("/")}
+            className="p-1"
+            aria-label="返回"
+          >
+            <ArrowLeft size={24} className="text-gray-600" />
+          </button>
+          <h1 className="text-xl font-medium text-gray-800 flex-1 text-center mr-8">
+            編輯帳目
+          </h1>
+        </div>
+
+        <div className="space-y-4 px-4 mt-4">
           {/* 類別 */}
           <div className="bg-white rounded-2xl p-4 shadow-sm">
             <div className="flex flex-col">
@@ -690,7 +757,7 @@ export default function TransactionDetail() {
           </div>
 
           {/* 金額、日期、屬性組合在一起 */}
-          <div className="bg-white rounded-2xl p-4 shadow-sm space-y-4">
+          <div className="bg-white rounded-2xl shadow-sm space-y-4 p-4">
             {/* 金額 */}
             <div className="flex items-center justify-between">
               <span className="text-gray-600 pl-2">金額</span>
@@ -874,60 +941,241 @@ export default function TransactionDetail() {
 
             {/* 固定支出/收入 */}
             <div className="flex items-center justify-between">
-              <span className="text-gray-600 pl-2">固定{transaction.type === "expense" ? "支出" : "收入"}</span>
-              <button
-                role="switch"
-                aria-checked={transaction.isFixed}
-                className={`relative inline-flex h-7 w-[5rem] items-center rounded-xl transition-colors duration-200 ease-in-out focus:outline-none ${
-                  transaction.isFixed ? "bg-[#22c55e]" : "bg-gray-200"
-                }`}
-                onClick={() => {
-                  const updatedTransaction = {
-                    ...transaction,
-                    isFixed: !transaction.isFixed,
-                  };
-                  setTransaction(updatedTransaction);
-                  updateTransactionApi(updatedTransaction);
-                }}
-              >
-                <span
-                  className={`inline-block h-5 w-9 transform rounded-lg bg-white transition-transform duration-200 ease-in-out ${
-                    transaction.isFixed ? "translate-x-[2.5rem]" : "translate-x-1"
-                  }`}
-                />
-              </button>
+              <span className="text-gray-600 pl-2">定期{transaction.type === "expense" ? "支出" : "收入"}</span>
+              <div className="flex items-center">
+                <div
+                  className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
+                  onClick={handleToggleFixedExpanded}
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === "Enter" && handleToggleFixedExpanded()}
+                  aria-label={isFixedExpanded ? "收起定期設定" : "展開定期設定"}
+                >
+                  <span className="text-gray-800">
+                    {transaction.isFixed 
+                      ? `每 ${transaction.fixedInterval || 1} ${transaction.fixedFrequency === "day" ? "日" : transaction.fixedFrequency === "week" ? "週" : "月"}`
+                      : "未設定"}
+                  </span>
+                  {isFixedExpanded ? (
+                    <ChevronUp className="ml-2 text-gray-400" />
+                  ) : (
+                    <ChevronDown className="ml-2 text-gray-400" />
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            {/* 定期支出/收入設定區域 */}
+            <div 
+              className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                isFixedExpanded 
+                  ? "max-h-96 opacity-100 mt-4"
+                  : "max-h-0 opacity-0 !mt-0"
+              }`}
+            >
+              <div className="bg-gray-50 rounded-xl p-4">
+                <div className="space-y-4">
+                  {/* 開關按鈕 */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">啟用</span>
+                    <button
+                      role="switch"
+                      aria-checked={transaction.isFixed}
+                      className={`relative inline-flex h-7 w-[5rem] items-center rounded-xl transition-colors duration-200 ease-in-out focus:outline-none ${
+                        transaction.isFixed ? "bg-[#22c55e]" : "bg-gray-200"
+                      }`}
+                      onClick={() => {
+                        const updatedTransaction = {
+                          ...transaction,
+                          isFixed: !transaction.isFixed,
+                          // 如果關閉固定支出/收入，重置相關設定
+                          // 如果開啟固定支出/收入，設定預設值
+                          ...(transaction.isFixed 
+                            ? { fixedFrequency: undefined, fixedInterval: undefined } 
+                            : { 
+                                fixedFrequency: "month" as "day" | "week" | "month", 
+                                fixedInterval: 1 
+                              })
+                        };
+                        setTransaction(updatedTransaction);
+                      }}
+                    >
+                      <span
+                        className={`inline-block h-5 w-9 transform rounded-lg bg-white transition-transform duration-200 ease-in-out ${
+                          transaction.isFixed ? "translate-x-[2.5rem]" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  
+                  {/* 合併頻率和間隔設定 */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">頻率</span>
+                    <div className="flex items-center gap-2">
+                      {/* 間隔輸入 - 始終顯示輸入框，但根據開關狀態決定是否禁用 */}
+                      <div className="flex items-center">
+                        <span className={`mr-2 ${transaction.isFixed ? "text-gray-600" : "text-gray-400"}`}>每</span>
+                        <div className="inline-flex items-center bg-white rounded-lg overflow-hidden border border-gray-300">
+                          <button
+                            className={`flex items-center justify-center w-7 h-8 ${
+                              transaction.isFixed 
+                                ? "text-gray-600 hover:bg-gray-100 active:bg-gray-200" 
+                                : "text-gray-400 cursor-not-allowed opacity-50 bg-gray-50"
+                            }`}
+                            onClick={() => {
+                              if (!transaction.isFixed) return;
+                              const currentValue = transaction.fixedInterval || 1;
+                              if (currentValue > 1) {
+                                const updatedTransaction = {
+                                  ...transaction,
+                                  fixedInterval: currentValue - 1,
+                                };
+                                setTransaction(updatedTransaction);
+                              }
+                            }}
+                            disabled={!transaction.isFixed}
+                            aria-label="減少間隔"
+                          >
+                            <ChevronDown size={16} />
+                          </button>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={transaction.fixedInterval !== undefined ? transaction.fixedInterval.toString() : "1"}
+                            onChange={(e) => {
+                              if (!transaction.isFixed) return; // 如果關閉則不處理
+                              
+                              // 只允許數字
+                              const value = e.target.value.replace(/[^0-9]/g, "");
+                              // 確保值至少為 1
+                              const numValue = parseInt(value, 10);
+                              if (value === "" || isNaN(numValue)) {
+                                return;
+                              }
+                              
+                              const updatedTransaction = {
+                                ...transaction,
+                                fixedInterval: numValue,
+                                // 確保頻率已設定
+                                fixedFrequency: transaction.fixedFrequency || "month"
+                              };
+                              
+                              setTransaction(updatedTransaction);
+                            }}
+                            onBlur={(e) => {
+                              if (!transaction.isFixed) return; // 如果關閉則不處理
+                              
+                              // 確保值至少為 1
+                              if (e.target.value === "" || parseInt(e.target.value, 10) <= 0) {
+                                const updatedTransaction = {
+                                  ...transaction,
+                                  fixedInterval: 1
+                                };
+                                setTransaction(updatedTransaction);
+                              }
+                            }}
+                            className={`w-8 px-0 py-1 text-center focus:outline-none border-0 ${
+                              transaction.isFixed 
+                                ? "text-gray-800" 
+                                : "bg-gray-50 text-gray-400"
+                            }`}
+                            disabled={!transaction.isFixed}
+                          />
+                          <button
+                            className={`flex items-center justify-center w-7 h-8 ${
+                              transaction.isFixed 
+                                ? "text-gray-600 hover:bg-gray-100 active:bg-gray-200" 
+                                : "text-gray-400 cursor-not-allowed opacity-50 bg-gray-50"
+                            }`}
+                            onClick={() => {
+                              if (!transaction.isFixed) return;
+                              const currentValue = transaction.fixedInterval || 1;
+                              const updatedTransaction = {
+                                ...transaction,
+                                fixedInterval: currentValue + 1,
+                              };
+                              setTransaction(updatedTransaction);
+                            }}
+                            disabled={!transaction.isFixed}
+                            aria-label="增加間隔"
+                          >
+                            <ChevronUp size={16} />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {/* 頻率選擇 - 根據開關狀態決定是否禁用 */}
+                      <div className="flex gap-1">
+                        <button
+                          className={`px-3 py-1 rounded-xl text-sm ${
+                            transaction.isFixed
+                              ? transaction.fixedFrequency === "day"
+                                ? "bg-[#22c55e] text-white"
+                                : "bg-gray-200 text-gray-600"
+                              : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                          }`}
+                          onClick={() => {
+                            if (transaction.isFixed) handleFixedFrequencyChange("day");
+                          }}
+                          disabled={!transaction.isFixed}
+                        >
+                          日
+                        </button>
+                        <button
+                          className={`px-3 py-1 rounded-xl text-sm ${
+                            transaction.isFixed
+                              ? transaction.fixedFrequency === "week"
+                                ? "bg-[#22c55e] text-white"
+                                : "bg-gray-200 text-gray-600"
+                              : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                          }`}
+                          onClick={() => {
+                            if (transaction.isFixed) handleFixedFrequencyChange("week");
+                          }}
+                          disabled={!transaction.isFixed}
+                        >
+                          週
+                        </button>
+                        <button
+                          className={`px-3 py-1 rounded-xl text-sm ${
+                            transaction.isFixed
+                              ? transaction.fixedFrequency === "month"
+                                ? "bg-[#22c55e] text-white"
+                                : "bg-gray-200 text-gray-600"
+                              : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                          }`}
+                          onClick={() => {
+                            if (transaction.isFixed) handleFixedFrequencyChange("month");
+                          }}
+                          disabled={!transaction.isFixed}
+                        >
+                          月
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* 備註 */}
           <div className="bg-white rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col space-y-2">
               <span className="text-gray-600 pl-2">備註</span>
-              <div className="flex items-center">
-                {isEditingNote ? (
-                  <div className="relative inline-block">
-                    <input
-                      type="text"
-                      value={editNote}
-                      onChange={handleNoteChange}
-                      onBlur={handleSaveNote}
-                      onKeyDown={(e) => handleKeyDown(e, handleSaveNote)}
-                      className="w-48 px-2 py-1 rounded-lg text-right focus:outline-none"
-                      autoFocus
-                    />
-                    <div className="absolute inset-0 pointer-events-none border border-gray-300 rounded-lg"></div>
-                  </div>
-                ) : (
-                  <div
-                    className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
-                    onClick={handleStartEditNote}
-                    tabIndex={0}
-                    onKeyDown={(e) => e.key === "Enter" && handleStartEditNote()}
-                    aria-label="編輯備註"
-                  >
-                    <span className="text-gray-800">{transaction.note}</span>
-                  </div>
-                )}
+              <div className="w-full">
+                <textarea
+                  value={transaction.note}
+                  onChange={(e) => {
+                    const updatedTransaction = { ...transaction, note: e.target.value };
+                    setTransaction(updatedTransaction);
+                  }}
+                  onBlur={() => {
+                    // 移除自動儲存
+                  }}
+                  className="w-full px-3 py-2 rounded-lg focus:outline-none border border-gray-300 min-h-[80px] text-gray-800"
+                  placeholder="輸入備註"
+                />
               </div>
             </div>
           </div>

@@ -3,12 +3,23 @@ import liff from "@line/liff";
 // LIFF 初始化狀態
 let isInitialized = false;
 
+// 開發模式標誌 - 設置為 true 可以在本地開發時繞過 LIFF 初始化
+const DEV_MODE = process.env.NODE_ENV === "development";
+const BYPASS_LIFF = DEV_MODE && (process.env.NEXT_PUBLIC_BYPASS_LIFF === "true");
+
 // 初始化 LIFF
 export async function initializeLiff() {
+  // 在開發模式下，如果設置了繞過 LIFF，則直接返回
+  if (BYPASS_LIFF) {
+    console.log("LIFF initialization bypassed in development mode");
+    isInitialized = true;
+    return true;
+  }
+
   // 避免重複初始化
   if (isInitialized) {
     console.log("LIFF already initialized");
-    return;
+    return true;
   }
 
   try {
@@ -18,12 +29,13 @@ export async function initializeLiff() {
     }
 
     // 在開發模式下，記錄更多信息
-    if (process.env.NODE_ENV === "development") {
+    if (DEV_MODE) {
       console.log("Initializing LIFF in development mode");
       console.log("LIFF ID:", liffId);
     }
 
     // 初始化 LIFF
+    // 注意：要使用 liff.sendMessages() 功能，需要在 LINE Developers 控制台中為 LIFF 應用啟用 chat_message.write 權限
     await liff.init({
       liffId: liffId,
       withLoginOnExternalBrowser: true
@@ -50,17 +62,18 @@ export async function initializeLiff() {
     console.log("LIFF isInClient:", liff.isInClient());
     console.log("LIFF isLoggedIn:", liff.isLoggedIn());
     console.log("LIFF Context:", await liff.getContext());
-
+    
+    return true;
   } catch (error) {
     console.error("LIFF initialization failed:", error);
-    throw error;
+    return false;
   }
 }
 
 // 關閉 LIFF 視窗
 export function closeLiff() {
   // Skip if not initialized or not in LIFF browser
-  if (!isInitialized) {
+  if (!isInitialized || BYPASS_LIFF) {
     return;
   }
 
@@ -77,17 +90,17 @@ export function getLiffUrlParams() {
   }
   
   // 在開發模式下，直接從 window.location 獲取參數
-  if (process.env.NODE_ENV === "development") {
+  if (DEV_MODE) {
     const params = new URLSearchParams(window.location.search);
     const result: Record<string, string> = {};
     params.forEach((value, key) => {
       result[key] = value;
     });
     
-    // 在開發模式下，如果沒有提供 recordId 和 type 參數，則使用預設值
-    if (!result.recordId && !params.has("recordId")) {
-      result.recordId = "14";
-      console.log("Using default recordId:", result.recordId);
+    // 在開發模式下，如果沒有提供 id 和 type 參數，則使用預設值
+    if (!result.id && !params.has("id")) {
+      result.id = "14";
+      console.log("Using default id:", result.id);
     }
     
     if (!result.type && !params.has("type")) {
@@ -99,7 +112,7 @@ export function getLiffUrlParams() {
   }
   
   // 在 LIFF 環境中
-  if (isInitialized && liff.isInClient()) {
+  if (isInitialized && !BYPASS_LIFF && liff.isInClient()) {
     try {
       // 首先嘗試從 URL 獲取參數
       const params = new URLSearchParams(window.location.search);
@@ -111,7 +124,7 @@ export function getLiffUrlParams() {
       });
       
       // 如果沒有找到必要的參數，嘗試從 liff.state 獲取
-      if (!result.recordId || !result.type) {
+      if (!result.id || !result.type) {
         const liffState = params.get("liff.state");
         if (liffState) {
           try {
@@ -132,6 +145,28 @@ export function getLiffUrlParams() {
       console.error("Failed to get LIFF URL parameters", error);
       return {};
     }
+  }
+  
+  // 如果是開發模式且繞過 LIFF，返回預設參數
+  if (BYPASS_LIFF) {
+    const params = new URLSearchParams(window.location.search);
+    const result: Record<string, string> = {};
+    params.forEach((value, key) => {
+      result[key] = value;
+    });
+    
+    // 如果沒有提供 id 和 type 參數，則使用預設值
+    if (!result.id && !params.has("id")) {
+      result.id = "14";
+      console.log("Using default id in bypass mode:", result.id);
+    }
+    
+    if (!result.type && !params.has("type")) {
+      result.type = "expense";
+      console.log("Using default type in bypass mode:", result.type);
+    }
+    
+    return result;
   }
   
   return {};
