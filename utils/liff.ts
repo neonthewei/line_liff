@@ -97,8 +97,14 @@ export function getLiffUrlParams() {
       result[key] = value;
     });
     
+    // 處理 recordid 參數，轉換為 id
+    if (result.recordid && !result.id) {
+      result.id = result.recordid;
+      console.log("Converting recordid to id:", result.id);
+    }
+    
     // 在開發模式下，如果沒有提供 id 和 type 參數，則使用預設值
-    if (!result.id && !params.has("id")) {
+    if (!result.id && !params.has("id") && !params.has("recordid")) {
       result.id = "14";
       console.log("Using default id:", result.id);
     }
@@ -123,6 +129,12 @@ export function getLiffUrlParams() {
         result[key] = value;
       });
       
+      // 處理 recordid 參數，轉換為 id
+      if (result.recordid && !result.id) {
+        result.id = result.recordid;
+        console.log("Converting recordid to id:", result.id);
+      }
+      
       // 如果沒有找到必要的參數，嘗試從 liff.state 獲取
       if (!result.id || !result.type) {
         const liffState = params.get("liff.state");
@@ -132,6 +144,12 @@ export function getLiffUrlParams() {
             stateParams.forEach((value, key) => {
               result[key] = value;
             });
+            
+            // 處理 liff.state 中的 recordid 參數
+            if (result.recordid && !result.id) {
+              result.id = result.recordid;
+              console.log("Converting recordid to id from liff.state:", result.id);
+            }
           } catch (error) {
             console.error("Failed to parse liff.state", error);
           }
@@ -155,8 +173,14 @@ export function getLiffUrlParams() {
       result[key] = value;
     });
     
+    // 處理 recordid 參數，轉換為 id
+    if (result.recordid && !result.id) {
+      result.id = result.recordid;
+      console.log("Converting recordid to id in bypass mode:", result.id);
+    }
+    
     // 如果沒有提供 id 和 type 參數，則使用預設值
-    if (!result.id && !params.has("id")) {
+    if (!result.id && !params.has("id") && !params.has("recordid")) {
       result.id = "14";
       console.log("Using default id in bypass mode:", result.id);
     }
