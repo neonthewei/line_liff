@@ -36,6 +36,7 @@ export default function Home() {
   useEffect(() => {
     const initLiff = async () => {
       try {
+        // 初始化 LIFF
         const isInitialized = await initializeLiff();
         setIsLiffInitialized(isInitialized);
         
@@ -43,19 +44,23 @@ export default function Home() {
           throw new Error("LIFF 初始化失敗");
         }
         
-        // 檢查是否在 LIFF 環境中
-        if (!window.liff.isInClient() && !window.liff.isLoggedIn()) {
-          // 如果不在 LIFF 環境中且未登入，則嘗試登入
+        // 檢查是否已登入
+        if (!window.liff.isLoggedIn()) {
+          // 如果未登入，則導向登入
+          console.log("用戶未登入，導向登入頁面");
           window.liff.login();
           return;
         }
         
-        // 獲取用戶資料
+        // 用戶已登入，獲取用戶資料
         try {
           const profile = await window.liff.getProfile();
+          console.log("成功獲取用戶資料:", profile);
+          
           if (profile && profile.userId) {
             setUserId(profile.userId);
-            console.log("成功獲取用戶ID:", profile.userId);
+            console.log("用戶 LINE ID:", profile.userId);
+            console.log("用戶名稱:", profile.displayName);
           } else {
             throw new Error("無法獲取用戶資料");
           }

@@ -27,8 +27,8 @@ export async function initializeLiff() {
         getProfile: async () => ({ 
           userId: "U08946a96a3892561e1c3baa589ffeaee", 
           displayName: "Dev User",
-          pictureUrl: "",
-          statusMessage: ""
+          pictureUrl: "https://profile.line-scdn.net/placeholder-image.png",
+          statusMessage: "開發模式測試用戶"
         }),
         login: () => console.log("LIFF login called in dev mode"),
         getAccessToken: () => "dev-token",
@@ -53,7 +53,7 @@ export async function initializeLiff() {
       console.log("LIFF ID:", liffId);
     }
 
-    // 初始化 LIFF
+    // 初始化 LIFF，參考官方範例
     await liff.init({
       liffId: liffId,
       withLoginOnExternalBrowser: true
@@ -61,20 +61,6 @@ export async function initializeLiff() {
 
     isInitialized = true;
     console.log("LIFF initialization completed");
-
-    // 在 LIFF 客戶端中，獲取 token
-    if (liff.isInClient()) {
-      try {
-        const token = liff.getAccessToken();
-        if (token) {
-          console.log("LIFF token retrieved successfully");
-        }
-      } catch (error) {
-        console.error("Failed to get LIFF token:", error);
-      }
-    } else {
-      console.log("Not in LIFF client");
-    }
 
     // 記錄當前環境信息
     console.log("LIFF isInClient:", liff.isInClient());
