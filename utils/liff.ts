@@ -25,7 +25,7 @@ export async function initializeLiff() {
         isInClient: () => false,
         isLoggedIn: () => true,
         getProfile: async () => ({ 
-          userId: "dev-user-id", 
+          userId: "U08946a96a3892561e1c3baa589ffeaee", 
           displayName: "Dev User",
           pictureUrl: "",
           statusMessage: ""
@@ -214,6 +214,10 @@ export function getLiffUrlParams() {
       result.type = "expense";
       console.log("Using default type in bypass mode:", result.type);
     }
+    
+    // 添加用戶ID
+    result.userId = "U08946a96a3892561e1c3baa589ffeaee";
+    console.log("Using default userId in bypass mode:", result.userId);
     
     return result;
   }
