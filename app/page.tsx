@@ -9,6 +9,8 @@ import { fetchTransactionsByUser, fetchMonthlySummary } from "@/utils/api";
 import MonthSummary from "@/components/month-summary";
 import TabSelector from "@/components/tab-selector";
 import TransactionList from "@/components/transaction-list";
+import DebugConsole from "@/components/debug-console";
+import { initConsoleCapture, getCaptureLogs, getCaptureErrors, addCustomLog } from "@/utils/debug";
 
 // LIFF 類型聲明
 declare global {
@@ -31,6 +33,25 @@ export default function Home() {
     balance: 0,
   });
   const [error, setError] = useState<string | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [errorLogs, setErrorLogs] = useState<string[]>([]);
+
+  // 初始化控制台捕獲
+  useEffect(() => {
+    initConsoleCapture();
+    addCustomLog("應用程式已啟動，控制台捕獲已初始化");
+  }, []);
+
+  // 更新日誌顯示
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setLogs(getCaptureLogs());
+      setErrorLogs(getCaptureErrors());
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, []);
 
   // 初始化 LIFF 和获取用戶ID
   useEffect(() => {
@@ -67,10 +88,12 @@ export default function Home() {
         } catch (profileError) {
           console.error("獲取用戶資料失敗", profileError);
           setError("無法獲取用戶資料，請確保您已登入LINE並授權應用程式");
+          setShowDebug(true);
         }
       } catch (error) {
         console.error("LIFF 初始化失敗", error);
         setError("LINE應用程式初始化失敗，請重新載入頁面或確認您的網路連接");
+        setShowDebug(true);
       }
     };
 
@@ -108,6 +131,7 @@ export default function Home() {
         console.error("獲取交易數據失敗", error);
         setError("獲取數據失敗，請稍後再試");
         setTransactions([]);
+        setShowDebug(true);
       } finally {
         setIsLoading(false);
       }
@@ -136,6 +160,11 @@ export default function Home() {
     navigateInLiff("/transaction", { id, type });
   };
 
+  // 切換調試控制台顯示
+  const toggleDebugConsole = () => {
+    setShowDebug(!showDebug);
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-100">
       <main className="flex-1 container max-w-md mx-auto px-5 py-4">
@@ -145,13 +174,29 @@ export default function Home() {
             <p className="text-gray-600 text-center">
               {error || "正在連接到LINE，請稍候..."}
             </p>
-            {error && (
+            <div className="flex flex-col items-center mt-4 space-y-2">
+              {error && (
+                <button 
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  重新載入
+                </button>
+              )}
               <button 
-                onClick={() => window.location.reload()}
-                className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                onClick={toggleDebugConsole}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors"
               >
-                重新載入
+                {showDebug ? "隱藏調試信息" : "顯示調試信息"}
               </button>
+            </div>
+            
+            {showDebug && (
+              <DebugConsole 
+                logs={logs} 
+                errors={errorLogs} 
+                title="LIFF 初始化調試信息" 
+              />
             )}
           </div>
         ) : (
@@ -167,17 +212,49 @@ export default function Home() {
             <TabSelector activeTab={activeTab} onTabChange={handleTabChange} />
 
             {error ? (
-              <div className="mt-4 p-4 bg-red-50 text-red-500 rounded-xl text-center">
-                {error}
+              <div className="mt-4 space-y-4">
+                <div className="p-4 bg-red-50 text-red-500 rounded-xl text-center">
+                  {error}
+                </div>
+                <button 
+                  onClick={toggleDebugConsole}
+                  className="w-full px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors"
+                >
+                  {showDebug ? "隱藏調試信息" : "顯示調試信息"}
+                </button>
+                {showDebug && (
+                  <DebugConsole 
+                    logs={logs} 
+                    errors={errorLogs} 
+                    title="數據載入調試信息" 
+                  />
+                )}
               </div>
             ) : (
-              <TransactionList 
-                transactions={transactions} 
-                currentDate={currentDate} 
-                activeTab={activeTab}
-                isLoading={isLoading}
-                onTransactionClick={handleTransactionClick}
-              />
+              <>
+                <TransactionList 
+                  transactions={transactions} 
+                  currentDate={currentDate} 
+                  activeTab={activeTab}
+                  isLoading={isLoading}
+                  onTransactionClick={handleTransactionClick}
+                />
+                <div className="mt-8 text-center">
+                  <button 
+                    onClick={toggleDebugConsole}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
+                  >
+                    {showDebug ? "隱藏調試信息" : "顯示調試信息"}
+                  </button>
+                  {showDebug && (
+                    <DebugConsole 
+                      logs={logs} 
+                      errors={errorLogs} 
+                      title="應用調試信息" 
+                    />
+                  )}
+                </div>
+              </>
             )}
           </>
         )}
