@@ -218,8 +218,8 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
     console.error("Failed to save parameters to localStorage:", storageError);
   }
   
-  // 修改：即使需要切換 LIFF ID，也使用內部導航 (external: false)
-  console.log("Using internal navigation (same LIFF context)");
+  // 修改：使用 window.location.replace 替代 liff.openWindow
+  console.log("Using window.location.replace for navigation");
   console.log("Final URL:", url.toString());
   
   // 在 URL 中添加時間戳以避免緩存問題
@@ -237,12 +237,10 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
         return;
       }
       
-      // 使用 liff.openWindow 但確保設置 external: false
-      // 這應該可以避免 "Switched to ... app" 提示
-      liff.openWindow({
-        url: url.toString(),
-        external: false
-      });
+      // 使用 window.location.replace 替代 liff.openWindow
+      // replace 方法會替換當前頁面的歷史記錄，而不是添加新記錄
+      // 這應該可以避免打開新窗口和 "Switched to ... app" 提示
+      window.location.replace(url.toString());
     } catch (error) {
       console.error("Error during navigation, token may be expired:", error);
       // 如果出錯（可能是 token 過期），嘗試重新登入
@@ -254,11 +252,11 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
       } catch (loginError) {
         console.error("Failed to re-login:", loginError);
         // 如果重新登入失敗，嘗試直接導航
-        window.location.href = url.toString();
+        window.location.replace(url.toString());
       }
     }
   } else {
-    window.location.href = url.toString();
+    window.location.replace(url.toString());
   }
 }
 
