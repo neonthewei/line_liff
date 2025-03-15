@@ -44,14 +44,6 @@ export const sendUpdateNotification = async (transaction: Transaction): Promise<
     const formattedAmount = Math.abs(transaction.amount).toLocaleString('zh-TW');
     const amountPrefix = transaction.type === 'income' ? '+' : '-';
     
-    // 建立通知訊息
-    await liff.sendMessages([
-      {
-        type: "text",
-        text: `交易已更新👍`
-      }
-    ]);
-    
     console.log("Update notification sent successfully");
     return true;
   } catch (error) {
@@ -80,14 +72,6 @@ export const sendDeleteNotification = async (transaction: Transaction): Promise<
     // 格式化金額顯示
     const formattedAmount = Math.abs(transaction.amount).toLocaleString('zh-TW');
     const amountPrefix = transaction.type === 'income' ? '+' : '-';
-    
-    // 建立通知訊息
-    await liff.sendMessages([
-      {
-        type: "text",
-        text: `交易已刪除💀`
-      }
-    ]);
     
     console.log("Delete notification sent successfully");
     return true;
