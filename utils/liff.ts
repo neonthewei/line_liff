@@ -7,8 +7,26 @@ let isInitialized = false;
 const DEV_MODE = process.env.NODE_ENV === "development";
 const BYPASS_LIFF = DEV_MODE && (process.env.NEXT_PUBLIC_BYPASS_LIFF === "true");
 
-// LIFF ID
-const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || "2007052419-6KyqOAoX";
+// LIFF IDs for different pages
+const LIFF_ID_TRANSACTIONS = process.env.NEXT_PUBLIC_LIFF_ID_TRANSACTIONS;
+const LIFF_ID_TRANSACTION = process.env.NEXT_PUBLIC_LIFF_ID_TRANSACTION;
+
+// 獲取當前頁面的 LIFF ID
+export function getLiffId(): string {
+  if (typeof window === 'undefined') {
+    return LIFF_ID_TRANSACTIONS || '';
+  }
+
+  // 根據當前 URL 路徑決定使用哪個 LIFF ID
+  const path = window.location.pathname;
+  
+  if (path.includes('/transaction') && !path.includes('/transactions')) {
+    return LIFF_ID_TRANSACTION || '';
+  }
+  
+  // 默認使用交易列表頁的 LIFF ID
+  return LIFF_ID_TRANSACTIONS || '';
+}
 
 // 初始化 LIFF
 export async function initializeLiff() {
@@ -46,7 +64,7 @@ export async function initializeLiff() {
   }
 
   try {
-    const liffId = LIFF_ID;
+    const liffId = getLiffId();
     if (!liffId) {
       throw new Error("LIFF ID is required");
     }
@@ -55,6 +73,7 @@ export async function initializeLiff() {
     if (DEV_MODE) {
       console.log("Initializing LIFF in development mode");
       console.log("LIFF ID:", liffId);
+      console.log("Current path:", typeof window !== 'undefined' ? window.location.pathname : 'unknown');
     }
 
     // 初始化 LIFF，參考官方範例
@@ -100,7 +119,7 @@ export function closeLiff() {
 
 // 在 LIFF 中導航到另一個頁面
 export function navigateInLiff(path: string, params: Record<string, string> = {}) {
-  if (typeof window === "undefined") {
+  if (typeof window === 'undefined') {
     return;
   }
   
@@ -118,7 +137,37 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
     console.log("Navigating in LIFF to:", url.toString());
   }
   
-  // 在 LIFF 客戶端中使用 openWindow，否則使用普通導航
+  // 檢查是否需要切換 LIFF ID
+  const currentPath = window.location.pathname;
+  const targetPath = url.pathname;
+  
+  const isTransactionToList = 
+    (currentPath.includes('/transaction') && !currentPath.includes('/transactions')) && 
+    targetPath.includes('/transactions');
+  
+  const isListToTransaction = 
+    currentPath.includes('/transactions') && 
+    (targetPath.includes('/transaction') && !targetPath.includes('/transactions'));
+  
+  // 如果需要切換 LIFF ID，則使用外部瀏覽器打開
+  if (isTransactionToList || isListToTransaction) {
+    if (DEV_MODE) {
+      console.log("Switching LIFF ID, using external navigation");
+    }
+    
+    // 在 LIFF 客戶端中使用 openWindow 並設置 external 為 true
+    if (isInitialized && !BYPASS_LIFF && liff.isInClient()) {
+      liff.openWindow({
+        url: url.toString(),
+        external: true
+      });
+    } else {
+      window.location.href = url.toString();
+    }
+    return;
+  }
+  
+  // 如果不需要切換 LIFF ID，則使用普通導航
   if (isInitialized && !BYPASS_LIFF && liff.isInClient()) {
     liff.openWindow({
       url: url.toString(),
