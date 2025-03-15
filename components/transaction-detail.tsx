@@ -48,7 +48,12 @@ const defaultTransaction: Transaction = {
   fixedInterval: 1,
 };
 
-export default function TransactionDetail() {
+// 在組件的 props 接口中添加 onError
+interface TransactionDetailProps {
+  onError?: () => void;
+}
+
+export default function TransactionDetail({ onError }: TransactionDetailProps) {
   const [transaction, setTransaction] = useState<Transaction | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingAmount, setIsEditingAmount] = useState(false);
@@ -97,28 +102,64 @@ export default function TransactionDetail() {
 
     async function initialize() {
       try {
+        console.log("Initializing transaction detail component");
+        console.log("Current URL:", window.location.href);
+        
         // 初始化 LIFF
         const liffInitialized = await initializeLiff();
         console.log("LIFF initialization result:", liffInitialized);
+        setIsLiffInitialized(liffInitialized);
         
         // 獲取 URL 參數
         const params = getLiffUrlParams();
         setDebugInfo({ url: window.location.href, params });
         
         // 獲取交易 ID 和類型
-        const id = params.id;
+        let id = params.id;
         const type = params.type || "expense";
+        
+        // 如果沒有從 URL 參數獲取到 ID，嘗試從 URL 路徑獲取
+        if (!id) {
+          console.log("No ID in URL parameters, trying to extract from path");
+          try {
+            const pathParts = window.location.pathname.split('/');
+            if (pathParts.length > 2 && pathParts[1] === 'transaction' && pathParts[2]) {
+              id = pathParts[2];
+              console.log("Extracted ID from URL path:", id);
+            }
+          } catch (pathError) {
+            console.error("Failed to extract ID from path:", pathError);
+          }
+        }
+        
+        // 如果仍然沒有 ID，嘗試從 localStorage 獲取
+        if (!id) {
+          console.log("Still no ID, trying localStorage");
+          try {
+            const storedId = localStorage.getItem('lastTransactionId');
+            if (storedId) {
+              id = storedId;
+              console.log("Retrieved ID from localStorage:", id);
+            }
+          } catch (storageError) {
+            console.error("Failed to access localStorage:", storageError);
+          }
+        }
         
         if (!id) {
           console.error("No transaction ID provided");
           setIsLoading(false);
+          if (onError) onError();
           return;
         }
+        
+        console.log(`Fetching transaction with ID: ${id}, type: ${type}`);
         
         // 獲取交易數據
         const data = await fetchTransactionById(id, type);
         
         if (data) {
+          console.log("Transaction data retrieved successfully:", data);
           setTransaction(data);
           // 重置編輯狀態
           setEditAmount("");
@@ -128,26 +169,62 @@ export default function TransactionDetail() {
           // 如果找不到數據，保持 transaction 為 null
           console.warn("Transaction not found");
           setTransaction(null);
+          if (onError) onError();
         }
       } catch (error) {
         console.error("Error initializing:", error);
+        if (onError) onError();
         
         // 即使初始化失敗，也嘗試使用 URL 參數
         try {
-          const params = new URLSearchParams(window.location.search);
-          const id = params.get("id") || "";
-          const type = params.get("type") || "expense";
+          console.log("Attempting recovery after initialization error");
+          
+          // 直接從 URL 獲取參數
+          const urlParams = new URLSearchParams(window.location.search);
+          let id = urlParams.get("id") || "";
+          const type = urlParams.get("type") || "expense";
+          
+          // 如果沒有從 URL 參數獲取到 ID，嘗試從 URL 路徑獲取
+          if (!id) {
+            console.log("Recovery: No ID in URL parameters, trying to extract from path");
+            try {
+              const pathParts = window.location.pathname.split('/');
+              if (pathParts.length > 2 && pathParts[1] === 'transaction' && pathParts[2]) {
+                id = pathParts[2];
+                console.log("Recovery: Extracted ID from URL path:", id);
+              }
+            } catch (pathError) {
+              console.error("Recovery: Failed to extract ID from path:", pathError);
+            }
+          }
+          
+          // 如果仍然沒有 ID，嘗試從 localStorage 獲取
+          if (!id) {
+            console.log("Recovery: Still no ID, trying localStorage");
+            try {
+              const storedId = localStorage.getItem('lastTransactionId');
+              if (storedId) {
+                id = storedId;
+                console.log("Recovery: Retrieved ID from localStorage:", id);
+              }
+            } catch (storageError) {
+              console.error("Recovery: Failed to access localStorage:", storageError);
+            }
+          }
           
           if (!id) {
-            console.error("No transaction ID provided in URL");
+            console.error("Recovery: No transaction ID provided");
             setTransaction(null);
             return;
           }
+          
+          console.log(`Recovery: Fetching transaction with ID: ${id}, type: ${type}`);
           
           // 獲取交易數據
           const data = await fetchTransactionById(id, type);
           
           if (data) {
+            console.log("Recovery: Transaction data retrieved successfully:", data);
             setTransaction(data);
             // 重置編輯狀態
             setEditAmount("");
@@ -155,13 +232,15 @@ export default function TransactionDetail() {
             setEditFixedInterval("");
           } else {
             // 如果找不到數據，保持 transaction 為 null
-            console.warn("Transaction not found");
+            console.warn("Recovery: Transaction not found");
             setTransaction(null);
+            if (onError) onError();
           }
         } catch (innerError) {
           console.error("Failed to recover from initialization error:", innerError);
           // 數據獲取失敗，保持 transaction 為 null
           setTransaction(null);
+          if (onError) onError();
         }
       } finally {
         setIsLoading(false);
@@ -169,7 +248,7 @@ export default function TransactionDetail() {
     }
 
     initialize();
-  }, [isMounted]);
+  }, [isMounted, onError]);
 
   const handleTypeChange = async (type: "expense" | "income") => {
     if (!transaction) return;

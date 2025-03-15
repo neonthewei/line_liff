@@ -123,20 +123,14 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
     return;
   }
   
+  // 記錄導航信息
+  console.log("Navigating in LIFF");
+  console.log("Target path:", path);
+  console.log("Parameters:", params);
+  
   // 構建完整 URL
   const baseUrl = window.location.origin;
-  const url = new URL(path, baseUrl);
-  
-  // 添加參數
-  Object.entries(params).forEach(([key, value]) => {
-    url.searchParams.append(key, value);
-  });
-  
-  // 在開發模式下記錄
-  if (DEV_MODE) {
-    console.log("Navigating in LIFF to:", url.toString());
-    console.log("Navigation params:", params);
-  }
+  let url = new URL(path, baseUrl);
   
   // 檢查是否需要切換 LIFF ID
   const currentPath = window.location.pathname;
@@ -150,18 +144,55 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
     currentPath.includes('/transactions') && 
     (targetPath.includes('/transaction') && !targetPath.includes('/transactions'));
   
+  // 如果是從列表到詳情頁，考慮使用路徑參數而不是查詢參數
+  // 例如: /transaction/123 而不是 /transaction?id=123
+  if (isListToTransaction && params.id) {
+    // 嘗試使用路徑參數格式
+    const transactionId = params.id;
+    // 從參數中移除 id，因為它將成為路徑的一部分
+    const otherParams = { ...params };
+    delete otherParams.id;
+    
+    // 構建新的 URL，將 ID 作為路徑的一部分
+    url = new URL(`${path}/${transactionId}`, baseUrl);
+    
+    // 將其他參數添加到 URL
+    Object.entries(otherParams).forEach(([key, value]) => {
+      url.searchParams.append(key, value);
+    });
+    
+    console.log("Using path parameter format for transaction ID");
+    console.log("New URL:", url.toString());
+  } else {
+    // 使用標準查詢參數
+    Object.entries(params).forEach(([key, value]) => {
+      url.searchParams.append(key, value);
+    });
+  }
+  
+  // 保存參數到 localStorage 以便在頁面之間保持狀態
+  try {
+    if (params.id) {
+      localStorage.setItem('lastTransactionId', params.id);
+      console.log("Saved transaction ID to localStorage:", params.id);
+    }
+    
+    if (params.type) {
+      localStorage.setItem('lastTransactionType', params.type);
+      console.log("Saved transaction type to localStorage:", params.type);
+    }
+  } catch (storageError) {
+    console.error("Failed to save parameters to localStorage:", storageError);
+  }
+  
   // 如果需要切換 LIFF ID，則使用外部瀏覽器打開
   if (isTransactionToList || isListToTransaction) {
-    if (DEV_MODE) {
-      console.log("Switching LIFF ID, using external navigation");
-      console.log("Current path:", currentPath);
-      console.log("Target path:", targetPath);
-      console.log("Full URL with params:", url.toString());
-    }
+    console.log("Switching LIFF ID, using external navigation");
+    console.log("Current path:", currentPath);
+    console.log("Target path:", targetPath);
     
     // 確保參數被正確添加到 URL 中
     // 對於 LIFF 外部導航，我們需要確保參數被正確傳遞
-    // 在某些情況下，我們可能需要使用 liff.state 來傳遞參數
     
     // 創建一個包含所有參數的 liff.state 字符串
     if (Object.keys(params).length > 0) {
@@ -173,12 +204,13 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
       
       // 將 liff.state 添加到 URL 中
       url.searchParams.append("liff.state", stateParams.toString());
-      
-      if (DEV_MODE) {
-        console.log("Added liff.state to URL:", stateParams.toString());
-        console.log("Final URL with liff.state:", url.toString());
-      }
+      console.log("Added liff.state to URL:", stateParams.toString());
     }
+    
+    // 在 URL 中添加時間戳以避免緩存問題
+    url.searchParams.append("_t", Date.now().toString());
+    
+    console.log("Final URL for external navigation:", url.toString());
     
     // 在 LIFF 客戶端中使用 openWindow 並設置 external 為 true
     if (isInitialized && !BYPASS_LIFF && liff.isInClient()) {
@@ -193,6 +225,9 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
   }
   
   // 如果不需要切換 LIFF ID，則使用普通導航
+  console.log("Using standard navigation (same LIFF context)");
+  console.log("Final URL:", url.toString());
+  
   if (isInitialized && !BYPASS_LIFF && liff.isInClient()) {
     liff.openWindow({
       url: url.toString(),
@@ -209,172 +244,153 @@ export function getLiffUrlParams() {
     return {};
   }
   
-  // 在開發模式下記錄
-  if (DEV_MODE) {
-    console.log("Getting LIFF URL parameters");
-    console.log("Current URL:", window.location.href);
-  }
+  // 創建結果對象
+  const result: Record<string, string> = {};
   
-  // 在開發模式下，直接從 window.location 獲取參數
-  if (DEV_MODE) {
-    const params = new URLSearchParams(window.location.search);
-    const result: Record<string, string> = {};
-    params.forEach((value, key) => {
+  // 記錄當前 URL 和搜索參數，無論在什麼模式下
+  console.log("Getting LIFF URL parameters");
+  console.log("Current URL:", window.location.href);
+  console.log("Search params:", window.location.search);
+  
+  // 方法 1: 直接從 URL 獲取參數 (最直接的方法)
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    urlParams.forEach((value, key) => {
       result[key] = value;
+      console.log(`Direct URL parameter: ${key}=${value}`);
     });
-    
-    // 處理 recordId 參數，轉換為 id（注意大寫 I）
-    if (result.recordId && !result.id) {
-      result.id = result.recordId;
-      console.log("Converting recordId to id:", result.id);
-    }
-    
-    // 檢查 liff.state 參數
-    const liffState = params.get("liff.state");
-    if (liffState) {
-      try {
-        console.log("Found liff.state in URL:", liffState);
-        const stateParams = new URLSearchParams(liffState);
-        stateParams.forEach((value, key) => {
-          result[key] = value;
-          console.log(`Extracted from liff.state: ${key}=${value}`);
-        });
-      } catch (error) {
-        console.error("Failed to parse liff.state", error);
-      }
-    }
-    
-    // 在開發模式下，如果沒有提供 id 和 type 參數，則使用預設值
-    if (!result.id && !params.has("id") && !params.has("recordId")) {
-      result.id = "14";
-      console.log("Using default id:", result.id);
-    }
-    
-    if (!result.type && !params.has("type")) {
-      result.type = "expense";
-      console.log("Using default type:", result.type);
-    }
-    
-    console.log("Final parameters in dev mode:", result);
-    return result;
+  } catch (error) {
+    console.error("Failed to parse URL parameters:", error);
   }
   
-  // 在 LIFF 環境中
-  if (isInitialized && !BYPASS_LIFF && liff.isInClient()) {
-    try {
-      // 首先嘗試從 URL 獲取參數
-      const params = new URLSearchParams(window.location.search);
-      const result: Record<string, string> = {};
-      
-      // 獲取所有 URL 參數
-      params.forEach((value, key) => {
-        result[key] = value;
-        console.log(`URL parameter: ${key}=${value}`);
+  // 方法 2: 嘗試從 URL hash 獲取參數 (某些 LIFF 版本可能使用 hash)
+  try {
+    if (window.location.hash && window.location.hash.length > 1) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      hashParams.forEach((value, key) => {
+        if (!result[key]) { // 不覆蓋已有的參數
+          result[key] = value;
+          console.log(`Hash parameter: ${key}=${value}`);
+        }
       });
-      
-      // 處理 recordId 參數，轉換為 id（注意大寫 I）
-      if (result.recordId && !result.id) {
-        result.id = result.recordId;
-        console.log("Converting recordId to id:", result.id);
-      }
-      
-      // 檢查 liff.state 參數
-      const liffState = params.get("liff.state");
-      if (liffState) {
-        try {
-          console.log("Found liff.state in URL:", liffState);
-          const stateParams = new URLSearchParams(liffState);
-          stateParams.forEach((value, key) => {
-            result[key] = value;
-            console.log(`Extracted from liff.state: ${key}=${value}`);
-          });
-        } catch (error) {
-          console.error("Failed to parse liff.state", error);
-        }
-      }
-      
-      // 如果仍然沒有找到 id 或 type，嘗試從 LIFF context 獲取
-      if (!result.id || !result.type) {
-        try {
-          const context = liff.getContext();
-          console.log("LIFF context for parameters:", context);
-          
-          // 某些 LIFF 版本可能在 context 中包含 query 參數
-          // 使用類型斷言來處理可能的 query 屬性
-          interface ExtendedContext {
-            query?: Record<string, string>;
-          }
-          
-          const contextWithQuery = context as unknown as ExtendedContext;
-          if (contextWithQuery && contextWithQuery.query) {
-            Object.entries(contextWithQuery.query).forEach(([key, value]) => {
-              if (typeof value === 'string') {
-                result[key] = value;
-                console.log(`Parameter from LIFF context: ${key}=${value}`);
-              }
-            });
-          }
-        } catch (contextError) {
-          console.error("Failed to get parameters from LIFF context:", contextError);
-        }
-      }
-      
-      // 記錄最終獲取到的參數
-      console.log("Final LIFF parameters:", result);
-      return result;
-    } catch (error) {
-      console.error("Failed to get LIFF URL parameters", error);
-      return {};
     }
+  } catch (error) {
+    console.error("Failed to parse hash parameters:", error);
   }
   
-  // 如果是開發模式且繞過 LIFF，返回預設參數
-  if (BYPASS_LIFF) {
-    const params = new URLSearchParams(window.location.search);
-    const result: Record<string, string> = {};
-    params.forEach((value, key) => {
-      result[key] = value;
-    });
-    
-    // 檢查 liff.state 參數
-    const liffState = params.get("liff.state");
+  // 方法 3: 嘗試從 liff.state 獲取參數
+  try {
+    const liffState = new URLSearchParams(window.location.search).get("liff.state");
     if (liffState) {
+      console.log("Found liff.state in URL:", liffState);
       try {
-        console.log("Found liff.state in URL (bypass mode):", liffState);
         const stateParams = new URLSearchParams(liffState);
         stateParams.forEach((value, key) => {
           result[key] = value;
-          console.log(`Extracted from liff.state (bypass mode): ${key}=${value}`);
+          console.log(`liff.state parameter: ${key}=${value}`);
         });
-      } catch (error) {
-        console.error("Failed to parse liff.state in bypass mode", error);
+      } catch (stateError) {
+        console.error("Failed to parse liff.state:", stateError);
       }
     }
-    
-    // 處理 recordId 參數，轉換為 id（注意大寫 I）
-    if (result.recordId && !result.id) {
-      result.id = result.recordId;
-      console.log("Converting recordId to id in bypass mode:", result.id);
-    }
-    
-    // 如果沒有提供 id 和 type 參數，則使用預設值
-    if (!result.id && !params.has("id") && !params.has("recordId")) {
-      result.id = "14";
-      console.log("Using default id in bypass mode:", result.id);
-    }
-    
-    if (!result.type && !params.has("type")) {
-      result.type = "expense";
-      console.log("Using default type in bypass mode:", result.type);
-    }
-    
-    // 添加用戶ID
-    result.userId = "U08946a96a3892561e1c3baa589ffeaee";
-    console.log("Using default userId in bypass mode:", result.userId);
-    
-    console.log("Final parameters in bypass mode:", result);
-    return result;
+  } catch (error) {
+    console.error("Failed to extract liff.state:", error);
   }
   
-  return {};
+  // 方法 4: 嘗試從 LIFF context 獲取參數 (如果 LIFF 已初始化)
+  if (isInitialized && !BYPASS_LIFF && typeof liff !== 'undefined') {
+    try {
+      const context = liff.getContext();
+      console.log("LIFF context for parameters:", context);
+      
+      // 嘗試從 context.query 獲取參數 (某些 LIFF 版本支持)
+      if (context && typeof context === 'object') {
+        // 使用類型斷言處理可能的 query 屬性
+        const anyContext = context as any;
+        if (anyContext.query && typeof anyContext.query === 'object') {
+          Object.entries(anyContext.query).forEach(([key, value]) => {
+            if (typeof value === 'string' && !result[key]) {
+              result[key] = value;
+              console.log(`LIFF context query parameter: ${key}=${value}`);
+            }
+          });
+        }
+      }
+    } catch (contextError) {
+      console.error("Failed to get parameters from LIFF context:", contextError);
+    }
+  }
+  
+  // 方法 5: 嘗試從 URL 路徑中提取參數 (如果 URL 格式為 /transaction/123)
+  try {
+    const pathParts = window.location.pathname.split('/');
+    if (pathParts.length > 2 && pathParts[1] === 'transaction' && pathParts[2]) {
+      const potentialId = pathParts[2];
+      if (potentialId && !result.id) {
+        result.id = potentialId;
+        console.log(`Extracted ID from URL path: ${potentialId}`);
+      }
+    }
+  } catch (pathError) {
+    console.error("Failed to extract ID from path:", pathError);
+  }
+  
+  // 處理 recordId 參數，轉換為 id (注意大寫 I)
+  if (result.recordId && !result.id) {
+    result.id = result.recordId;
+    console.log("Converting recordId to id:", result.id);
+  }
+  
+  // 在開發模式下，如果沒有提供 id 和 type 參數，則使用預設值
+  if (DEV_MODE || BYPASS_LIFF) {
+    if (!result.id) {
+      result.id = "14";
+      console.log("Using default id in dev/bypass mode:", result.id);
+    }
+    
+    if (!result.type) {
+      result.type = "expense";
+      console.log("Using default type in dev/bypass mode:", result.type);
+    }
+    
+    // 在繞過 LIFF 模式下添加用戶 ID
+    if (BYPASS_LIFF && !result.userId) {
+      result.userId = "U08946a96a3892561e1c3baa589ffeaee";
+      console.log("Using default userId in bypass mode:", result.userId);
+    }
+  }
+  
+  // 最後的緊急回退：從 localStorage 獲取最近使用的參數
+  // 這可以在頁面刷新或導航時保持參數
+  try {
+    if (!result.id && localStorage.getItem('lastTransactionId')) {
+      result.id = localStorage.getItem('lastTransactionId') || '';
+      console.log("Recovered ID from localStorage:", result.id);
+    }
+    
+    if (!result.type && localStorage.getItem('lastTransactionType')) {
+      result.type = localStorage.getItem('lastTransactionType') || '';
+      console.log("Recovered type from localStorage:", result.type);
+    }
+  } catch (storageError) {
+    console.error("Failed to access localStorage:", storageError);
+  }
+  
+  // 如果找到了 ID 和 type，將它們保存到 localStorage 以備將來使用
+  try {
+    if (result.id) {
+      localStorage.setItem('lastTransactionId', result.id);
+    }
+    
+    if (result.type) {
+      localStorage.setItem('lastTransactionType', result.type);
+    }
+  } catch (storageError) {
+    console.error("Failed to save to localStorage:", storageError);
+  }
+  
+  // 記錄最終獲取到的參數
+  console.log("Final parameters:", result);
+  
+  return result;
 }
