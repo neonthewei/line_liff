@@ -101,7 +101,7 @@ export default function AnalysePage() {
     if (transactions.length > 0) {
       processDataForCharts();
     }
-  }, [transactions, activeTab]);
+  }, [transactions, activeTab, summary]);
 
   // 獲取交易數據
   const fetchData = async () => {
@@ -294,7 +294,7 @@ export default function AnalysePage() {
   };
 
   return (
-    <main className="container mx-auto max-w-md px-5 py-6 min-h-screen">
+    <main className="container mx-auto max-w-md p-5 min-h-screen">
       {/* 月份選擇器 */}
       <MonthSelector currentDate={currentDate} onMonthChange={handleMonthChange} />
 
@@ -353,7 +353,7 @@ export default function AnalysePage() {
         ) : categoryData.length > 0 ? (
           <>
             <ResponsiveContainer width="100%" height={300} className="mt-0">
-              <PieChart margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+              <PieChart margin={{ top: 5, right: 5, bottom: 5, left: 5 }} key={`pie-chart-${activeTab}-${categoryData.length}`}>
                 <Pie
                   data={categoryData}
                   cx="50%"
@@ -366,7 +366,8 @@ export default function AnalysePage() {
                   nameKey="name"
                   label={false}
                   paddingAngle={0}
-                  isAnimationActive={false}
+                  isAnimationActive={true}
+                  animationDuration={500}
                   strokeWidth={0}
                   minAngle={1}
                 >
@@ -380,7 +381,8 @@ export default function AnalysePage() {
                     return `${((value / (total || 1)) * 100).toFixed(1)}%`;
                   }} 
                   labelFormatter={(name) => `${name}`}
-                  isAnimationActive={false}
+                  isAnimationActive={true}
+                  animationDuration={500}
                 />
                 {/* 中間顯示總金額 */}
                 <text
@@ -450,6 +452,7 @@ export default function AnalysePage() {
               <BarChart
                 data={dailyData}
                 margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
+                key={`bar-chart-${activeTab}-${dailyData.length}`}
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis 
@@ -467,7 +470,8 @@ export default function AnalysePage() {
                 <Bar 
                   dataKey="percentage" 
                   fill="#10b981"
-                  isAnimationActive={false}
+                  isAnimationActive={true}
+                  animationDuration={500}
                   unit="%"
                   radius={[4, 4, 0, 0]}
                   maxBarSize={20}
