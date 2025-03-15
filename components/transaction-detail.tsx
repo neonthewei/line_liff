@@ -359,21 +359,18 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
           return;
         }
         
-        // 檢查是否在 LIFF 環境中
-        if (liff.isInClient()) {
-          // 在 LIFF 環境中，不直接關閉 LIFF 視窗，而是導航回列表頁
-          try {
-            // 使用 LIFF 導航回列表頁
-            navigateInLiff("/");
-          } catch (navError) {
-            console.error("導航回列表頁失敗", navError);
-            // 如果導航失敗，嘗試關閉 LIFF 視窗
-            closeLiff();
+        // 顯示成功通知
+        showToastNotification("儲存成功", "success", 1000, () => {
+          // 在通知顯示後執行導航
+          // 檢查是否在 LIFF 環境中
+          if (liff.isInClient()) {
+            // 在 LIFF 環境中，直接使用 window.location.href 導航
+            window.location.href = "/";
+          } else {
+            // 不在 LIFF 環境中，使用 router 導航
+            router.push("/");
           }
-        } else {
-          // 不在 LIFF 環境中，直接導航回列表頁
-          router.push("/");
-        }
+        });
       } else {
         showToastNotification("儲存失敗，請稍後再試", "error");
       }
