@@ -218,45 +218,28 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
     console.error("Failed to save parameters to localStorage:", storageError);
   }
   
-  // 修改：使用 window.location.replace 替代 liff.openWindow
-  console.log("Using window.location.replace for navigation");
+  // 修改：即使需要切換 LIFF ID，也使用內部導航 (external: false)
+  console.log("Using internal navigation (same LIFF context)");
   console.log("Final URL:", url.toString());
   
   // 在 URL 中添加時間戳以避免緩存問題
   url.searchParams.append("_t", Date.now().toString());
   
   if (isInitialized && !BYPASS_LIFF && liff.isInClient()) {
-    try {
-      // 嘗試獲取 access token 來檢查是否有效
-      const token = liff.getAccessToken();
-      if (!token) {
-        console.log("No access token found, attempting to login");
-        liff.login({
-          redirectUri: url.toString()
-        });
-        return;
-      }
-      
-      // 使用 window.location.replace 替代 liff.openWindow
-      // replace 方法會替換當前頁面的歷史記錄，而不是添加新記錄
-      // 這應該可以避免打開新窗口和 "Switched to ... app" 提示
-      window.location.replace(url.toString());
-    } catch (error) {
-      console.error("Error during navigation, token may be expired:", error);
-      // 如果出錯（可能是 token 過期），嘗試重新登入
-      console.log("Attempting to re-login");
-      try {
-        liff.login({
-          redirectUri: url.toString()
-        });
-      } catch (loginError) {
-        console.error("Failed to re-login:", loginError);
-        // 如果重新登入失敗，嘗試直接導航
-        window.location.replace(url.toString());
-      }
+    // 嘗試獲取 access token 來檢查是否有效
+    const token = liff.getAccessToken();
+    if (!token) {
+      console.log("No access token found, attempting to login");
+      liff.login({
+        redirectUri: url.toString()
+      });
+      return;
     }
+    
+    // 使用 window.location.href 替代 liff.openWindow
+    window.location.href = url.toString();
   } else {
-    window.location.replace(url.toString());
+    window.location.href = url.toString();
   }
 }
 
