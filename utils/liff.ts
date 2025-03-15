@@ -135,6 +135,7 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
   // 在開發模式下記錄
   if (DEV_MODE) {
     console.log("Navigating in LIFF to:", url.toString());
+    console.log("Navigation params:", params);
   }
   
   // 檢查是否需要切換 LIFF ID
@@ -153,6 +154,30 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
   if (isTransactionToList || isListToTransaction) {
     if (DEV_MODE) {
       console.log("Switching LIFF ID, using external navigation");
+      console.log("Current path:", currentPath);
+      console.log("Target path:", targetPath);
+      console.log("Full URL with params:", url.toString());
+    }
+    
+    // 確保參數被正確添加到 URL 中
+    // 對於 LIFF 外部導航，我們需要確保參數被正確傳遞
+    // 在某些情況下，我們可能需要使用 liff.state 來傳遞參數
+    
+    // 創建一個包含所有參數的 liff.state 字符串
+    if (Object.keys(params).length > 0) {
+      // 將參數添加到 liff.state 中，以確保它們在跨 LIFF 上下文時被保留
+      const stateParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        stateParams.append(key, value);
+      });
+      
+      // 將 liff.state 添加到 URL 中
+      url.searchParams.append("liff.state", stateParams.toString());
+      
+      if (DEV_MODE) {
+        console.log("Added liff.state to URL:", stateParams.toString());
+        console.log("Final URL with liff.state:", url.toString());
+      }
     }
     
     // 在 LIFF 客戶端中使用 openWindow 並設置 external 為 true
@@ -184,6 +209,12 @@ export function getLiffUrlParams() {
     return {};
   }
   
+  // 在開發模式下記錄
+  if (DEV_MODE) {
+    console.log("Getting LIFF URL parameters");
+    console.log("Current URL:", window.location.href);
+  }
+  
   // 在開發模式下，直接從 window.location 獲取參數
   if (DEV_MODE) {
     const params = new URLSearchParams(window.location.search);
@@ -198,6 +229,21 @@ export function getLiffUrlParams() {
       console.log("Converting recordId to id:", result.id);
     }
     
+    // 檢查 liff.state 參數
+    const liffState = params.get("liff.state");
+    if (liffState) {
+      try {
+        console.log("Found liff.state in URL:", liffState);
+        const stateParams = new URLSearchParams(liffState);
+        stateParams.forEach((value, key) => {
+          result[key] = value;
+          console.log(`Extracted from liff.state: ${key}=${value}`);
+        });
+      } catch (error) {
+        console.error("Failed to parse liff.state", error);
+      }
+    }
+    
     // 在開發模式下，如果沒有提供 id 和 type 參數，則使用預設值
     if (!result.id && !params.has("id") && !params.has("recordId")) {
       result.id = "14";
@@ -209,6 +255,7 @@ export function getLiffUrlParams() {
       console.log("Using default type:", result.type);
     }
     
+    console.log("Final parameters in dev mode:", result);
     return result;
   }
   
@@ -222,6 +269,7 @@ export function getLiffUrlParams() {
       // 獲取所有 URL 參數
       params.forEach((value, key) => {
         result[key] = value;
+        console.log(`URL parameter: ${key}=${value}`);
       });
       
       // 處理 recordId 參數，轉換為 id（注意大寫 I）
@@ -230,24 +278,44 @@ export function getLiffUrlParams() {
         console.log("Converting recordId to id:", result.id);
       }
       
-      // 如果沒有找到必要的參數，嘗試從 liff.state 獲取
+      // 檢查 liff.state 參數
+      const liffState = params.get("liff.state");
+      if (liffState) {
+        try {
+          console.log("Found liff.state in URL:", liffState);
+          const stateParams = new URLSearchParams(liffState);
+          stateParams.forEach((value, key) => {
+            result[key] = value;
+            console.log(`Extracted from liff.state: ${key}=${value}`);
+          });
+        } catch (error) {
+          console.error("Failed to parse liff.state", error);
+        }
+      }
+      
+      // 如果仍然沒有找到 id 或 type，嘗試從 LIFF context 獲取
       if (!result.id || !result.type) {
-        const liffState = params.get("liff.state");
-        if (liffState) {
-          try {
-            const stateParams = new URLSearchParams(liffState);
-            stateParams.forEach((value, key) => {
-              result[key] = value;
-            });
-            
-            // 處理 liff.state 中的 recordId 參數（注意大寫 I）
-            if (result.recordId && !result.id) {
-              result.id = result.recordId;
-              console.log("Converting recordId to id from liff.state:", result.id);
-            }
-          } catch (error) {
-            console.error("Failed to parse liff.state", error);
+        try {
+          const context = liff.getContext();
+          console.log("LIFF context for parameters:", context);
+          
+          // 某些 LIFF 版本可能在 context 中包含 query 參數
+          // 使用類型斷言來處理可能的 query 屬性
+          interface ExtendedContext {
+            query?: Record<string, string>;
           }
+          
+          const contextWithQuery = context as unknown as ExtendedContext;
+          if (contextWithQuery && contextWithQuery.query) {
+            Object.entries(contextWithQuery.query).forEach(([key, value]) => {
+              if (typeof value === 'string') {
+                result[key] = value;
+                console.log(`Parameter from LIFF context: ${key}=${value}`);
+              }
+            });
+          }
+        } catch (contextError) {
+          console.error("Failed to get parameters from LIFF context:", contextError);
         }
       }
       
@@ -267,6 +335,21 @@ export function getLiffUrlParams() {
     params.forEach((value, key) => {
       result[key] = value;
     });
+    
+    // 檢查 liff.state 參數
+    const liffState = params.get("liff.state");
+    if (liffState) {
+      try {
+        console.log("Found liff.state in URL (bypass mode):", liffState);
+        const stateParams = new URLSearchParams(liffState);
+        stateParams.forEach((value, key) => {
+          result[key] = value;
+          console.log(`Extracted from liff.state (bypass mode): ${key}=${value}`);
+        });
+      } catch (error) {
+        console.error("Failed to parse liff.state in bypass mode", error);
+      }
+    }
     
     // 處理 recordId 參數，轉換為 id（注意大寫 I）
     if (result.recordId && !result.id) {
@@ -289,6 +372,7 @@ export function getLiffUrlParams() {
     result.userId = "U08946a96a3892561e1c3baa589ffeaee";
     console.log("Using default userId in bypass mode:", result.userId);
     
+    console.log("Final parameters in bypass mode:", result);
     return result;
   }
   
