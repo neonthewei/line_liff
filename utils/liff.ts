@@ -10,6 +10,7 @@ const BYPASS_LIFF = DEV_MODE && (process.env.NEXT_PUBLIC_BYPASS_LIFF === "true")
 // LIFF IDs for different pages
 const LIFF_ID_TRANSACTIONS = process.env.NEXT_PUBLIC_LIFF_ID_TRANSACTIONS;
 const LIFF_ID_TRANSACTION = process.env.NEXT_PUBLIC_LIFF_ID_TRANSACTION;
+const LIFF_ID_ANALYSE = process.env.NEXT_PUBLIC_LIFF_ID_ANALYSE;
 
 // 獲取當前頁面的 LIFF ID
 export function getLiffId(): string {
@@ -22,6 +23,11 @@ export function getLiffId(): string {
   
   if (path.includes('/transaction') && !path.includes('/transactions')) {
     return LIFF_ID_TRANSACTION || '';
+  }
+  
+  if (path.includes('/analyse')) {
+    // 分析頁面使用專用的 LIFF ID
+    return LIFF_ID_ANALYSE || '';
   }
   
   // 默認使用交易列表頁的 LIFF ID
