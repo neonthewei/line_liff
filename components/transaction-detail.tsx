@@ -14,12 +14,16 @@ import {
   ArrowLeft,
   Share2,
 } from "lucide-react";
-import { initializeLiff, closeLiff, getLiffUrlParams } from "@/utils/liff";
+import { initializeLiff, closeLiff, getLiffUrlParams, navigateInLiff } from "@/utils/liff";
 import liff from "@line/liff";
 import { useRouter } from "next/navigation";
 import { Transaction } from "@/types/transaction";
 import { fetchTransactionById, updateTransactionApi, deleteTransactionApi } from "@/utils/api";
 import { shareTransactionToFriends } from "@/utils/line-messaging";
+
+// 開發模式標誌 - 設置為 true 可以在本地開發時繞過 LIFF 初始化
+const DEV_MODE = process.env.NODE_ENV === "development";
+const BYPASS_LIFF = DEV_MODE && (process.env.NEXT_PUBLIC_BYPASS_LIFF === "true");
 
 // 預設類別選項
 const defaultCategories = [
@@ -110,6 +114,29 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
         const liffInitialized = await initializeLiff();
         console.log("LIFF initialization result:", liffInitialized);
         setIsLiffInitialized(liffInitialized);
+        
+        // 檢查 LIFF 是否已登入，如果未登入或 token 已過期，則重新登入
+        if (liffInitialized && !BYPASS_LIFF && typeof liff !== 'undefined') {
+          try {
+            // 嘗試獲取 access token 來檢查是否有效
+            const token = liff.getAccessToken();
+            if (!token) {
+              console.log("No access token found, attempting to login");
+              liff.login();
+              return;
+            }
+            console.log("Access token exists, continuing");
+          } catch (tokenError) {
+            console.error("Error getting access token, may be expired:", tokenError);
+            console.log("Attempting to re-login");
+            try {
+              liff.login();
+              return;
+            } catch (loginError) {
+              console.error("Failed to re-login:", loginError);
+            }
+          }
+        }
         
         // 獲取 URL 參數
         const params = getLiffUrlParams();
@@ -689,6 +716,36 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
     setEditFixedInterval("");
   };
 
+  const handleBackToList = () => {
+    // 使用 LIFF 導航回列表頁
+    try {
+      // 檢查 LIFF 是否已初始化
+      if (isLiffInitialized && liff.isInClient()) {
+        // 檢查 token 是否有效
+        try {
+          const token = liff.getAccessToken();
+          if (!token) {
+            console.log("Access token 不存在，使用普通導航");
+            window.location.href = "/";
+            return;
+          }
+        } catch (tokenError) {
+          console.error("獲取 access token 失敗，可能已過期", tokenError);
+          console.log("使用普通導航");
+          window.location.href = "/";
+          return;
+        }
+      }
+      
+      // 使用 LIFF 導航
+      navigateInLiff("/");
+    } catch (error) {
+      console.error("導航回列表頁失敗", error);
+      // 如果 LIFF 導航失敗，使用普通導航
+      window.location.href = "/";
+    }
+  };
+
   if (isLoading)
     return (
       <div className="flex justify-center items-center h-screen">載入中...</div>
@@ -790,6 +847,16 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
         onClick={() => setDebugClickCount(prev => prev + 1)}
       />
       <div className="w-full max-w-md mx-auto pb-6 relative z-10">
+        {/* 添加返回按鈕 */}
+        <div className="px-[20px] pt-[20px]">
+          <button 
+            onClick={handleBackToList}
+            className="flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm hover:bg-gray-50 active:bg-gray-100 transition-colors"
+            aria-label="返回列表頁"
+          >
+            <ArrowLeft size={20} className="text-gray-600" />
+          </button>
+        </div>
  
         <div className="space-y-4 px-[20px] mt-[20px]">
           {/* 類別 */}

@@ -214,10 +214,37 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
     
     // 在 LIFF 客戶端中使用 openWindow 並設置 external 為 true
     if (isInitialized && !BYPASS_LIFF && liff.isInClient()) {
-      liff.openWindow({
-        url: url.toString(),
-        external: true
-      });
+      // 檢查 LIFF 是否已登入，如果未登入或 token 已過期，則重新登入
+      try {
+        // 嘗試獲取 access token 來檢查是否有效
+        const token = liff.getAccessToken();
+        if (!token) {
+          console.log("No access token found, attempting to login");
+          liff.login({
+            redirectUri: url.toString()
+          });
+          return;
+        }
+        
+        // 正常導航
+        liff.openWindow({
+          url: url.toString(),
+          external: true
+        });
+      } catch (error) {
+        console.error("Error during navigation, token may be expired:", error);
+        // 如果出錯（可能是 token 過期），嘗試重新登入
+        console.log("Attempting to re-login");
+        try {
+          liff.login({
+            redirectUri: url.toString()
+          });
+        } catch (loginError) {
+          console.error("Failed to re-login:", loginError);
+          // 如果重新登入失敗，嘗試直接導航
+          window.location.href = url.toString();
+        }
+      }
     } else {
       window.location.href = url.toString();
     }

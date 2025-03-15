@@ -76,6 +76,22 @@ export default function Home() {
         
         // 用戶已登入，獲取用戶資料
         try {
+          // 先檢查 access token 是否有效
+          try {
+            const token = window.liff.getAccessToken();
+            if (!token) {
+              console.log("Access token 不存在，重新登入");
+              window.liff.login();
+              return;
+            }
+            console.log("Access token 存在，繼續獲取用戶資料");
+          } catch (tokenError) {
+            console.error("獲取 access token 失敗，可能已過期", tokenError);
+            console.log("嘗試重新登入");
+            window.liff.login();
+            return;
+          }
+          
           const profile = await window.liff.getProfile();
           console.log("成功獲取用戶資料:", profile);
           
@@ -88,6 +104,22 @@ export default function Home() {
           }
         } catch (profileError) {
           console.error("獲取用戶資料失敗", profileError);
+          
+          // 檢查是否是 token 過期錯誤
+          if (profileError instanceof Error && 
+              profileError.message && 
+              (profileError.message.includes("expired") || 
+               profileError.message.includes("token"))) {
+            console.log("Access token 已過期，嘗試重新登入");
+            // 嘗試重新登入
+            try {
+              window.liff.login();
+              return;
+            } catch (loginError) {
+              console.error("重新登入失敗", loginError);
+            }
+          }
+          
           setError("無法獲取用戶資料，請確保您已登入LINE並授權應用程式");
           setShowDebug(true);
         }
