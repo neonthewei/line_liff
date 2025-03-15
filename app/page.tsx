@@ -36,6 +36,7 @@ export default function Home() {
   const [showDebug, setShowDebug] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [errorLogs, setErrorLogs] = useState<string[]>([]);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   // 初始化控制台捕獲
   useEffect(() => {
@@ -150,6 +151,15 @@ export default function Home() {
   const handleTabChange = (tab: "general" | "fixed") => {
     console.log(`切換標籤至: ${tab}`);
     setActiveTab(tab);
+    if (isCollapsed) {
+      setIsCollapsed(false);
+    }
+  };
+
+  // 處理收起/展開明細
+  const handleToggleCollapse = () => {
+    console.log(`${isCollapsed ? "展開" : "收起"}明細`);
+    setIsCollapsed(!isCollapsed);
   };
 
   // 處理交易點擊，使用 LIFF 導航
@@ -209,7 +219,12 @@ export default function Home() {
               isLoading={isLoading} 
             />
 
-            <TabSelector activeTab={activeTab} onTabChange={handleTabChange} />
+            <TabSelector 
+              activeTab={activeTab} 
+              onTabChange={handleTabChange} 
+              onToggleCollapse={handleToggleCollapse}
+              isCollapsed={isCollapsed}
+            />
 
             {error ? (
               <div className="mt-4 space-y-4">
@@ -237,6 +252,7 @@ export default function Home() {
                   currentDate={currentDate} 
                   activeTab={activeTab}
                   isLoading={isLoading}
+                  isCollapsed={isCollapsed}
                   onTransactionClick={handleTransactionClick}
                 />
                 <div className="mt-8 text-center">

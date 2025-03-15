@@ -81,6 +81,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("success");
   const [isSharing, setIsSharing] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const router = useRouter();
 
   // Mark component as mounted on client-side
@@ -279,25 +280,40 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
 
   const handleDelete = async () => {
     if (!transaction) return;
-    if (confirm("確定要刪除這筆交易嗎？")) {
-      try {
-        const success = await deleteTransactionApi(transaction.id, transaction.type);
+    // 顯示自定義確認視窗，而不是使用系統的 confirm
+    setShowDeleteModal(true);
+  };
 
-        if (success) {
-          // 刪除成功後直接關閉 LIFF 視窗
+  const confirmDelete = async () => {
+    if (!transaction) return;
+    try {
+      // 關閉確認視窗
+      setShowDeleteModal(false);
+      
+      const success = await deleteTransactionApi(transaction.id, transaction.type);
+
+      if (success) {
+        // 檢查是否在 LIFF 環境中
+        if (liff.isInClient()) {
+          // 在 LIFF 環境中，直接關閉 LIFF 視窗
           closeLiff();
-          // 如果不在 LIFF 環境中，則導航回首頁
-          if (!liff.isInClient()) {
-            router.push("/");
-          }
         } else {
-          showToastNotification("刪除失敗，請稍後再試", "error");
+          // 不在 LIFF 環境中，顯示成功通知後導航回首頁
+          showToastNotification("刪除成功", "success", 1500, () => {
+            router.push("/");
+          });
         }
-      } catch (error) {
-        console.error("刪除交易失敗", error);
+      } else {
         showToastNotification("刪除失敗，請稍後再試", "error");
       }
+    } catch (error) {
+      console.error("刪除交易失敗", error);
+      showToastNotification("刪除失敗，請稍後再試", "error");
     }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteModal(false);
   };
 
   const handleConfirm = async () => {
@@ -306,9 +322,24 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
       const success = await updateTransactionApi(transaction);
 
       if (success) {
-        // 更新成功後直接關閉 LIFF 視窗
-        closeLiff();
-        // 如果不在 LIFF 環境中，不做任何操作
+        // 檢查當前頁面路徑，判斷是否在編輯頁
+        const isEditPage = typeof window !== 'undefined' && window.location.pathname.includes('/edit');
+        
+        // 如果是在編輯頁，更新後跳回帳目細項頁
+        if (isEditPage) {
+          // 導航回交易詳情頁
+          router.push(`/transaction/${transaction.id}?type=${transaction.type}`);
+          return;
+        }
+        
+        // 檢查是否在 LIFF 環境中
+        if (liff.isInClient()) {
+          // 在 LIFF 環境中，直接關閉 LIFF 視窗
+          closeLiff();
+        } else {
+          // 不在 LIFF 環境中，直接導航回列表頁，不顯示成功通知
+          router.push("/");
+        }
       } else {
         showToastNotification("儲存失敗，請稍後再試", "error");
       }
@@ -355,9 +386,12 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
   // 儲存日期
   const handleSaveDate = async (date: Date) => {
     if (!transaction) return;
+    
+    // Use UTC date components to avoid timezone issues
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
     const day = date.getDate();
+    
     const formattedDate = `${year}年${month.toString().padStart(2, "0")}月${day
       .toString()
       .padStart(2, "0")}日`;
@@ -717,6 +751,41 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
         </div>
       )}
       
+      {/* 刪除確認視窗 */}
+      {showDeleteModal && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 animate-fadeIn"
+          onClick={cancelDelete}
+        >
+          <div 
+            className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-xl transform animate-scaleInStatic"
+            onClick={(e) => e.stopPropagation()} // 防止點擊內容區域時關閉視窗
+          >
+            <div className="text-center mb-4">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
+                <Trash2 className="h-6 w-6 text-red-500" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">確定要刪除嗎？</h3>
+              <p className="text-sm text-gray-500">此操作無法復原，刪除後資料將永久消失。</p>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={cancelDelete}
+                className="flex-1 py-2 rounded-xl bg-gray-200 text-gray-700 font-medium transition-all duration-150 active:bg-gray-300"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="flex-1 py-2 rounded-xl bg-red-500 text-white font-medium transition-all duration-150 active:bg-red-600"
+              >
+                確定刪除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div className="fixed inset-0 z-0 bg-[#F1F2F5]"
         onClick={() => setDebugClickCount(prev => prev + 1)}
       />
@@ -769,7 +838,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                           {isCategoryEditMode ? (
                             // 編輯模式下點擊刪除類別
                             <button
-                              className="w-full h-full flex items-center justify-center"
+                              className="w-full h-full flex items-center justify-center active:bg-gray-300 active:scale-[0.98] transition-all duration-150"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleDeleteCategory(category);
@@ -779,13 +848,13 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                               <span>{category}</span>
                               <X
                                 size={18}
-                                className="absolute right-2 animate-fadeIn hover:text-red-500 transition-colors duration-200"
+                                className="absolute right-2 animate-fadeInUp hover:text-red-500 transition-colors duration-200"
                               />
                             </button>
                           ) : (
                             // 非編輯模式下點擊選擇類別
                             <button
-                              className="w-full h-full"
+                              className="w-full h-full active:bg-opacity-80 active:scale-[0.98] transition-all duration-150"
                               onClick={() => handleSelectCategory(category)}
                             >
                               {category}
@@ -797,7 +866,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                       {/* 新增類別按鈕，僅在編輯模式顯示 */}
                       {isCategoryEditMode && (
                         <button
-                          className="py-2 rounded-xl text-center bg-blue-100 text-blue-600 flex items-center justify-center transition-all duration-300 ease-in-out animate-scaleIn"
+                          className="py-2 rounded-xl text-center bg-blue-100 text-blue-600 flex items-center justify-center transition-all duration-300 ease-in-out animate-scaleIn active:bg-blue-200 active:scale-[0.98]"
                           onClick={handleAddCategory}
                         >
                           <Plus size={16} className="mr-1 animate-pulse-once" />
@@ -810,21 +879,21 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                     <button
                       className={`w-full py-2 rounded-xl flex items-center justify-center transition-all duration-300 ease-in-out transform ${
                         isCategoryEditMode
-                          ? "bg-blue-100 text-blue-600"
-                          : "bg-gray-100 text-gray-600"
+                          ? "bg-blue-100 text-blue-600 active:bg-blue-200 active:scale-[0.98]"
+                          : "bg-gray-100 text-gray-600 active:bg-gray-200 active:scale-[0.98]"
                       }`}
                       onClick={handleToggleCategoryEditMode}
                     >
                       <div className="flex items-center justify-center transition-all duration-300 ease-in-out">
                         {isCategoryEditMode ? (
                           <>
-                            <Check size={16} className="mr-1 animate-fadeIn" />
-                            <span className="animate-fadeIn">完成</span>
+                            <Check size={16} className="mr-1 animate-fadeInUp" />
+                            <span className="animate-fadeInUp">完成</span>
                           </>
                         ) : (
                           <>
-                            <Edit size={16} className="mr-1 animate-fadeIn" />
-                            <span className="animate-fadeIn">編輯</span>
+                            <Edit size={16} className="mr-1 animate-fadeInUp" />
+                            <span className="animate-fadeInUp">編輯</span>
                           </>
                         )}
                       </div>
@@ -846,13 +915,13 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                       />
                       <div className="flex space-x-2">
                         <button
-                          className="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg"
+                          className="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg transition-all duration-150 active:bg-green-600 active:scale-[0.98]"
                           onClick={handleSaveNewCategory}
                         >
                           確定
                         </button>
                         <button
-                          className="flex-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg"
+                          className="flex-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg transition-all duration-150 active:bg-gray-300 active:scale-[0.98]"
                           onClick={handleCancelAddCategory}
                         >
                           取消
@@ -1023,20 +1092,20 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
               <span className="text-gray-600 pl-2">屬性</span>
               <div className="flex gap-2">
                 <button
-                  className={`px-6 py-1 rounded-xl min-w-[5rem] ${
+                  className={`px-6 py-1 rounded-xl min-w-[5rem] transition-all duration-150 ${
                     transaction.type === "expense"
-                      ? "bg-[#22c55e] text-white"
-                      : "bg-gray-200 text-gray-600"
+                      ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
+                      : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
                   }`}
                   onClick={() => handleTypeChange("expense")}
                 >
                   支出
                 </button>
                 <button
-                  className={`px-6 py-1 rounded-xl min-w-[5rem] ${
+                  className={`px-6 py-1 rounded-xl min-w-[5rem] transition-all duration-150 ${
                     transaction.type === "income"
-                      ? "bg-[#22c55e] text-white"
-                      : "bg-gray-200 text-gray-600"
+                      ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
+                      : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
                   }`}
                   onClick={() => handleTypeChange("income")}
                 >
@@ -1216,11 +1285,11 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                       {/* 頻率選擇 - 根據開關狀態決定是否禁用 */}
                       <div className="flex gap-1">
                         <button
-                          className={`px-3 py-1 rounded-xl text-sm ${
+                          className={`px-3 py-1 rounded-xl text-sm transition-all duration-150 ${
                             transaction.isFixed
                               ? transaction.fixedFrequency === "day"
-                                ? "bg-[#22c55e] text-white"
-                                : "bg-gray-200 text-gray-600"
+                                ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
+                                : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
                               : "bg-gray-100 text-gray-400 cursor-not-allowed"
                           }`}
                           onClick={() => {
@@ -1231,11 +1300,11 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                           日
                         </button>
                         <button
-                          className={`px-3 py-1 rounded-xl text-sm ${
+                          className={`px-3 py-1 rounded-xl text-sm transition-all duration-150 ${
                             transaction.isFixed
                               ? transaction.fixedFrequency === "week"
-                                ? "bg-[#22c55e] text-white"
-                                : "bg-gray-200 text-gray-600"
+                                ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
+                                : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
                               : "bg-gray-100 text-gray-400 cursor-not-allowed"
                           }`}
                           onClick={() => {
@@ -1246,11 +1315,11 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                           週
                         </button>
                         <button
-                          className={`px-3 py-1 rounded-xl text-sm ${
+                          className={`px-3 py-1 rounded-xl text-sm transition-all duration-150 ${
                             transaction.isFixed
                               ? transaction.fixedFrequency === "month"
-                                ? "bg-[#22c55e] text-white"
-                                : "bg-gray-200 text-gray-600"
+                                ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
+                                : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
                               : "bg-gray-100 text-gray-400 cursor-not-allowed"
                           }`}
                           onClick={() => {
@@ -1308,7 +1377,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
             {/* 確認按鈕 */}
             <button
               onClick={handleConfirm}
-              className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center"
+              className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
             >
               <Check size={20} className="mr-2" />
               完成
@@ -1317,7 +1386,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
             {/* 刪除按鈕 */}
             <button
               onClick={handleDelete}
-              className="w-full py-3 rounded-2xl bg-red-500 text-white flex items-center justify-center"
+              className="w-full py-3 rounded-2xl bg-red-500 text-white flex items-center justify-center transition-colors duration-150 active:bg-red-600"
             >
               <Trash2 size={20} className="mr-2" />
               刪除

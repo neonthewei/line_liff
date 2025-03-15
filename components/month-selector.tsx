@@ -46,7 +46,7 @@ export default function MonthSelector({ currentDate, onMonthChange }: MonthSelec
 
   return (
     <div className="mb-4 bg-white rounded-2xl shadow-sm overflow-hidden">
-      <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50" onClick={toggleOpen}>
+      <button className="w-full flex items-center justify-between px-4 py-3 active:bg-gray-100" onClick={toggleOpen}>
         <span className="font-medium text-lg text-gray-900">{formatMonth(currentDate)}</span>
         {isOpen ? <ChevronUp className="h-5 w-5 text-gray-500" /> : <ChevronDown className="h-5 w-5 text-gray-500" />}
       </button>
@@ -61,14 +61,14 @@ export default function MonthSelector({ currentDate, onMonthChange }: MonthSelec
           <div className="flex items-center justify-between mb-4 pt-2">
             <button
               onClick={handlePrevYear}
-              className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100"
+              className="w-10 h-10 flex items-center justify-center rounded-xl active:bg-gray-100"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
             <div className="text-xl font-bold">{year}</div>
             <button
               onClick={handleNextYear}
-              className="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100"
+              className="w-10 h-10 flex items-center justify-center rounded-xl active:bg-gray-100"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
@@ -83,7 +83,7 @@ export default function MonthSelector({ currentDate, onMonthChange }: MonthSelec
                   key={value}
                   onClick={() => handleSelectMonth(value)}
                   className={`py-3 px-4 rounded-xl text-base transition-all ${
-                    isSelected ? "bg-green-500 text-white font-medium" : "text-gray-600 hover:bg-gray-100"
+                    isSelected ? "bg-green-500 text-white font-medium" : "text-gray-600 active:bg-gray-100"
                   }`}
                 >
                   {label}

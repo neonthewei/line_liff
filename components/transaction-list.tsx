@@ -9,6 +9,7 @@ interface TransactionListProps {
   currentDate: Date
   activeTab: "general" | "fixed"
   isLoading?: boolean
+  isCollapsed?: boolean
   onTransactionClick: (id: string, type: string) => void
 }
 
@@ -17,6 +18,7 @@ export default function TransactionList({
   currentDate, 
   activeTab,
   isLoading = false,
+  isCollapsed = false,
   onTransactionClick 
 }: TransactionListProps) {
   const [groupedTransactions, setGroupedTransactions] = useState<Record<string, Transaction[]>>({})
@@ -64,7 +66,9 @@ export default function TransactionList({
             const year = parseInt(match[1]);
             const month = parseInt(match[2]) - 1; // JavaScript 月份從 0 開始
             const day = parseInt(match[3]);
-            const txDate = new Date(year, month, day);
+            
+            // Create date at noon to avoid timezone issues
+            const txDate = new Date(Date.UTC(year, month, day, 12, 0, 0));
             date = txDate.toISOString().split("T")[0];
           } else {
             // 如果不是 "YYYY年MM月DD日" 格式，嘗試直接解析
@@ -122,27 +126,38 @@ export default function TransactionList({
               </div>
             </div>
 
-            <div className="divide-y divide-gray-100">
-              {expense.map((transaction, index) => (
-                <div 
-                  key={`expense-${transaction.id}-${index}`}
-                  onClick={() => onTransactionClick(transaction.id, transaction.type)}
-                  className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50"
-                >
-                  <div className="flex items-center">
-                    <div>
-                      <div className="font-medium text-green-600">{transaction.category}</div>
-                      {transaction.note && <div className="text-xs text-gray-500 mt-0.5">{transaction.note}</div>}
+            <div 
+              className={`transition-all ${
+                isCollapsed 
+                  ? 'duration-150 max-h-0 opacity-0 scale-y-95 origin-top' 
+                  : 'duration-300 max-h-[2000px] opacity-100 scale-y-100'
+              } overflow-hidden ease-in-out`}
+              style={{
+                transitionDelay: isCollapsed ? '100ms' : '200ms'
+              }}
+            >
+              <div className="divide-y divide-gray-100">
+                {expense.map((transaction, index) => (
+                  <div 
+                    key={`expense-${transaction.id}-${index}`}
+                    onClick={() => onTransactionClick(transaction.id, transaction.type)}
+                    className="px-4 py-3 flex items-center justify-between cursor-pointer active:bg-gray-100"
+                  >
+                    <div className="flex items-center">
+                      <div>
+                        <div className="font-medium text-green-600">{transaction.category}</div>
+                        {transaction.note && <div className="text-xs text-gray-500 mt-0.5">{transaction.note}</div>}
+                      </div>
+                    </div>
+                    <div className="flex items-center">
+                      <div className="text-lg font-bold mr-2 text-gray-900">
+                        -${Math.abs(transaction.amount).toFixed(2)}
+                      </div>
+                      <ChevronRight className="h-5 w-5 text-gray-400" />
                     </div>
                   </div>
-                  <div className="flex items-center">
-                    <div className="text-lg font-bold mr-2 text-gray-900">
-                      -${Math.abs(transaction.amount).toFixed(2)}
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-gray-400" />
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -159,27 +174,38 @@ export default function TransactionList({
               </div>
             </div>
 
-            <div className="divide-y divide-gray-100">
-              {income.map((transaction, index) => (
-                <div 
-                  key={`income-${transaction.id}-${index}`}
-                  onClick={() => onTransactionClick(transaction.id, transaction.type)}
-                  className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50"
-                >
-                  <div className="flex items-center">
-                    <div>
-                      <div className="font-medium text-blue-600">{transaction.category}</div>
-                      {transaction.note && <div className="text-xs text-gray-500 mt-0.5">{transaction.note}</div>}
+            <div 
+              className={`transition-all ${
+                isCollapsed 
+                  ? 'duration-150 max-h-0 opacity-0 scale-y-95 origin-top' 
+                  : 'duration-300 max-h-[2000px] opacity-100 scale-y-100'
+              } overflow-hidden ease-in-out`}
+              style={{
+                transitionDelay: isCollapsed ? '0ms' : '50ms'
+              }}
+            >
+              <div className="divide-y divide-gray-100">
+                {income.map((transaction, index) => (
+                  <div 
+                    key={`income-${transaction.id}-${index}`}
+                    onClick={() => onTransactionClick(transaction.id, transaction.type)}
+                    className="px-4 py-3 flex items-center justify-between cursor-pointer active:bg-gray-100"
+                  >
+                    <div className="flex items-center">
+                      <div>
+                        <div className="font-medium text-blue-600">{transaction.category}</div>
+                        {transaction.note && <div className="text-xs text-gray-500 mt-0.5">{transaction.note}</div>}
+                      </div>
+                    </div>
+                    <div className="flex items-center">
+                      <div className="text-lg font-bold mr-2 text-gray-900">
+                        +${transaction.amount.toFixed(2)}
+                      </div>
+                      <ChevronRight className="h-5 w-5 text-gray-400" />
                     </div>
                   </div>
-                  <div className="flex items-center">
-                    <div className="text-lg font-bold mr-2 text-gray-900">
-                      +${transaction.amount.toFixed(2)}
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-gray-400" />
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -200,7 +226,7 @@ export default function TransactionList({
     <div className="space-y-4 pb-4">
       {Object.entries(groupedTransactions)
         .sort(([dateA], [dateB]) => new Date(dateB).getTime() - new Date(dateA).getTime())
-        .map(([date, dayTransactions]) => {
+        .map(([date, dayTransactions], groupIndex) => {
           // 計算當天的支出和收入總額
           const expenseTotal = dayTransactions
             .filter((tx) => tx.type === "expense")
@@ -232,27 +258,38 @@ export default function TransactionList({
                 </div>
               </div>
 
-              <div className="divide-y divide-gray-100">
-                {dayTransactions.map((transaction, index) => (
-                  <div 
-                    key={`tx-${transaction.id}-${index}`}
-                    onClick={() => onTransactionClick(transaction.id, transaction.type)}
-                    className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50"
-                  >
-                    <div className="flex items-center">
-                      <div>
-                        <div className={`font-medium ${transaction.type === "expense" ? "text-green-600" : "text-blue-600"}`}>{transaction.category}</div>
-                        {transaction.note && <div className="text-xs text-gray-500 mt-0.5">{transaction.note}</div>}
+              <div 
+                className={`transition-all ${
+                  isCollapsed 
+                    ? 'duration-150 max-h-0 opacity-0 scale-y-95 origin-top' 
+                    : 'duration-300 max-h-[2000px] opacity-100 scale-y-100'
+                } overflow-hidden ease-in-out`}
+                style={{
+                  transitionDelay: isCollapsed ? '0ms' : `${groupIndex * 30}ms`
+                }}
+              >
+                <div className="divide-y divide-gray-100">
+                  {dayTransactions.map((transaction, index) => (
+                    <div 
+                      key={`tx-${transaction.id}-${index}`}
+                      onClick={() => onTransactionClick(transaction.id, transaction.type)}
+                      className="px-4 py-3 flex items-center justify-between cursor-pointer active:bg-gray-100"
+                    >
+                      <div className="flex items-center">
+                        <div>
+                          <div className={`font-medium ${transaction.type === "expense" ? "text-green-600" : "text-blue-600"}`}>{transaction.category}</div>
+                          {transaction.note && <div className="text-xs text-gray-500 mt-0.5">{transaction.note}</div>}
+                        </div>
+                      </div>
+                      <div className="flex items-center">
+                        <div className="text-lg font-bold mr-2 text-gray-900">
+                          {transaction.type === "expense" ? "-" : "+"}${Math.abs(transaction.amount).toFixed(2)}
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-gray-400" />
                       </div>
                     </div>
-                    <div className="flex items-center">
-                      <div className="text-lg font-bold mr-2 text-gray-900">
-                        {transaction.type === "expense" ? "-" : "+"}${Math.abs(transaction.amount).toFixed(2)}
-                      </div>
-                      <ChevronRight className="h-5 w-5 text-gray-400" />
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           );

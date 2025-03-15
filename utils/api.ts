@@ -328,10 +328,22 @@ export async function deleteTransactionApi(id: string, type: string): Promise<bo
  */
 function formatDate(dateString: string): string {
   try {
+    // Parse the ISO date string
     const date = new Date(dateString);
-    const year = date.getFullYear();
-    const month = (date.getMonth() + 1).toString().padStart(2, "0");
-    const day = date.getDate().toString().padStart(2, "0");
+    
+    // Create a new date object using UTC components to avoid timezone issues
+    // This ensures we get the exact date that was stored, regardless of local timezone
+    const utcYear = date.getUTCFullYear();
+    const utcMonth = date.getUTCMonth();
+    const utcDay = date.getUTCDate();
+    
+    // Create a new date with the UTC components but in local time
+    const localDate = new Date(utcYear, utcMonth, utcDay);
+    
+    const year = localDate.getFullYear();
+    const month = (localDate.getMonth() + 1).toString().padStart(2, "0");
+    const day = localDate.getDate().toString().padStart(2, "0");
+    
     return `${year}年${month}月${day}日`;
   } catch (error) {
     console.error("Error formatting date:", error);
@@ -355,7 +367,9 @@ function parseDateToISOString(formattedDate: string): string {
       const year = parseInt(match[1]);
       const month = parseInt(match[2]) - 1; // JavaScript 月份從 0 開始
       const day = parseInt(match[3]);
-      const date = new Date(year, month, day);
+      
+      // Create date at noon to avoid timezone issues
+      const date = new Date(Date.UTC(year, month, day, 12, 0, 0));
       return date.toISOString();
     }
     return new Date().toISOString();
