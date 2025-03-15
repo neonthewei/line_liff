@@ -361,10 +361,17 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
         
         // 檢查是否在 LIFF 環境中
         if (liff.isInClient()) {
-          // 在 LIFF 環境中，直接關閉 LIFF 視窗
-          closeLiff();
+          // 在 LIFF 環境中，不直接關閉 LIFF 視窗，而是導航回列表頁
+          try {
+            // 使用 LIFF 導航回列表頁
+            navigateInLiff("/");
+          } catch (navError) {
+            console.error("導航回列表頁失敗", navError);
+            // 如果導航失敗，嘗試關閉 LIFF 視窗
+            closeLiff();
+          }
         } else {
-          // 不在 LIFF 環境中，直接導航回列表頁，不顯示成功通知
+          // 不在 LIFF 環境中，直接導航回列表頁
           router.push("/");
         }
       } else {
@@ -716,36 +723,6 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
     setEditFixedInterval("");
   };
 
-  const handleBackToList = () => {
-    // 使用 LIFF 導航回列表頁
-    try {
-      // 檢查 LIFF 是否已初始化
-      if (isLiffInitialized && liff.isInClient()) {
-        // 檢查 token 是否有效
-        try {
-          const token = liff.getAccessToken();
-          if (!token) {
-            console.log("Access token 不存在，使用普通導航");
-            window.location.href = "/";
-            return;
-          }
-        } catch (tokenError) {
-          console.error("獲取 access token 失敗，可能已過期", tokenError);
-          console.log("使用普通導航");
-          window.location.href = "/";
-          return;
-        }
-      }
-      
-      // 使用 LIFF 導航
-      navigateInLiff("/");
-    } catch (error) {
-      console.error("導航回列表頁失敗", error);
-      // 如果 LIFF 導航失敗，使用普通導航
-      window.location.href = "/";
-    }
-  };
-
   if (isLoading)
     return (
       <div className="flex justify-center items-center h-screen">載入中...</div>
@@ -847,17 +824,6 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
         onClick={() => setDebugClickCount(prev => prev + 1)}
       />
       <div className="w-full max-w-md mx-auto pb-6 relative z-10">
-        {/* 添加返回按鈕 */}
-        <div className="px-[20px] pt-[20px]">
-          <button 
-            onClick={handleBackToList}
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm hover:bg-gray-50 active:bg-gray-100 transition-colors"
-            aria-label="返回列表頁"
-          >
-            <ArrowLeft size={20} className="text-gray-600" />
-          </button>
-        </div>
- 
         <div className="space-y-4 px-[20px] mt-[20px]">
           {/* 類別 */}
           <div className="bg-white rounded-2xl p-4 shadow-sm">
