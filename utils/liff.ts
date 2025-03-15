@@ -226,18 +226,37 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
   url.searchParams.append("_t", Date.now().toString());
   
   if (isInitialized && !BYPASS_LIFF && liff.isInClient()) {
-    // 嘗試獲取 access token 來檢查是否有效
-    const token = liff.getAccessToken();
-    if (!token) {
-      console.log("No access token found, attempting to login");
-      liff.login({
-        redirectUri: url.toString()
+    try {
+      // 嘗試獲取 access token 來檢查是否有效
+      const token = liff.getAccessToken();
+      if (!token) {
+        console.log("No access token found, attempting to login");
+        liff.login({
+          redirectUri: url.toString()
+        });
+        return;
+      }
+      
+      // 使用 liff.openWindow 但確保設置 external: false
+      // 這應該可以避免 "Switched to ... app" 提示
+      liff.openWindow({
+        url: url.toString(),
+        external: false
       });
-      return;
+    } catch (error) {
+      console.error("Error during navigation, token may be expired:", error);
+      // 如果出錯（可能是 token 過期），嘗試重新登入
+      console.log("Attempting to re-login");
+      try {
+        liff.login({
+          redirectUri: url.toString()
+        });
+      } catch (loginError) {
+        console.error("Failed to re-login:", loginError);
+        // 如果重新登入失敗，嘗試直接導航
+        window.location.href = url.toString();
+      }
     }
-    
-    // 使用 window.location.href 替代 liff.openWindow
-    window.location.href = url.toString();
   } else {
     window.location.href = url.toString();
   }
