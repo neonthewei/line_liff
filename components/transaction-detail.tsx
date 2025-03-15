@@ -305,6 +305,32 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
     }, duration);
   };
 
+  // 導航回列表頁的輔助函數
+  const navigateBackToList = () => {
+    // 檢查是否在 LINE 環境中
+    if (typeof window !== 'undefined') {
+      // 檢查是否是從 LINE LIFF 打開的
+      const isFromLiff = window.location.href.includes('liff.line.me') || 
+                        (liff.isInClient && liff.isInClient());
+      
+      console.log("Is from LIFF:", isFromLiff);
+      console.log("Current URL:", window.location.href);
+      
+      if (isFromLiff) {
+        // 如果是從 LINE LIFF 打開的，使用 closeLiff() 關閉視窗
+        console.log("Closing LIFF window");
+        closeLiff();
+      } else {
+        // 如果不是從 LINE LIFF 打開的，使用普通導航
+        console.log("Using normal navigation");
+        window.location.href = "/";
+      }
+    } else {
+      // 在 SSR 環境中，使用 router 導航
+      router.push("/");
+    }
+  };
+
   const handleDelete = async () => {
     if (!transaction) return;
     // 顯示自定義確認視窗，而不是使用系統的 confirm
@@ -320,16 +346,8 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
       const success = await deleteTransactionApi(transaction.id, transaction.type);
 
       if (success) {
-        // 檢查是否在 LIFF 環境中
-        if (liff.isInClient()) {
-          // 在 LIFF 環境中，直接關閉 LIFF 視窗
-          closeLiff();
-        } else {
-          // 不在 LIFF 環境中，顯示成功通知後導航回首頁
-          showToastNotification("刪除成功", "success", 1500, () => {
-            router.push("/");
-          });
-        }
+        // 顯示成功通知
+        showToastNotification("刪除成功", "success", 800, navigateBackToList);
       } else {
         showToastNotification("刪除失敗，請稍後再試", "error");
       }
@@ -360,17 +378,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
         }
         
         // 顯示成功通知
-        showToastNotification("儲存成功", "success", 1000, () => {
-          // 在通知顯示後執行導航
-          // 檢查是否在 LIFF 環境中
-          if (liff.isInClient()) {
-            // 在 LIFF 環境中，直接使用 window.location.href 導航
-            window.location.href = "/";
-          } else {
-            // 不在 LIFF 環境中，使用 router 導航
-            router.push("/");
-          }
-        });
+        showToastNotification("儲存成功", "success", 800, navigateBackToList);
       } else {
         showToastNotification("儲存失敗，請稍後再試", "error");
       }

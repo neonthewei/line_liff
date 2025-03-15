@@ -106,14 +106,41 @@ export async function initializeLiff() {
 
 // 關閉 LIFF 視窗
 export function closeLiff() {
+  console.log("Attempting to close LIFF window");
+  
   // Skip if not initialized or not in LIFF browser
-  if (!isInitialized || BYPASS_LIFF) {
+  if (!isInitialized) {
+    console.log("LIFF not initialized, skipping close");
+    return;
+  }
+  
+  if (BYPASS_LIFF) {
+    console.log("LIFF bypassed in development mode, skipping close");
     return;
   }
 
-  // Only close if in LIFF client
-  if (liff.isInClient()) {
-    liff.closeWindow();
+  try {
+    // Check if liff is available
+    if (typeof liff === 'undefined') {
+      console.log("LIFF is undefined, cannot close window");
+      return;
+    }
+    
+    // Check if isInClient method exists
+    if (typeof liff.isInClient !== 'function') {
+      console.log("liff.isInClient is not a function, cannot check if in client");
+      return;
+    }
+    
+    // Only close if in LIFF client
+    if (liff.isInClient()) {
+      console.log("In LIFF client, closing window");
+      liff.closeWindow();
+    } else {
+      console.log("Not in LIFF client, cannot close window");
+    }
+  } catch (error) {
+    console.error("Error closing LIFF window:", error);
   }
 }
 
@@ -185,81 +212,45 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
     console.error("Failed to save parameters to localStorage:", storageError);
   }
   
-  // 如果需要切換 LIFF ID，則使用外部瀏覽器打開
-  if (isTransactionToList || isListToTransaction) {
-    console.log("Switching LIFF ID, using external navigation");
-    console.log("Current path:", currentPath);
-    console.log("Target path:", targetPath);
-    
-    // 確保參數被正確添加到 URL 中
-    // 對於 LIFF 外部導航，我們需要確保參數被正確傳遞
-    
-    // 創建一個包含所有參數的 liff.state 字符串
-    if (Object.keys(params).length > 0) {
-      // 將參數添加到 liff.state 中，以確保它們在跨 LIFF 上下文時被保留
-      const stateParams = new URLSearchParams();
-      Object.entries(params).forEach(([key, value]) => {
-        stateParams.append(key, value);
-      });
-      
-      // 將 liff.state 添加到 URL 中
-      url.searchParams.append("liff.state", stateParams.toString());
-      console.log("Added liff.state to URL:", stateParams.toString());
-    }
-    
-    // 在 URL 中添加時間戳以避免緩存問題
-    url.searchParams.append("_t", Date.now().toString());
-    
-    console.log("Final URL for external navigation:", url.toString());
-    
-    // 在 LIFF 客戶端中使用 openWindow 並設置 external 為 true
-    if (isInitialized && !BYPASS_LIFF && liff.isInClient()) {
-      // 檢查 LIFF 是否已登入，如果未登入或 token 已過期，則重新登入
-      try {
-        // 嘗試獲取 access token 來檢查是否有效
-        const token = liff.getAccessToken();
-        if (!token) {
-          console.log("No access token found, attempting to login");
-          liff.login({
-            redirectUri: url.toString()
-          });
-          return;
-        }
-        
-        // 正常導航
-        liff.openWindow({
-          url: url.toString(),
-          external: true
-        });
-      } catch (error) {
-        console.error("Error during navigation, token may be expired:", error);
-        // 如果出錯（可能是 token 過期），嘗試重新登入
-        console.log("Attempting to re-login");
-        try {
-          liff.login({
-            redirectUri: url.toString()
-          });
-        } catch (loginError) {
-          console.error("Failed to re-login:", loginError);
-          // 如果重新登入失敗，嘗試直接導航
-          window.location.href = url.toString();
-        }
-      }
-    } else {
-      window.location.href = url.toString();
-    }
-    return;
-  }
-  
-  // 如果不需要切換 LIFF ID，則使用普通導航
-  console.log("Using standard navigation (same LIFF context)");
+  // 修改：即使需要切換 LIFF ID，也使用內部導航 (external: false)
+  console.log("Using internal navigation (same LIFF context)");
   console.log("Final URL:", url.toString());
   
+  // 在 URL 中添加時間戳以避免緩存問題
+  url.searchParams.append("_t", Date.now().toString());
+  
   if (isInitialized && !BYPASS_LIFF && liff.isInClient()) {
-    liff.openWindow({
-      url: url.toString(),
-      external: false
-    });
+    // 檢查 LIFF 是否已登入，如果未登入或 token 已過期，則重新登入
+    try {
+      // 嘗試獲取 access token 來檢查是否有效
+      const token = liff.getAccessToken();
+      if (!token) {
+        console.log("No access token found, attempting to login");
+        liff.login({
+          redirectUri: url.toString()
+        });
+        return;
+      }
+      
+      // 修改：始終使用 external: false 保持在 LIFF 內部導航
+      liff.openWindow({
+        url: url.toString(),
+        external: false
+      });
+    } catch (error) {
+      console.error("Error during navigation, token may be expired:", error);
+      // 如果出錯（可能是 token 過期），嘗試重新登入
+      console.log("Attempting to re-login");
+      try {
+        liff.login({
+          redirectUri: url.toString()
+        });
+      } catch (loginError) {
+        console.error("Failed to re-login:", loginError);
+        // 如果重新登入失敗，嘗試直接導航
+        window.location.href = url.toString();
+      }
+    }
   } else {
     window.location.href = url.toString();
   }
