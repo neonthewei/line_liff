@@ -246,9 +246,6 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
   console.log("Using internal navigation (same LIFF context)");
   console.log("Final URL:", url.toString());
   
-  // 在 URL 中添加時間戳以避免緩存問題
-  url.searchParams.append("_t", Date.now().toString());
-  
   // 立即執行導航，不使用 setTimeout
   // 這樣可以確保導航在任何狀態更新之前發生
   try {
