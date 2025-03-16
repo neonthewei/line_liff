@@ -3,7 +3,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, 
   CartesianGrid, Tooltip, ResponsiveContainer 
 } from "recharts";
-import { ViewType } from './month-selector';
+import { ViewType } from './analysis-month-selector';
 
 type ChartComponentsProps = {
   categoryData: any[];
@@ -152,8 +152,8 @@ const ChartComponents: React.FC<ChartComponentsProps> = ({
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis 
                   dataKey={activeView === "month" ? "day" : "month"} 
-                  tick={{ fontSize: 12 }}
-                  interval="preserveEnd"
+                  tick={{ fontSize: activeView === "month" ? 12 : 11 }}
+                  interval={activeView === "month" ? "preserveEnd" : 0}
                   tickMargin={10}
                   axisLine={{ stroke: '#E5E7EB' }}
                   tickLine={false}
@@ -223,4 +223,4 @@ const ChartComponents: React.FC<ChartComponentsProps> = ({
   );
 };
 
-export default ChartComponents; 
+export default ChartComponents;

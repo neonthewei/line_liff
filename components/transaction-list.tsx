@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useMemo, memo, useRef } from "react"
-import { ChevronRight } from "lucide-react"
+import { ChevronRight, Bug } from "lucide-react"
 import type { Transaction } from "@/types/transaction"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -12,15 +12,18 @@ interface TransactionListProps {
   isLoading?: boolean
   isCollapsed?: boolean
   onTransactionClick: (id: string, type: string) => void
+  showDebugInfo?: boolean
 }
 
 // Memoized transaction item component to prevent unnecessary re-renders
 const TransactionItem = memo(({ 
   transaction, 
-  onTransactionClick 
+  onTransactionClick,
+  showDebugInfo = false
 }: { 
   transaction: Transaction, 
-  onTransactionClick: (id: string, type: string) => void 
+  onTransactionClick: (id: string, type: string) => void,
+  showDebugInfo?: boolean
 }) => {
   // Add refs to track touch position for distinguishing between scrolls and taps
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -122,6 +125,15 @@ const TransactionItem = memo(({
         <div>
           <div className={`font-medium ${transaction.type === "expense" ? "text-green-600" : "text-blue-600"}`}>{transaction.category}</div>
           {transaction.note && <div className="text-xs text-gray-500 mt-0.5">{transaction.note}</div>}
+          
+          {/* Debug information */}
+          {showDebugInfo && (
+            <div className="text-xs text-gray-400 mt-1 bg-gray-50 p-1 rounded">
+              <div>ID: {transaction.id}</div>
+              <div>Raw Date: {transaction.date}</div>
+              <div>Is Fixed: {transaction.isFixed ? 'Yes' : 'No'}</div>
+            </div>
+          )}
         </div>
       </div>
       <div className="flex items-center">
@@ -186,12 +198,25 @@ export default function TransactionList({
   activeTab,
   isLoading = false,
   isCollapsed = false,
-  onTransactionClick 
+  onTransactionClick,
+  showDebugInfo = false
 }: TransactionListProps) {
   const [isProcessing, setIsProcessing] = useState(true);
   const prevTabRef = useRef(activeTab);
   const isTabSwitching = prevTabRef.current !== activeTab;
   const transactionClickedRef = useRef(false);
+  const [isDebugMode, setIsDebugMode] = useState(showDebugInfo);
+  
+  // Update debug mode when prop changes
+  useEffect(() => {
+    setIsDebugMode(showDebugInfo);
+  }, [showDebugInfo]);
+  
+  // Toggle debug mode function
+  const handleToggleDebugMode = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsDebugMode(prev => !prev);
+  };
   
   // Update the previous tab reference when activeTab changes
   useEffect(() => {
@@ -293,61 +318,107 @@ export default function TransactionList({
     setIsProcessing(true);
   }, [isLoading, transactions]);  // Remove activeTab dependency to prevent loading on tab change
 
+  // Debug panel component
+  const DebugPanel = () => {
+    if (!isDebugMode) return null;
+    
+    return (
+      <div className="bg-gray-100 p-3 mb-4 rounded-lg text-xs font-mono">
+        <div className="font-bold mb-2">Debug Information:</div>
+        <div>Active Tab: {activeTab}</div>
+        <div>Is Loading: {isLoading ? 'Yes' : 'No'}</div>
+        <div>Is Processing: {isProcessing ? 'Yes' : 'No'}</div>
+        <div>Is Tab Switching: {isTabSwitching ? 'Yes' : 'No'}</div>
+        <div>Is Collapsed: {isCollapsed ? 'Yes' : 'No'}</div>
+        <div>Transaction Count: {transactions.length}</div>
+        <div>Current Date: {currentDate.toISOString()}</div>
+        {activeTab === "general" && (
+          <div>Date Groups: {Object.keys(groupedTransactions).length}</div>
+        )}
+        {activeTab === "fixed" && (
+          <>
+            <div>Fixed Expenses: {groupedFixedTransactions.expense.length}</div>
+            <div>Fixed Income: {groupedFixedTransactions.income.length}</div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // Debug toggle button
+  const DebugToggle = () => (
+    <button
+      onClick={handleToggleDebugMode}
+      className="fixed bottom-4 right-4 bg-gray-800 text-white p-2 rounded-full shadow-lg z-50 flex items-center justify-center"
+      aria-label={isDebugMode ? "Hide Debug Info" : "Show Debug Info"}
+    >
+      <Bug className="h-5 w-5" />
+    </button>
+  );
+
   // Render enhanced skeleton loaders during loading, but not during tab switching or transaction clicks
   if ((isLoading || isProcessing) && !isTabSwitching && !transactionClickedRef.current) {
     // Different skeleton layouts based on active tab
     if (activeTab === "fixed") {
       return (
-        <div className="space-y-4 pb-4">
-          {/* Expense skeleton */}
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-            <HeaderSkeleton />
-            <div className="divide-y divide-gray-100">
-              {[1, 2, 3].map((item) => (
-                <TransactionSkeleton key={`skeleton-expense-${item}`} />
-              ))}
+        <>
+          <DebugPanel />
+          <div className="space-y-4 pb-4">
+            {/* Expense skeleton */}
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <HeaderSkeleton />
+              <div className="divide-y divide-gray-100">
+                {[1, 2, 3].map((item) => (
+                  <TransactionSkeleton key={`skeleton-expense-${item}`} />
+                ))}
+              </div>
+            </div>
+            
+            {/* Income skeleton */}
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <HeaderSkeleton />
+              <div className="divide-y divide-gray-100">
+                {[1, 2].map((item) => (
+                  <TransactionSkeleton key={`skeleton-income-${item}`} />
+                ))}
+              </div>
             </div>
           </div>
-          
-          {/* Income skeleton */}
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-            <HeaderSkeleton />
-            <div className="divide-y divide-gray-100">
-              {[1, 2].map((item) => (
-                <TransactionSkeleton key={`skeleton-income-${item}`} />
-              ))}
-            </div>
-          </div>
-        </div>
+          <DebugToggle />
+        </>
       );
     }
     
     // General tab skeleton
     return (
-      <div className="space-y-4 pb-4">
-        {/* Generate different numbers of skeletons for each group to make it look more natural */}
-        {[
-          { id: 1, items: 3 },
-          { id: 2, items: 2 },
-          { id: 3, items: 4 }
-        ].map((group) => (
-          <div 
-            key={`skeleton-group-${group.id}`} 
-            className="bg-white rounded-2xl shadow-sm overflow-hidden"
-            style={{ 
-              ...fadeInAnimation,
-              animationDelay: `${(group.id - 1) * 50}ms` // Reduced from 100ms to 50ms
-            }}
-          >
-            <HeaderSkeleton />
-            <div className="divide-y divide-gray-100">
-              {Array.from({ length: group.items }).map((_, item) => (
-                <TransactionSkeleton key={`skeleton-item-${group.id}-${item}`} />
-              ))}
+      <>
+        <DebugPanel />
+        <div className="space-y-4 pb-4">
+          {/* Generate different numbers of skeletons for each group to make it look more natural */}
+          {[
+            { id: 1, items: 3 },
+            { id: 2, items: 2 },
+            { id: 3, items: 4 }
+          ].map((group) => (
+            <div 
+              key={`skeleton-group-${group.id}`} 
+              className="bg-white rounded-2xl shadow-sm overflow-hidden"
+              style={{ 
+                ...fadeInAnimation,
+                animationDelay: `${(group.id - 1) * 50}ms` // Reduced from 100ms to 50ms
+              }}
+            >
+              <HeaderSkeleton />
+              <div className="divide-y divide-gray-100">
+                {Array.from({ length: group.items }).map((_, item) => (
+                  <TransactionSkeleton key={`skeleton-item-${group.id}-${item}`} />
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+        <DebugToggle />
+      </>
     );
   }
 
@@ -357,148 +428,35 @@ export default function TransactionList({
     
     if (expense.length === 0 && income.length === 0) {
       return (
-        <div className="text-center py-8 text-gray-500 animate-fadeIn">
-          本月尚無固定記錄
-        </div>
+        <>
+          <DebugPanel />
+          <div className="text-center py-8 text-gray-500 animate-fadeIn">
+            本月尚無固定記錄
+          </div>
+          <DebugToggle />
+        </>
       );
     }
     
     return (
-      <div className="space-y-4 pb-4">
-        {/* 固定支出區塊 - Apply consistent animation style */}
-        {expense.length > 0 && (
-          <div 
-            className="bg-white rounded-2xl shadow-sm overflow-hidden" 
-            style={{ 
-              ...fadeInAnimation,
-              animationDelay: '30ms' // Reduced from 50ms to 30ms
-            }}
-          >
-            <div className="flex justify-between items-center px-5 py-3 border-b">
-              <div className="font-medium text-base text-gray-700">
-                固定支出
-              </div>
-              <div className="text-xs text-gray-500">
-                -${expense.reduce((sum, tx) => sum + Math.abs(tx.amount), 0).toFixed(2)}
-              </div>
-            </div>
-
+      <>
+        <DebugPanel />
+        <div className="space-y-4 pb-4">
+          {/* 固定支出區塊 - Apply consistent animation style */}
+          {expense.length > 0 && (
             <div 
-              className={`transition-all ${
-                isCollapsed 
-                  ? 'duration-150 max-h-0 opacity-0 scale-y-95 origin-top' 
-                  : 'duration-300 max-h-[2000px] opacity-100 scale-y-100'
-              } overflow-hidden ease-in-out`}
-              style={{
-                transitionDelay: isCollapsed ? '100ms' : '100ms' // Reduced from 200ms to 100ms
-              }}
-            >
-              <div className="divide-y divide-gray-100">
-                {expense.map((transaction, index) => (
-                  <TransactionItem 
-                    key={`expense-${transaction.id}-${index}`}
-                    transaction={transaction}
-                    onTransactionClick={handleTransactionClick}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 固定收入區塊 - Apply consistent animation style */}
-        {income.length > 0 && (
-          <div 
-            className="bg-white rounded-2xl shadow-sm overflow-hidden" 
-            style={{ 
-              ...fadeInAnimation,
-              animationDelay: '80ms' // Reduced from 150ms to 80ms
-            }}
-          >
-            <div className="flex justify-between items-center px-5 py-3 border-b">
-              <div className="font-medium text-base text-gray-700">
-                固定收入
-              </div>
-              <div className="text-xs text-gray-500">
-                +${income.reduce((sum, tx) => sum + tx.amount, 0).toFixed(2)}
-              </div>
-            </div>
-
-            <div 
-              className={`transition-all ${
-                isCollapsed 
-                  ? 'duration-150 max-h-0 opacity-0 scale-y-95 origin-top' 
-                  : 'duration-300 max-h-[2000px] opacity-100 scale-y-100'
-              } overflow-hidden ease-in-out`}
-              style={{
-                transitionDelay: isCollapsed ? '0ms' : '50ms'
-              }}
-            >
-              <div className="divide-y divide-gray-100">
-                {income.map((transaction, index) => (
-                  <TransactionItem 
-                    key={`income-${transaction.id}-${index}`}
-                    transaction={transaction}
-                    onTransactionClick={handleTransactionClick}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // 一般記錄的顯示邏輯（按日期分組）
-  if (Object.keys(groupedTransactions).length === 0) {
-    return (
-      <div className="text-center py-8 text-gray-500 animate-fadeIn">
-        本月尚無一般記錄
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4 pb-4">
-      {Object.entries(groupedTransactions)
-        .sort(([dateA], [dateB]) => new Date(dateB).getTime() - new Date(dateA).getTime())
-        .map(([date, dayTransactions], groupIndex) => {
-          // 計算當天的支出和收入總額
-          const expenseTotal = dayTransactions
-            .filter((tx) => tx.type === "expense")
-            .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
-
-          const incomeTotal = dayTransactions
-            .filter((tx) => tx.type === "income")
-            .reduce((sum, tx) => sum + tx.amount, 0);
-
-          const formattedDate = new Date(date).toLocaleDateString("zh-TW", {
-            month: "2-digit",
-            day: "2-digit",
-            weekday: "short",
-          });
-
-          return (
-            <div 
-              key={`date-${date}`} 
               className="bg-white rounded-2xl shadow-sm overflow-hidden" 
               style={{ 
                 ...fadeInAnimation,
-                animationDelay: `${groupIndex * 30}ms` // Reduced from 50ms to 30ms
+                animationDelay: '30ms' // Reduced from 50ms to 30ms
               }}
             >
               <div className="flex justify-between items-center px-5 py-3 border-b">
                 <div className="font-medium text-base text-gray-700">
-                  {formattedDate}
+                  固定支出
                 </div>
                 <div className="text-xs text-gray-500">
-                  {/* 計算淨額（收入減去支出） */}
-                  {(() => {
-                    const netAmount = incomeTotal - expenseTotal;
-                    const prefix = netAmount >= 0 ? "+" : "-";
-                    return `${prefix}$${Math.abs(netAmount).toFixed(2)}`;
-                  })()}
+                  -${expense.reduce((sum, tx) => sum + Math.abs(tx.amount), 0).toFixed(2)}
                 </div>
               </div>
 
@@ -509,22 +467,154 @@ export default function TransactionList({
                     : 'duration-300 max-h-[2000px] opacity-100 scale-y-100'
                 } overflow-hidden ease-in-out`}
                 style={{
-                  transitionDelay: isCollapsed ? '0ms' : `${groupIndex * 20}ms` // Reduced from 30ms to 20ms
+                  transitionDelay: isCollapsed ? '100ms' : '100ms' // Reduced from 200ms to 100ms
                 }}
               >
                 <div className="divide-y divide-gray-100">
-                  {dayTransactions.map((transaction, index) => (
+                  {expense.map((transaction, index) => (
                     <TransactionItem 
-                      key={`tx-${transaction.id}-${index}`}
+                      key={`expense-${transaction.id}-${index}`}
                       transaction={transaction}
                       onTransactionClick={handleTransactionClick}
+                      showDebugInfo={isDebugMode}
                     />
                   ))}
                 </div>
               </div>
             </div>
-          );
-        })}
-    </div>
+          )}
+
+          {/* 固定收入區塊 - Apply consistent animation style */}
+          {income.length > 0 && (
+            <div 
+              className="bg-white rounded-2xl shadow-sm overflow-hidden" 
+              style={{ 
+                ...fadeInAnimation,
+                animationDelay: '80ms' // Reduced from 150ms to 80ms
+              }}
+            >
+              <div className="flex justify-between items-center px-5 py-3 border-b">
+                <div className="font-medium text-base text-gray-700">
+                  固定收入
+                </div>
+                <div className="text-xs text-gray-500">
+                  +${income.reduce((sum, tx) => sum + tx.amount, 0).toFixed(2)}
+                </div>
+              </div>
+
+              <div 
+                className={`transition-all ${
+                  isCollapsed 
+                    ? 'duration-150 max-h-0 opacity-0 scale-y-95 origin-top' 
+                    : 'duration-300 max-h-[2000px] opacity-100 scale-y-100'
+                } overflow-hidden ease-in-out`}
+                style={{
+                  transitionDelay: isCollapsed ? '0ms' : '50ms'
+                }}
+              >
+                <div className="divide-y divide-gray-100">
+                  {income.map((transaction, index) => (
+                    <TransactionItem 
+                      key={`income-${transaction.id}-${index}`}
+                      transaction={transaction}
+                      onTransactionClick={handleTransactionClick}
+                      showDebugInfo={isDebugMode}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        <DebugToggle />
+      </>
+    );
+  }
+
+  // 一般記錄的顯示邏輯（按日期分組）
+  if (Object.keys(groupedTransactions).length === 0) {
+    return (
+      <>
+        <DebugPanel />
+        <div className="text-center py-8 text-gray-500 animate-fadeIn">
+          本月尚無一般記錄
+        </div>
+        <DebugToggle />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <DebugPanel />
+      <div className="space-y-4 pb-4">
+        {Object.entries(groupedTransactions)
+          .sort(([dateA], [dateB]) => new Date(dateB).getTime() - new Date(dateA).getTime())
+          .map(([date, dayTransactions], groupIndex) => {
+            // 計算當天的支出和收入總額
+            const expenseTotal = dayTransactions
+              .filter((tx) => tx.type === "expense")
+              .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+
+            const incomeTotal = dayTransactions
+              .filter((tx) => tx.type === "income")
+              .reduce((sum, tx) => sum + tx.amount, 0);
+
+            const formattedDate = new Date(date).toLocaleDateString("zh-TW", {
+              month: "2-digit",
+              day: "2-digit",
+              weekday: "short",
+            });
+
+            return (
+              <div 
+                key={`date-${date}`} 
+                className="bg-white rounded-2xl shadow-sm overflow-hidden" 
+                style={{ 
+                  ...fadeInAnimation,
+                  animationDelay: `${groupIndex * 30}ms` // Reduced from 50ms to 30ms
+                }}
+              >
+                <div className="flex justify-between items-center px-5 py-3 border-b">
+                  <div className="font-medium text-base text-gray-700">
+                    {formattedDate}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {/* 計算淨額（收入減去支出） */}
+                    {(() => {
+                      const netAmount = incomeTotal - expenseTotal;
+                      const prefix = netAmount >= 0 ? "+" : "-";
+                      return `${prefix}$${Math.abs(netAmount).toFixed(2)}`;
+                    })()}
+                  </div>
+                </div>
+
+                <div 
+                  className={`transition-all ${
+                    isCollapsed 
+                      ? 'duration-150 max-h-0 opacity-0 scale-y-95 origin-top' 
+                      : 'duration-300 max-h-[2000px] opacity-100 scale-y-100'
+                  } overflow-hidden ease-in-out`}
+                  style={{
+                    transitionDelay: isCollapsed ? '0ms' : `${groupIndex * 20}ms` // Reduced from 30ms to 20ms
+                  }}
+                >
+                  <div className="divide-y divide-gray-100">
+                    {dayTransactions.map((transaction, index) => (
+                      <TransactionItem 
+                        key={`tx-${transaction.id}-${index}`}
+                        transaction={transaction}
+                        onTransactionClick={handleTransactionClick}
+                        showDebugInfo={isDebugMode}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+      </div>
+      <DebugToggle />
+    </>
   );
 } 
