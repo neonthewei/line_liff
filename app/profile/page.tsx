@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { initializeLiff } from "@/utils/liff";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { ChevronRight, BookOpen, MessageSquare, Download, CreditCard, MessageCircle } from "lucide-react";
+import { ChevronRight, BookOpen, MessageSquare, Download, CreditCard, MessageCircle, Copy, CheckCircle } from "lucide-react";
 import Link from "next/link";
 
 interface UserProfile {
@@ -19,6 +19,7 @@ export default function ProfilePage() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const initLiff = async () => {
@@ -152,6 +153,20 @@ export default function ProfilePage() {
     initLiff();
   }, []);
 
+  // 複製用戶 ID 到剪貼簿
+  const handleCopyUserId = () => {
+    if (userProfile?.userId) {
+      navigator.clipboard.writeText(userProfile.userId)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000); // 2秒後重置複製狀態
+        })
+        .catch(err => {
+          console.error('無法複製到剪貼簿:', err);
+        });
+    }
+  };
+
   // 功能項目列表
   const menuItems = [
     {
@@ -212,7 +227,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
+    <div className="flex flex-col min-h-screen bg-white">
       {/* 用戶資料區塊 */}
       <div className="bg-white p-6 flex flex-col items-center">
         <Avatar className="h-24 w-24 mb-4">
@@ -225,21 +240,42 @@ export default function ProfilePage() {
           )}
         </Avatar>
         <h1 className="text-xl font-semibold mb-1">{userProfile?.displayName}</h1>
-        <p className="text-sm text-gray-500 mb-2">
-          已記帳 {localStorage.getItem('daysUsed') || "0"} 天
-        </p>
+        
+        {/* 用戶 ID 和複製按鈕 */}
+        <div className="flex items-center mb-6 bg-gray-50 rounded-full px-3 py-1">
+          <p className="text-xs text-gray-500 mr-2 truncate max-w-[180px]">
+            {userProfile?.userId}
+          </p>
+          <button 
+            onClick={handleCopyUserId}
+            className="text-gray-400 hover:text-green-500 transition-colors focus:outline-none"
+            aria-label="複製用戶ID"
+            tabIndex={0}
+          >
+            {copied ? (
+              <CheckCircle className="h-4 w-4 text-green-500" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </button>
+        </div>
+        
+        {/* 已記帳天數 - 使用綠色設計，圓角小一點 */}
+        <div className="bg-green-500 text-white px-5 py-2 rounded-xl shadow-sm flex items-center justify-center">
+          <span className="text-sm font-medium">已記帳 </span>
+          <span className="text-xl font-bold mx-1">{localStorage.getItem('daysUsed') || "0"}</span>
+          <span className="text-sm font-medium"> 天</span>
+        </div>
       </div>
 
       {/* 功能選單區塊 */}
       <div className="flex-1 p-4">
-        <div className="bg-white rounded-lg overflow-hidden shadow-sm">
+        <div className="bg-white rounded-lg overflow-hidden">
           {menuItems.map((item, index) => (
             <Link
               key={item.id}
               href={item.href}
-              className={`flex items-center justify-between p-4 hover:bg-gray-50 transition-colors ${
-                index !== menuItems.length - 1 ? "border-b border-gray-100" : ""
-              }`}
+              className={`flex items-center justify-between p-4 bg-gray-50 mb-2 rounded-2xl hover:bg-gray-100 transition-colors`}
               aria-label={item.name}
               tabIndex={0}
             >
