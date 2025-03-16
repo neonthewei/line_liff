@@ -249,18 +249,16 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
   // 在 URL 中添加時間戳以避免緩存問題
   url.searchParams.append("_t", Date.now().toString());
   
-  // 使用 setTimeout 確保導航在當前事件循環結束後執行
-  // 這有助於防止在導航前觸發其他事件處理程序
-  setTimeout(() => {
+  // 立即執行導航，不使用 setTimeout
+  // 這樣可以確保導航在任何狀態更新之前發生
+  try {
+    // 使用 window.location.replace 而不是 window.location.href
+    // replace 方法不會在瀏覽器歷史中創建新條目，可能有助於減少重定向問題
     if (isInitialized && !BYPASS_LIFF && (liff.isInClient() || isInLineInternalBrowser)) {
       // 如果在 LINE 內部瀏覽器中，跳過 token 檢查
       if (isInLineInternalBrowser) {
         console.log("In LINE internal browser, skipping token check");
-        window.location.href = url.toString();
-        // 重置導航標誌
-        setTimeout(() => {
-          isNavigating = false;
-        }, 500);
+        window.location.replace(url.toString());
         return;
       }
       
@@ -271,24 +269,24 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
         liff.login({
           redirectUri: url.toString()
         });
-        // 重置導航標誌
-        setTimeout(() => {
-          isNavigating = false;
-        }, 500);
         return;
       }
       
-      // 使用 window.location.href 替代 liff.openWindow
-      window.location.href = url.toString();
+      // 使用 window.location.replace 替代 window.location.href
+      window.location.replace(url.toString());
     } else {
-      window.location.href = url.toString();
+      window.location.replace(url.toString());
     }
-    
-    // 重置導航標誌
-    setTimeout(() => {
-      isNavigating = false;
-    }, 500);
-  }, 50);
+  } catch (error) {
+    console.error("Navigation error:", error);
+    // 如果導航失敗，重置導航標誌
+    isNavigating = false;
+  }
+  
+  // 設置一個超時，以防導航沒有發生
+  setTimeout(() => {
+    isNavigating = false;
+  }, 1000);
 }
 
 // 獲取 LIFF URL 參數
