@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useCallback, Suspense, lazy } from "react
 import { useRouter } from "next/navigation";
 import { initializeLiff } from "@/utils/liff";
 import type { Transaction } from "@/types/transaction";
-import MonthSelector, { ViewType } from "@/components/month-selector";
+import AnalysisMonthSelector, { ViewType } from "@/components/analysis-month-selector";
 import { fetchTransactionsByUser, fetchMonthlySummary, fetchYearlySummary } from "@/utils/api";
 import { initConsoleCapture, getCaptureLogs, getCaptureErrors, addCustomLog } from "@/utils/debug";
 import { 
@@ -518,7 +518,7 @@ export default function AnalysePage() {
   return (
     <main className="container mx-auto max-w-md p-5 min-h-screen">
       {/* 月份選擇器 */}
-      <MonthSelector 
+      <AnalysisMonthSelector 
         currentDate={currentDate} 
         onMonthChange={handleMonthChange} 
         activeView={activeView}
