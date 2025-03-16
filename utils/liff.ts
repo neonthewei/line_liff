@@ -231,11 +231,43 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
     !window.navigator.userAgent.includes('LIFF');
   
   console.log("Is in LINE internal browser:", isInLineInternalBrowser);
-  console.log("Using internal navigation (same LIFF context)");
   console.log("Final URL:", url.toString());
   
-  // 在 URL 中添加時間戳以避免緩存問題
-  url.searchParams.append("_t", Date.now().toString());
+  // 防止重複導航
+  // 檢查當前 URL 是否已經包含相同的參數
+  const currentUrl = window.location.href;
+  const currentUrlObj = new URL(currentUrl);
+  
+  // 檢查是否是從列表到詳情頁的導航
+  if (isListToTransaction) {
+    // 在 URL 中添加時間戳以避免緩存問題，但使用固定的時間戳前綴
+    // 這樣可以防止每次生成不同的 URL 導致重複導航
+    const navTimestamp = Math.floor(Date.now() / 10000) * 10000; // 取整到最近的 10 秒
+    url.searchParams.set("_nav", navTimestamp.toString());
+    
+    // 檢查是否已經有一個導航正在進行中
+    const isNavigating = sessionStorage.getItem('isNavigating');
+    const lastNavTime = sessionStorage.getItem('lastNavTime');
+    const currentTime = Date.now();
+    
+    // 如果最近 1 秒內已經有一個導航，則忽略這次導航請求
+    if (isNavigating === 'true' && lastNavTime && (currentTime - parseInt(lastNavTime)) < 1000) {
+      console.log("Navigation already in progress, ignoring this request");
+      return;
+    }
+    
+    // 設置導航狀態
+    sessionStorage.setItem('isNavigating', 'true');
+    sessionStorage.setItem('lastNavTime', currentTime.toString());
+    
+    // 1 秒後重置導航狀態
+    setTimeout(() => {
+      sessionStorage.setItem('isNavigating', 'false');
+    }, 1000);
+  } else {
+    // 對於其他類型的導航，仍然添加時間戳以避免緩存問題
+    url.searchParams.append("_t", Date.now().toString());
+  }
   
   if (isInitialized && !BYPASS_LIFF && (liff.isInClient() || isInLineInternalBrowser)) {
     // 如果在 LINE 內部瀏覽器中，跳過 token 檢查

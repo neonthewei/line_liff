@@ -22,9 +22,28 @@ const TransactionItem = memo(({
   transaction: Transaction, 
   onTransactionClick: (id: string, type: string) => void 
 }) => {
+  // 使用 useRef 來追蹤最後一次點擊的時間
+  const lastClickTimeRef = useRef<number>(0);
+  
+  // 處理點擊事件，添加防抖動邏輯
+  const handleClick = () => {
+    const now = Date.now();
+    // 如果距離上次點擊不到 1000 毫秒，則忽略這次點擊
+    if (now - lastClickTimeRef.current < 1000) {
+      console.log("Click debounced, ignoring");
+      return;
+    }
+    
+    // 更新最後點擊時間
+    lastClickTimeRef.current = now;
+    
+    // 調用傳入的點擊處理函數
+    onTransactionClick(transaction.id, transaction.type);
+  };
+  
   return (
     <div 
-      onClick={() => onTransactionClick(transaction.id, transaction.type)}
+      onClick={handleClick}
       className="px-4 py-3 flex items-center justify-between cursor-pointer active:bg-gray-100"
     >
       <div className="flex items-center">
