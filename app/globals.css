@@ -123,6 +123,21 @@
   animation: pulse 0.3s ease-in-out;
 }
 
+/* Toast notification animations */
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translate(-50%, -20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes fadeOutUp {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, -20px); }
+}
+
+.animate-fadeInDown {
+  animation: fadeInDown 0.3s ease-out;
+}
+
 /* Hide scrollbar */
 ::-webkit-scrollbar {
   display: none;

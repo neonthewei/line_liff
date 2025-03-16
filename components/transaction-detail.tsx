@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   ChevronRight,
   Trash2,
@@ -18,9 +18,10 @@ import { initializeLiff, closeLiff, getLiffUrlParams, navigateInLiff } from "@/u
 import liff from "@line/liff";
 import { useRouter } from "next/navigation";
 import { Transaction } from "@/types/transaction";
-import { fetchTransactionById, updateTransactionApi, deleteTransactionApi } from "@/utils/api";
+import { fetchTransactionById, updateTransactionApi, deleteTransactionApi, clearTransactionCache } from "@/utils/api";
 import { shareTransactionToFriends } from "@/utils/line-messaging";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SUPABASE_URL, SUPABASE_KEY, parseDateToISOString } from "@/utils/api";
 
 // 開發模式標誌 - 設置為 true 可以在本地開發時繞過 LIFF 初始化
 const DEV_MODE = process.env.NODE_ENV === "development";
@@ -128,6 +129,19 @@ const ButtonsSkeleton = () => (
     <Skeleton className="h-12 w-full rounded-2xl animate-pulse-color" />
   </div>
 );
+
+async function getUserIdFromLiff(): Promise<string | null> {
+  try {
+    if (typeof window !== 'undefined' && window.liff && window.liff.isLoggedIn()) {
+      const profile = await window.liff.getProfile();
+      return profile.userId;
+    }
+    return null;
+  } catch (error) {
+    console.error("Error getting user ID from LIFF:", error);
+    return null;
+  }
+}
 
 export default function TransactionDetail({ onError }: TransactionDetailProps) {
   const [transaction, setTransaction] = useState<Transaction | null>(null);
@@ -352,14 +366,18 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
 
   const handleTypeChange = async (type: "expense" | "income") => {
     if (!transaction) return;
+    
+    // 如果類型沒有變化，不做任何操作
+    if (transaction.type === type) return;
+    
+    // 更新本地交易對象的類型和金額
     const updatedTransaction = {
       ...transaction,
       type,
-      amount:
-        type === "expense"
-          ? -Math.abs(transaction.amount)
-          : Math.abs(transaction.amount),
+      amount: type === "expense" ? -Math.abs(transaction.amount) : Math.abs(transaction.amount),
     };
+    
+    // 更新本地狀態
     setTransaction(updatedTransaction);
   };
 
@@ -369,10 +387,14 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
     setToastType(type);
     setShowToast(true);
     
+    // 延長顯示時間，確保動畫有足夠時間完成
     setTimeout(() => {
       setShowToast(false);
       if (callback) {
-        callback();
+        // 為回調函數添加額外延遲，確保淡出動畫完成後再執行
+        setTimeout(() => {
+          callback();
+        }, 300);
       }
     }, duration);
   };
@@ -436,23 +458,102 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
   const handleConfirm = async () => {
     if (!transaction) return;
     try {
-      const success = await updateTransactionApi(transaction);
-
-      if (success) {
-        // 檢查當前頁面路徑，判斷是否在編輯頁
-        const isEditPage = typeof window !== 'undefined' && window.location.pathname.includes('/edit');
+      // 檢查交易類型是否與原始類型不同
+      const originalType = getLiffUrlParams().type || "expense";
+      const hasTypeChanged = transaction.type !== originalType;
+      
+      if (hasTypeChanged) {
+        // 如果類型已更改，需要刪除舊交易並創建新交易
+        console.log("Transaction type changed, deleting old and creating new");
         
-        // 如果是在編輯頁，更新後跳回帳目細項頁
-        if (isEditPage) {
-          // 導航回交易詳情頁
-          router.push(`/transaction/${transaction.id}?type=${transaction.type}`);
+        // 先刪除原有的交易
+        const deleteSuccess = await deleteTransactionApi(transaction.id, originalType);
+        
+        if (!deleteSuccess) {
+          showToastNotification("儲存失敗，請稍後再試", "error");
           return;
+        }
+        
+        // 獲取用戶ID
+        const userId = await getUserIdFromLiff();
+        if (!userId) {
+          showToastNotification("無法獲取用戶ID，請重新登入", "error");
+          return;
+        }
+        
+        // 構建 API URL
+        const endpoint = transaction.type === "income" ? "incomes" : "expenses";
+        const url = `${SUPABASE_URL}/${endpoint}`;
+        
+        // 準備要創建的數據
+        const createData = {
+          user_id: userId,
+          category: transaction.category,
+          amount: Math.abs(transaction.amount),
+          datetime: parseDateToISOString(transaction.date),
+          memo: transaction.note,
+          is_fixed: transaction.isFixed,
+          frequency: transaction.fixedFrequency,
+          interval: transaction.fixedInterval,
+        };
+        
+        // 發送 API 請求創建新交易
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": SUPABASE_KEY,
+            "Prefer": "return=representation",
+          },
+          body: JSON.stringify(createData),
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Create error response body:", errorText);
+          showToastNotification("儲存失敗，請稍後再試", "error");
+          return;
+        }
+        
+        // 解析響應數據
+        const data = await response.json();
+        if (!data || data.length === 0) {
+          showToastNotification("儲存失敗，請稍後再試", "error");
+          return;
+        }
+        
+        // 清除緩存
+        if (userId) {
+          const match = transaction.date.match(/(\d+)年(\d+)月(\d+)日/);
+          if (match) {
+            const year = parseInt(match[1]);
+            const month = parseInt(match[2]);
+            clearTransactionCache(userId, year, month);
+          }
         }
         
         // 顯示成功通知
         showToastNotification("儲存成功", "success", 800, navigateBackToList);
       } else {
-        showToastNotification("儲存失敗，請稍後再試", "error");
+        // 如果類型沒有變化，使用正常的更新流程
+        const success = await updateTransactionApi(transaction);
+
+        if (success) {
+          // 檢查當前頁面路徑，判斷是否在編輯頁
+          const isEditPage = typeof window !== 'undefined' && window.location.pathname.includes('/edit');
+          
+          // 如果是在編輯頁，更新後跳回帳目細項頁
+          if (isEditPage) {
+            // 導航回交易詳情頁
+            router.push(`/transaction/${transaction.id}?type=${transaction.type}`);
+            return;
+          }
+          
+          // 顯示成功通知
+          showToastNotification("儲存成功", "success", 800, navigateBackToList);
+        } else {
+          showToastNotification("儲存失敗，請稍後再試", "error");
+        }
       }
     } catch (error) {
       console.error("儲存交易失敗", error);
@@ -863,16 +964,21 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
     <>
       {/* Toast 通知 */}
       {showToast && (
-        <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg transition-all duration-300 ${
-          toastType === "success" ? "bg-green-500 text-white" : "bg-red-500 text-white"
-        }`}>
+        <div 
+          className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg transition-all duration-300 animate-fadeInDown ${
+            toastType === "success" ? "bg-green-500 text-white" : "bg-red-500 text-white"
+          }`}
+          style={{
+            animation: 'fadeInDown 0.3s ease-out, fadeOutUp 0.3s ease-in forwards 2.5s'
+          }}
+        >
           <div className="flex items-center">
             {toastType === "success" ? (
-              <Check className="mr-2" size={18} />
+              <Check className="mr-2 animate-pulse" size={18} />
             ) : (
-              <X className="mr-2" size={18} />
+              <X className="mr-2 animate-pulse" size={18} />
             )}
-            <span>{toastMessage}</span>
+            <span className="animate-fadeIn">{toastMessage}</span>
           </div>
         </div>
       )}
