@@ -22,22 +22,13 @@ const TransactionItem = memo(({
   transaction: Transaction, 
   onTransactionClick: (id: string, type: string) => void 
 }) => {
-  // 使用 useRef 來追蹤最後一次點擊的時間
-  const lastClickTimeRef = useRef<number>(0);
-  
-  // 處理點擊事件，添加防抖動邏輯
-  const handleClick = () => {
-    const now = Date.now();
-    // 如果距離上次點擊不到 1000 毫秒，則忽略這次點擊
-    if (now - lastClickTimeRef.current < 1000) {
-      console.log("Click debounced, ignoring");
-      return;
-    }
+  // 處理點擊事件
+  const handleClick = (e: React.MouseEvent) => {
+    // 防止事件冒泡
+    e.preventDefault();
+    e.stopPropagation();
     
-    // 更新最後點擊時間
-    lastClickTimeRef.current = now;
-    
-    // 調用傳入的點擊處理函數
+    // 調用點擊處理函數
     onTransactionClick(transaction.id, transaction.type);
   };
   
@@ -45,6 +36,15 @@ const TransactionItem = memo(({
     <div 
       onClick={handleClick}
       className="px-4 py-3 flex items-center justify-between cursor-pointer active:bg-gray-100"
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick(e as unknown as React.MouseEvent);
+        }
+      }}
+      aria-label={`${transaction.category} ${transaction.type === "expense" ? "支出" : "收入"} ${Math.abs(transaction.amount).toFixed(2)}`}
     >
       <div className="flex items-center">
         <div>

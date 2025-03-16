@@ -12,6 +12,9 @@ const LIFF_ID_TRANSACTIONS = process.env.NEXT_PUBLIC_LIFF_ID_TRANSACTIONS;
 const LIFF_ID_TRANSACTION = process.env.NEXT_PUBLIC_LIFF_ID_TRANSACTION;
 const LIFF_ID_ANALYSE = process.env.NEXT_PUBLIC_LIFF_ID_ANALYSE;
 
+// 防止重複導航的標誌
+let isNavigating = false;
+
 // 獲取當前頁面的 LIFF ID
 export function getLiffId(): string {
   if (typeof window === 'undefined') {
@@ -164,6 +167,15 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
     return;
   }
   
+  // 防止重複導航
+  if (isNavigating) {
+    console.log("Navigation already in progress, ignoring request");
+    return;
+  }
+  
+  // 設置導航標誌
+  isNavigating = true;
+  
   // 記錄導航信息
   console.log("Navigating in LIFF");
   console.log("Target path:", path);
@@ -231,67 +243,52 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
     !window.navigator.userAgent.includes('LIFF');
   
   console.log("Is in LINE internal browser:", isInLineInternalBrowser);
+  console.log("Using internal navigation (same LIFF context)");
   console.log("Final URL:", url.toString());
   
-  // 防止重複導航
-  // 檢查當前 URL 是否已經包含相同的參數
-  const currentUrl = window.location.href;
-  const currentUrlObj = new URL(currentUrl);
+  // 在 URL 中添加時間戳以避免緩存問題
+  url.searchParams.append("_t", Date.now().toString());
   
-  // 檢查是否是從列表到詳情頁的導航
-  if (isListToTransaction) {
-    // 在 URL 中添加時間戳以避免緩存問題，但使用固定的時間戳前綴
-    // 這樣可以防止每次生成不同的 URL 導致重複導航
-    const navTimestamp = Math.floor(Date.now() / 10000) * 10000; // 取整到最近的 10 秒
-    url.searchParams.set("_nav", navTimestamp.toString());
-    
-    // 檢查是否已經有一個導航正在進行中
-    const isNavigating = sessionStorage.getItem('isNavigating');
-    const lastNavTime = sessionStorage.getItem('lastNavTime');
-    const currentTime = Date.now();
-    
-    // 如果最近 1 秒內已經有一個導航，則忽略這次導航請求
-    if (isNavigating === 'true' && lastNavTime && (currentTime - parseInt(lastNavTime)) < 1000) {
-      console.log("Navigation already in progress, ignoring this request");
-      return;
-    }
-    
-    // 設置導航狀態
-    sessionStorage.setItem('isNavigating', 'true');
-    sessionStorage.setItem('lastNavTime', currentTime.toString());
-    
-    // 1 秒後重置導航狀態
-    setTimeout(() => {
-      sessionStorage.setItem('isNavigating', 'false');
-    }, 1000);
-  } else {
-    // 對於其他類型的導航，仍然添加時間戳以避免緩存問題
-    url.searchParams.append("_t", Date.now().toString());
-  }
-  
-  if (isInitialized && !BYPASS_LIFF && (liff.isInClient() || isInLineInternalBrowser)) {
-    // 如果在 LINE 內部瀏覽器中，跳過 token 檢查
-    if (isInLineInternalBrowser) {
-      console.log("In LINE internal browser, skipping token check");
+  // 使用 setTimeout 確保導航在當前事件循環結束後執行
+  // 這有助於防止在導航前觸發其他事件處理程序
+  setTimeout(() => {
+    if (isInitialized && !BYPASS_LIFF && (liff.isInClient() || isInLineInternalBrowser)) {
+      // 如果在 LINE 內部瀏覽器中，跳過 token 檢查
+      if (isInLineInternalBrowser) {
+        console.log("In LINE internal browser, skipping token check");
+        window.location.href = url.toString();
+        // 重置導航標誌
+        setTimeout(() => {
+          isNavigating = false;
+        }, 500);
+        return;
+      }
+      
+      // 嘗試獲取 access token 來檢查是否有效
+      const token = liff.getAccessToken();
+      if (!token) {
+        console.log("No access token found, attempting to login");
+        liff.login({
+          redirectUri: url.toString()
+        });
+        // 重置導航標誌
+        setTimeout(() => {
+          isNavigating = false;
+        }, 500);
+        return;
+      }
+      
+      // 使用 window.location.href 替代 liff.openWindow
       window.location.href = url.toString();
-      return;
+    } else {
+      window.location.href = url.toString();
     }
     
-    // 嘗試獲取 access token 來檢查是否有效
-    const token = liff.getAccessToken();
-    if (!token) {
-      console.log("No access token found, attempting to login");
-      liff.login({
-        redirectUri: url.toString()
-      });
-      return;
-    }
-    
-    // 使用 window.location.href 替代 liff.openWindow
-    window.location.href = url.toString();
-  } else {
-    window.location.href = url.toString();
-  }
+    // 重置導航標誌
+    setTimeout(() => {
+      isNavigating = false;
+    }, 500);
+  }, 50);
 }
 
 // 獲取 LIFF URL 參數
