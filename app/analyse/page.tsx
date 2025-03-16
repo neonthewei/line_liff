@@ -111,14 +111,39 @@ export default function AnalysePage() {
         // 嘗試從 localStorage 獲取用戶 ID
         const storedUserId = localStorage.getItem('userId');
         if (storedUserId) {
+          console.log("Using stored user ID:", storedUserId);
           setUserId(storedUserId);
           addCustomLog(`使用存儲的用戶 ID: ${storedUserId}`);
+          
+          // 直接設置 LIFF 初始化完成，以便開始獲取數據
+          setIsLiffInitialized(true);
+          return;
+        } else {
+          console.log("No stored user ID found in localStorage");
+          
+          // 嘗試從 LIFF context 獲取用戶 ID
+          try {
+            if (window.liff && typeof window.liff.getContext === 'function') {
+              const context = window.liff.getContext();
+              console.log("LIFF Context for user ID:", context);
+              
+              if (context && context.userId) {
+                console.log("Found user ID in LIFF context:", context.userId);
+                setUserId(context.userId);
+                localStorage.setItem('userId', context.userId);
+                addCustomLog(`從 LIFF context 獲取用戶 ID: ${context.userId}`);
+                setIsLiffInitialized(true);
+                return;
+              }
+            }
+          } catch (contextError) {
+            console.error("Error getting LIFF context:", contextError);
+          }
+          
+          // 如果沒有存儲的用戶 ID，顯示提示
+          setError("請先在 LINE 應用程式中登入");
           return;
         }
-        
-        // 如果沒有存儲的用戶 ID，顯示提示
-        setError("請先在 LINE 應用程式中登入");
-        return;
       }
       
       // 檢查是否已登入
@@ -136,6 +161,7 @@ export default function AnalysePage() {
         // 存儲用戶 ID 到 localStorage
         try {
           localStorage.setItem('userId', profile.userId);
+          console.log("Saved user ID to localStorage:", profile.userId);
         } catch (storageError) {
           console.error("Failed to save user ID to localStorage:", storageError);
         }
@@ -157,7 +183,10 @@ export default function AnalysePage() {
 
   // 從緩存獲取數據或從API獲取
   const fetchData = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) {
+      console.log("No user ID available, cannot fetch data");
+      return;
+    }
     
     setIsLoading(true);
     try {
@@ -166,6 +195,7 @@ export default function AnalysePage() {
       const month = currentDate.getMonth() + 1;
       
       addCustomLog(`正在獲取 ${year}年${month}月 的交易數據`);
+      console.log(`Fetching data for user ${userId}, year ${year}, month ${month}`);
       
       // 檢查緩存
       const cacheKey = generateCacheKey(userId, year, month);
@@ -177,6 +207,7 @@ export default function AnalysePage() {
         // 檢查緩存是否過期
         if (Date.now() - timestamp < CACHE_EXPIRY) {
           addCustomLog(`使用緩存數據: ${cachedTransactions.length} 筆交易`);
+          console.log(`Using cached data: ${cachedTransactions.length} transactions`);
           setTransactions(cachedTransactions);
           setSummary(cachedSummary);
           setDataTimestamp(timestamp);
@@ -186,10 +217,13 @@ export default function AnalysePage() {
       }
       
       // 緩存不存在或已過期，從API獲取數據
+      console.log("Cache expired or not found, fetching from API");
       const transactionsData = await fetchTransactionsByUser(userId, year, month);
+      console.log(`Fetched ${transactionsData.length} transactions from API`);
       
       // 獲取月度摘要
       const summaryData = await fetchMonthlySummary(userId, year, month);
+      console.log("Fetched monthly summary:", summaryData);
       
       // 計算平均值 (假設一個月30天)
       const daysInMonth = new Date(year, month, 0).getDate();

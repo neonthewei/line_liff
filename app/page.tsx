@@ -55,6 +55,141 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
+  // 初始化 LIFF 和获取用戶ID
+  useEffect(() => {
+    const initLiff = async () => {
+      try {
+        // 檢測是否在 LINE 內部瀏覽器中
+        const isInLineInternalBrowser = typeof window !== 'undefined' && 
+          window.navigator.userAgent.includes('Line') && 
+          !window.navigator.userAgent.includes('LIFF');
+        
+        console.log("Is in LINE internal browser:", isInLineInternalBrowser);
+        
+        // 初始化 LIFF
+        const isInitialized = await initializeLiff();
+        setIsLiffInitialized(isInitialized);
+        
+        if (!isInitialized) {
+          throw new Error("LIFF 初始化失敗");
+        }
+        
+        // 如果在 LINE 內部瀏覽器中，跳過登入檢查
+        if (isInLineInternalBrowser) {
+          console.log("In LINE internal browser, skipping login check");
+          // 嘗試從 localStorage 獲取用戶 ID
+          const storedUserId = localStorage.getItem('userId');
+          if (storedUserId) {
+            console.log("Using stored user ID:", storedUserId);
+            setUserId(storedUserId);
+            addCustomLog(`使用存儲的用戶 ID: ${storedUserId}`);
+            
+            // 直接設置 LIFF 初始化完成，以便開始獲取數據
+            setIsLiffInitialized(true);
+            return;
+          } else {
+            console.log("No stored user ID found in localStorage");
+            
+            // 嘗試從 LIFF context 獲取用戶 ID
+            try {
+              if (window.liff && typeof window.liff.getContext === 'function') {
+                const context = window.liff.getContext();
+                console.log("LIFF Context for user ID:", context);
+                
+                if (context && context.userId) {
+                  console.log("Found user ID in LIFF context:", context.userId);
+                  setUserId(context.userId);
+                  localStorage.setItem('userId', context.userId);
+                  addCustomLog(`從 LIFF context 獲取用戶 ID: ${context.userId}`);
+                  setIsLiffInitialized(true);
+                  return;
+                }
+              }
+            } catch (contextError) {
+              console.error("Error getting LIFF context:", contextError);
+            }
+            
+            // 如果沒有存儲的用戶 ID，顯示提示
+            setError("請先在 LINE 應用程式中登入");
+            setShowDebug(true);
+            return;
+          }
+        }
+        
+        // 檢查是否已登入
+        if (!window.liff.isLoggedIn()) {
+          // 如果未登入，則導向登入
+          console.log("用戶未登入，導向登入頁面");
+          window.liff.login();
+          return;
+        }
+        
+        // 用戶已登入，獲取用戶資料
+        try {
+          // 先檢查 access token 是否有效
+          try {
+            const token = window.liff.getAccessToken();
+            if (!token) {
+              console.log("Access token 不存在，重新登入");
+              window.liff.login();
+              return;
+            }
+            console.log("Access token 存在，繼續獲取用戶資料");
+          } catch (tokenError) {
+            console.error("獲取 access token 失敗，可能已過期", tokenError);
+            console.log("嘗試重新登入");
+            window.liff.login();
+            return;
+          }
+          
+          const profile = await window.liff.getProfile();
+          console.log("成功獲取用戶資料:", profile);
+          
+          if (profile && profile.userId) {
+            setUserId(profile.userId);
+            // 存儲用戶 ID 到 localStorage
+            try {
+              localStorage.setItem('userId', profile.userId);
+              console.log("Saved user ID to localStorage:", profile.userId);
+            } catch (storageError) {
+              console.error("Failed to save user ID to localStorage:", storageError);
+            }
+            console.log("用戶 LINE ID:", profile.userId);
+            console.log("用戶名稱:", profile.displayName);
+          } else {
+            throw new Error("無法獲取用戶資料");
+          }
+        } catch (profileError) {
+          console.error("獲取用戶資料失敗", profileError);
+          
+          // 檢查是否是 token 過期錯誤
+          if (profileError instanceof Error && 
+              profileError.message && 
+              (profileError.message.includes("expired") || 
+               profileError.message.includes("token"))) {
+            console.log("Access token 已過期，嘗試重新登入");
+            // 嘗試重新登入
+            try {
+              window.liff.login();
+              return;
+            } catch (loginError) {
+              console.error("重新登入失敗", loginError);
+            }
+          }
+          
+          setError("無法獲取用戶資料，請確保您已登入LINE並授權應用程式");
+          setShowDebug(true);
+        }
+      } catch (error) {
+        console.error("LIFF 初始化失敗", error);
+        setError("LINE應用程式初始化失敗，請重新載入頁面或確認您的網路連接");
+        setShowDebug(true);
+      }
+    };
+
+    initLiff();
+  }, []);
+
   // 定義獲取數據的函數
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -62,6 +197,7 @@ export default function Home() {
     setError(null);
     
     if (!userId) {
+      console.log("No user ID available, cannot fetch data");
       setIsLoading(false);
       setIsDataLoading(false);
       return;
@@ -132,115 +268,6 @@ export default function Home() {
       fetchData();
     }
   }, [currentDate, userId, fetchData]);
-
-  // 初始化 LIFF 和获取用戶ID
-  useEffect(() => {
-    const initLiff = async () => {
-      try {
-        // 檢測是否在 LINE 內部瀏覽器中
-        const isInLineInternalBrowser = typeof window !== 'undefined' && 
-          window.navigator.userAgent.includes('Line') && 
-          !window.navigator.userAgent.includes('LIFF');
-        
-        console.log("Is in LINE internal browser:", isInLineInternalBrowser);
-        
-        // 初始化 LIFF
-        const isInitialized = await initializeLiff();
-        setIsLiffInitialized(isInitialized);
-        
-        if (!isInitialized) {
-          throw new Error("LIFF 初始化失敗");
-        }
-        
-        // 如果在 LINE 內部瀏覽器中，跳過登入檢查
-        if (isInLineInternalBrowser) {
-          console.log("In LINE internal browser, skipping login check");
-          // 嘗試從 localStorage 獲取用戶 ID
-          const storedUserId = localStorage.getItem('userId');
-          if (storedUserId) {
-            setUserId(storedUserId);
-            console.log("Using stored user ID:", storedUserId);
-            return;
-          }
-          
-          // 如果沒有存儲的用戶 ID，顯示提示
-          setError("請先在 LINE 應用程式中登入");
-          setShowDebug(true);
-          return;
-        }
-        
-        // 檢查是否已登入
-        if (!window.liff.isLoggedIn()) {
-          // 如果未登入，則導向登入
-          console.log("用戶未登入，導向登入頁面");
-          window.liff.login();
-          return;
-        }
-        
-        // 用戶已登入，獲取用戶資料
-        try {
-          // 先檢查 access token 是否有效
-          try {
-            const token = window.liff.getAccessToken();
-            if (!token) {
-              console.log("Access token 不存在，重新登入");
-              window.liff.login();
-              return;
-            }
-            console.log("Access token 存在，繼續獲取用戶資料");
-          } catch (tokenError) {
-            console.error("獲取 access token 失敗，可能已過期", tokenError);
-            console.log("嘗試重新登入");
-            window.liff.login();
-            return;
-          }
-          
-          const profile = await window.liff.getProfile();
-          console.log("成功獲取用戶資料:", profile);
-          
-          if (profile && profile.userId) {
-            setUserId(profile.userId);
-            // 存儲用戶 ID 到 localStorage
-            try {
-              localStorage.setItem('userId', profile.userId);
-            } catch (storageError) {
-              console.error("Failed to save user ID to localStorage:", storageError);
-            }
-            console.log("用戶 LINE ID:", profile.userId);
-            console.log("用戶名稱:", profile.displayName);
-          } else {
-            throw new Error("無法獲取用戶資料");
-          }
-        } catch (profileError) {
-          console.error("獲取用戶資料失敗", profileError);
-          
-          // 檢查是否是 token 過期錯誤
-          if (profileError instanceof Error && 
-              profileError.message && 
-              (profileError.message.includes("expired") || 
-               profileError.message.includes("token"))) {
-            console.log("Access token 已過期，嘗試重新登入");
-            // 嘗試重新登入
-            try {
-              window.liff.login();
-              return;
-            } catch (loginError) {
-              console.error("重新登入失敗", loginError);
-            }
-          }
-          
-          setError("無法獲取用戶資料，請確保您已登入LINE並授權應用程式");
-          setShowDebug(true);
-        }
-      } catch (error) {
-        console.error("LIFF 初始化失敗", error);
-        setError("LINE應用程式初始化失敗，請重新載入頁面或確認您的網路連接");
-        setShowDebug(true);
-      }
-    };
-
-    initLiff();
-  }, []);
 
   const handleMonthChange = (newDate: Date) => {
     console.log(`切換月份至: ${newDate.toISOString()}`);

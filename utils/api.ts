@@ -346,10 +346,27 @@ export async function updateTransactionApi(transaction: Transaction): Promise<bo
  */
 async function getUserIdFromLiff(): Promise<string | null> {
   try {
+    // 檢測是否在 LINE 內部瀏覽器中
+    const isInLineInternalBrowser = typeof window !== 'undefined' && 
+      window.navigator.userAgent.includes('Line') && 
+      !window.navigator.userAgent.includes('LIFF');
+    
+    // 如果在 LINE 內部瀏覽器中，嘗試從 localStorage 獲取用戶 ID
+    if (isInLineInternalBrowser) {
+      console.log("In LINE internal browser, getting user ID from localStorage");
+      const storedUserId = localStorage.getItem('userId');
+      if (storedUserId) {
+        console.log("Found stored user ID:", storedUserId);
+        return storedUserId;
+      }
+    }
+    
+    // 正常的 LIFF 流程
     if (typeof window !== 'undefined' && window.liff && window.liff.isLoggedIn()) {
       const profile = await window.liff.getProfile();
       return profile.userId;
     }
+    
     return null;
   } catch (error) {
     console.error("Error getting user ID from LIFF:", error);
