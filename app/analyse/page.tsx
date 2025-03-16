@@ -90,12 +90,35 @@ export default function AnalysePage() {
   // 初始化 LIFF - 使用 useCallback 優化
   const initLiff = useCallback(async () => {
     try {
+      // 檢測是否在 LINE 內部瀏覽器中
+      const isInLineInternalBrowser = typeof window !== 'undefined' && 
+        window.navigator.userAgent.includes('Line') && 
+        !window.navigator.userAgent.includes('LIFF');
+      
+      console.log("Is in LINE internal browser:", isInLineInternalBrowser);
+      
       // 初始化 LIFF
       const isInitialized = await initializeLiff();
       setIsLiffInitialized(isInitialized);
       
       if (!isInitialized) {
         throw new Error("LIFF 初始化失敗");
+      }
+      
+      // 如果在 LINE 內部瀏覽器中，跳過登入檢查
+      if (isInLineInternalBrowser) {
+        console.log("In LINE internal browser, skipping login check");
+        // 嘗試從 localStorage 獲取用戶 ID
+        const storedUserId = localStorage.getItem('userId');
+        if (storedUserId) {
+          setUserId(storedUserId);
+          addCustomLog(`使用存儲的用戶 ID: ${storedUserId}`);
+          return;
+        }
+        
+        // 如果沒有存儲的用戶 ID，顯示提示
+        setError("請先在 LINE 應用程式中登入");
+        return;
       }
       
       // 檢查是否已登入
@@ -110,6 +133,12 @@ export default function AnalysePage() {
       try {
         const profile = await window.liff.getProfile();
         setUserId(profile.userId);
+        // 存儲用戶 ID 到 localStorage
+        try {
+          localStorage.setItem('userId', profile.userId);
+        } catch (storageError) {
+          console.error("Failed to save user ID to localStorage:", storageError);
+        }
         addCustomLog(`用戶已登入: ${profile.userId}`);
       } catch (profileErr) {
         console.error("獲取用戶資料失敗:", profileErr);

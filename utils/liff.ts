@@ -82,10 +82,18 @@ export async function initializeLiff() {
       console.log("Current path:", typeof window !== 'undefined' ? window.location.pathname : 'unknown');
     }
 
+    // 檢測是否在 LINE 內部瀏覽器中
+    const isInLineInternalBrowser = typeof window !== 'undefined' && 
+      window.navigator.userAgent.includes('Line') && 
+      !window.navigator.userAgent.includes('LIFF');
+    
+    console.log("Is in LINE internal browser:", isInLineInternalBrowser);
+
     // 初始化 LIFF，參考官方範例
     await liff.init({
       liffId: liffId,
-      withLoginOnExternalBrowser: true
+      // 如果在 LINE 內部瀏覽器中，不強制登入
+      withLoginOnExternalBrowser: !isInLineInternalBrowser
     });
 
     isInitialized = true;
@@ -218,14 +226,25 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
     console.error("Failed to save parameters to localStorage:", storageError);
   }
   
-  // 修改：即使需要切換 LIFF ID，也使用內部導航 (external: false)
+  // 檢測是否在 LINE 內部瀏覽器中
+  const isInLineInternalBrowser = window.navigator.userAgent.includes('Line') && 
+    !window.navigator.userAgent.includes('LIFF');
+  
+  console.log("Is in LINE internal browser:", isInLineInternalBrowser);
   console.log("Using internal navigation (same LIFF context)");
   console.log("Final URL:", url.toString());
   
   // 在 URL 中添加時間戳以避免緩存問題
   url.searchParams.append("_t", Date.now().toString());
   
-  if (isInitialized && !BYPASS_LIFF && liff.isInClient()) {
+  if (isInitialized && !BYPASS_LIFF && (liff.isInClient() || isInLineInternalBrowser)) {
+    // 如果在 LINE 內部瀏覽器中，跳過 token 檢查
+    if (isInLineInternalBrowser) {
+      console.log("In LINE internal browser, skipping token check");
+      window.location.href = url.toString();
+      return;
+    }
+    
     // 嘗試獲取 access token 來檢查是否有效
     const token = liff.getAccessToken();
     if (!token) {

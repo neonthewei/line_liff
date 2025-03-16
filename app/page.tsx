@@ -137,12 +137,36 @@ export default function Home() {
   useEffect(() => {
     const initLiff = async () => {
       try {
+        // 檢測是否在 LINE 內部瀏覽器中
+        const isInLineInternalBrowser = typeof window !== 'undefined' && 
+          window.navigator.userAgent.includes('Line') && 
+          !window.navigator.userAgent.includes('LIFF');
+        
+        console.log("Is in LINE internal browser:", isInLineInternalBrowser);
+        
         // 初始化 LIFF
         const isInitialized = await initializeLiff();
         setIsLiffInitialized(isInitialized);
         
         if (!isInitialized) {
           throw new Error("LIFF 初始化失敗");
+        }
+        
+        // 如果在 LINE 內部瀏覽器中，跳過登入檢查
+        if (isInLineInternalBrowser) {
+          console.log("In LINE internal browser, skipping login check");
+          // 嘗試從 localStorage 獲取用戶 ID
+          const storedUserId = localStorage.getItem('userId');
+          if (storedUserId) {
+            setUserId(storedUserId);
+            console.log("Using stored user ID:", storedUserId);
+            return;
+          }
+          
+          // 如果沒有存儲的用戶 ID，顯示提示
+          setError("請先在 LINE 應用程式中登入");
+          setShowDebug(true);
+          return;
         }
         
         // 檢查是否已登入
@@ -176,6 +200,12 @@ export default function Home() {
           
           if (profile && profile.userId) {
             setUserId(profile.userId);
+            // 存儲用戶 ID 到 localStorage
+            try {
+              localStorage.setItem('userId', profile.userId);
+            } catch (storageError) {
+              console.error("Failed to save user ID to localStorage:", storageError);
+            }
             console.log("用戶 LINE ID:", profile.userId);
             console.log("用戶名稱:", profile.displayName);
           } else {

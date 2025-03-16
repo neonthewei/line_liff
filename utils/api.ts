@@ -2,8 +2,8 @@ import { Transaction } from "@/types/transaction";
 import { sendUpdateNotification, sendDeleteNotification } from "./line-messaging";
 
 // Supabase API 配置
-const SUPABASE_URL = "https://hsezmdybryhvtmfagpwz.supabase.co/rest/v1";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhzZXptZHlicnlodnRtZmFncHd6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MTAyMDM0NCwiZXhwIjoyMDU2NTk2MzQ0fQ.ztdHl2lXh5ncQmGvCcPHA4KUF0mOMVKzeATUEE5dKy4";
+export const SUPABASE_URL = "https://hsezmdybryhvtmfagpwz.supabase.co/rest/v1";
+export const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhzZXptZHlicnlodnRtZmFncHd6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MTAyMDM0NCwiZXhwIjoyMDU2NTk2MzQ0fQ.ztdHl2lXh5ncQmGvCcPHA4KUF0mOMVKzeATUEE5dKy4";
 
 // API 請求頭
 const headers = {
@@ -453,7 +453,7 @@ function formatDate(dateString: string): string {
  * @param dateString 格式化的日期字符串
  * @returns ISO 日期字符串
  */
-function parseDateToISOString(dateString: string): string {
+export function parseDateToISOString(dateString: string): string {
   const match = dateString.match(/(\d+)年(\d+)月(\d+)日/);
   if (!match) {
     return new Date().toISOString();
