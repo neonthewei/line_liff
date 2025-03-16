@@ -28,6 +28,8 @@ export default function ProfilePage() {
           window.navigator.userAgent.includes('Line') && 
           !window.navigator.userAgent.includes('LIFF');
         
+        console.log("Is in LINE internal browser:", isInLineInternalBrowser);
+        
         // 初始化 LIFF
         const isInitialized = await initializeLiff();
         
@@ -37,11 +39,13 @@ export default function ProfilePage() {
         
         // 如果在 LINE 內部瀏覽器中，嘗試從 localStorage 獲取用戶資料
         if (isInLineInternalBrowser) {
+          console.log("In LINE internal browser, trying to get user data from localStorage");
           const storedUserId = localStorage.getItem('userId');
           const storedDisplayName = localStorage.getItem('displayName');
           const storedPictureUrl = localStorage.getItem('pictureUrl');
           
           if (storedUserId && storedDisplayName) {
+            console.log("Found stored user data:", storedUserId, storedDisplayName);
             setUserProfile({
               userId: storedUserId,
               displayName: storedDisplayName,
@@ -49,34 +53,93 @@ export default function ProfilePage() {
             });
             setIsLoading(false);
             return;
+          } else {
+            console.log("No stored user data found in localStorage");
+            
+            // 嘗試從 LIFF context 獲取用戶 ID
+            try {
+              if (window.liff && typeof window.liff.getContext === 'function') {
+                const context = window.liff.getContext();
+                console.log("LIFF Context for user ID:", context);
+                
+                if (context && context.userId) {
+                  console.log("Found user ID in LIFF context:", context.userId);
+                  // 如果有 userId 但沒有完整資料，可以嘗試獲取完整資料
+                  try {
+                    const profile = await window.liff.getProfile();
+                    if (profile && profile.userId) {
+                      setUserProfile(profile);
+                      
+                      // 存儲用戶資料到 localStorage
+                      localStorage.setItem('userId', profile.userId);
+                      localStorage.setItem('displayName', profile.displayName);
+                      if (profile.pictureUrl) {
+                        localStorage.setItem('pictureUrl', profile.pictureUrl);
+                      }
+                      setIsLoading(false);
+                      return;
+                    }
+                  } catch (profileError) {
+                    console.error("Error getting profile from LIFF:", profileError);
+                  }
+                }
+              }
+            } catch (contextError) {
+              console.error("Error getting LIFF context:", contextError);
+            }
           }
         }
         
         // 檢查是否已登入
         if (!window.liff.isLoggedIn()) {
           // 如果未登入，則導向登入
+          console.log("User not logged in, redirecting to login");
           window.liff.login();
           return;
         }
         
         // 用戶已登入，獲取用戶資料
-        const profile = await window.liff.getProfile();
-        
-        if (profile && profile.userId) {
-          setUserProfile(profile);
-          
-          // 存儲用戶資料到 localStorage
+        console.log("User logged in, getting profile");
+        try {
+          // 先檢查 access token 是否有效
           try {
-            localStorage.setItem('userId', profile.userId);
-            localStorage.setItem('displayName', profile.displayName);
-            if (profile.pictureUrl) {
-              localStorage.setItem('pictureUrl', profile.pictureUrl);
+            const token = window.liff.getAccessToken();
+            if (!token) {
+              console.log("Access token does not exist, redirecting to login");
+              window.liff.login();
+              return;
             }
-          } catch (storageError) {
-            console.error("Failed to save user profile to localStorage:", storageError);
+            console.log("Access token exists, continuing to get user profile");
+          } catch (tokenError) {
+            console.error("Failed to get access token, may be expired", tokenError);
+            console.log("Attempting to login again");
+            window.liff.login();
+            return;
           }
-        } else {
-          throw new Error("無法獲取用戶資料");
+          
+          const profile = await window.liff.getProfile();
+          console.log("Successfully got user profile:", profile);
+          
+          if (profile && profile.userId) {
+            setUserProfile(profile);
+            
+            // 存儲用戶資料到 localStorage
+            try {
+              localStorage.setItem('userId', profile.userId);
+              localStorage.setItem('displayName', profile.displayName);
+              if (profile.pictureUrl) {
+                localStorage.setItem('pictureUrl', profile.pictureUrl);
+              }
+              console.log("Saved user profile to localStorage");
+            } catch (storageError) {
+              console.error("Failed to save user profile to localStorage:", storageError);
+            }
+          } else {
+            throw new Error("無法獲取用戶資料");
+          }
+        } catch (profileError) {
+          console.error("Failed to get user profile:", profileError);
+          setError("無法獲取用戶資料，請確保您已登入LINE並授權應用程式");
         }
       } catch (error) {
         console.error("獲取用戶資料失敗", error);
