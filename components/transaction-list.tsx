@@ -22,9 +22,13 @@ const TransactionItem = memo(({
   transaction: Transaction, 
   onTransactionClick: (id: string, type: string) => void 
 }) => {
-  // Handle click with proper event prevention for mobile
-  const handleClick = (e: React.MouseEvent | React.TouchEvent) => {
-    // Prevent default behavior to avoid any browser-specific handling
+  // Add refs to track touch position for distinguishing between scrolls and taps
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const isTouchMoveRef = useRef(false);
+  const [isPressed, setIsPressed] = useState(false);
+  
+  // Handle mouse click
+  const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
@@ -34,23 +38,85 @@ const TransactionItem = memo(({
     }, 10);
   };
 
+  // Handle touch start - record starting position
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    isTouchMoveRef.current = false;
+    setIsPressed(true); // Show visual feedback immediately on touch
+  };
+  
+  // Handle touch move - mark as scrolling if moved more than threshold
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    
+    const touch = e.touches[0];
+    const deltaX = Math.abs(touch.clientX - touchStartRef.current.x);
+    const deltaY = Math.abs(touch.clientY - touchStartRef.current.y);
+    
+    // If moved more than 10px in any direction, consider it a scroll
+    if (deltaX > 10 || deltaY > 10) {
+      isTouchMoveRef.current = true;
+      setIsPressed(false); // Remove visual feedback when scrolling is detected
+    }
+  };
+  
+  // Handle touch end - only trigger click if not scrolling
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    // Don't call preventDefault() here as it can interfere with scroll events
+    
+    // Only trigger click if it wasn't a scroll
+    if (touchStartRef.current && !isTouchMoveRef.current) {
+      // Add visual feedback for tap
+      setIsPressed(true);
+      
+      // Small delay to ensure we don't interfere with any ongoing browser actions
+      setTimeout(() => {
+        onTransactionClick(transaction.id, transaction.type);
+        setIsPressed(false); // Remove visual feedback after click is processed
+      }, 150); // Slightly longer delay to show the visual feedback
+    } else {
+      setIsPressed(false);
+    }
+    
+    // Reset touch tracking
+    touchStartRef.current = null;
+  };
+  
+  // Handle touch cancel - reset state
+  const handleTouchCancel = () => {
+    touchStartRef.current = null;
+    isTouchMoveRef.current = false;
+    setIsPressed(false);
+  };
+
   // Separate handler for keyboard events
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      onTransactionClick(transaction.id, transaction.type);
+      setIsPressed(true);
+      
+      setTimeout(() => {
+        onTransactionClick(transaction.id, transaction.type);
+        setIsPressed(false);
+      }, 150);
     }
   };
 
   return (
     <div 
       onClick={handleClick}
-      onTouchEnd={handleClick}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
       role="button"
       tabIndex={0}
       aria-label={`${transaction.category} ${transaction.amount}`}
       onKeyDown={handleKeyDown}
-      className="px-4 py-3 flex items-center justify-between cursor-pointer active:bg-gray-100"
+      className={`px-4 py-3 flex items-center justify-between cursor-pointer transition-colors duration-150 ${
+        isPressed ? 'bg-gray-100' : ''
+      }`}
     >
       <div className="flex items-center">
         <div>
