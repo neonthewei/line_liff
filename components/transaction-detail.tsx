@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation";
 import { Transaction } from "@/types/transaction";
 import { fetchTransactionById, updateTransactionApi, deleteTransactionApi } from "@/utils/api";
 import { shareTransactionToFriends } from "@/utils/line-messaging";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // 開發模式標誌 - 設置為 true 可以在本地開發時繞過 LIFF 初始化
 const DEV_MODE = process.env.NODE_ENV === "development";
@@ -56,6 +57,77 @@ const defaultTransaction: Transaction = {
 interface TransactionDetailProps {
   onError?: () => void;
 }
+
+// Define a consistent animation style for all content blocks
+const fadeInAnimation = {
+  opacity: 0,
+  animation: 'fadeIn 0.3s ease-out forwards'
+};
+
+// Add skeleton components for the transaction detail page
+const CategorySkeleton = () => (
+  <div className="bg-white rounded-2xl p-4 shadow-sm">
+    <div className="flex items-center justify-between">
+      <Skeleton className="h-5 w-16 animate-pulse-color" />
+      <Skeleton className="h-5 w-24 animate-pulse-color" />
+    </div>
+  </div>
+);
+
+const AmountSkeleton = () => (
+  <div className="bg-white rounded-2xl shadow-sm space-y-4 p-4">
+    <div className="flex items-center justify-between">
+      <Skeleton className="h-5 w-16 animate-pulse-color" />
+      <div className="flex items-center">
+        <Skeleton className="h-6 w-24 animate-pulse-color" />
+      </div>
+    </div>
+    
+    <div className="border-t border-gray-100"></div>
+    
+    <div className="flex items-center justify-between">
+      <Skeleton className="h-5 w-16 animate-pulse-color" />
+      <div className="flex items-center">
+        <Skeleton className="h-5 w-32 animate-pulse-color" />
+      </div>
+    </div>
+    
+    <div className="border-t border-gray-100"></div>
+    
+    <div className="flex items-center justify-between">
+      <Skeleton className="h-5 w-16 animate-pulse-color" />
+      <div className="flex gap-2">
+        <Skeleton className="h-8 w-20 rounded-xl animate-pulse-color" />
+        <Skeleton className="h-8 w-20 rounded-xl animate-pulse-color" />
+      </div>
+    </div>
+    
+    <div className="border-t border-gray-100"></div>
+    
+    <div className="flex items-center justify-between">
+      <Skeleton className="h-5 w-24 animate-pulse-color" />
+      <div className="flex items-center">
+        <Skeleton className="h-5 w-24 animate-pulse-color" />
+      </div>
+    </div>
+  </div>
+);
+
+const NoteSkeleton = () => (
+  <div className="bg-white rounded-2xl p-4 shadow-sm">
+    <div className="flex flex-col space-y-2">
+      <Skeleton className="h-5 w-16 animate-pulse-color" />
+      <Skeleton className="h-10 w-full animate-pulse-color" />
+    </div>
+  </div>
+);
+
+const ButtonsSkeleton = () => (
+  <div className="space-y-4 mt-8">
+    <Skeleton className="h-12 w-full rounded-2xl animate-pulse-color" />
+    <Skeleton className="h-12 w-full rounded-2xl animate-pulse-color" />
+  </div>
+);
 
 export default function TransactionDetail({ onError }: TransactionDetailProps) {
   const [transaction, setTransaction] = useState<Transaction | null>(null);
@@ -730,7 +802,22 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
 
   if (isLoading)
     return (
-      <div className="flex justify-center items-center h-screen">載入中...</div>
+      <div className="w-full max-w-md mx-auto pb-6 relative z-10">
+        <div className="space-y-4 px-[20px] mt-[20px]">
+          <div style={{ ...fadeInAnimation, animationDelay: '30ms' }}>
+            <CategorySkeleton />
+          </div>
+          <div style={{ ...fadeInAnimation, animationDelay: '80ms' }}>
+            <AmountSkeleton />
+          </div>
+          <div style={{ ...fadeInAnimation, animationDelay: '130ms' }}>
+            <NoteSkeleton />
+          </div>
+          <div style={{ ...fadeInAnimation, animationDelay: '180ms' }}>
+            <ButtonsSkeleton />
+          </div>
+        </div>
+      </div>
     );
   if (!transaction) return (
     <div className="w-full max-w-md mx-auto p-4 flex flex-col justify-center items-center h-screen">

@@ -11,6 +11,9 @@ const headers = {
   "apikey": SUPABASE_KEY,
 };
 
+// 緩存配置
+const CACHE_DURATION = 60 * 5; // 5分鐘緩存
+
 /**
  * 根據用戶ID和月份獲取交易數據
  * @param userId 用戶ID
@@ -25,12 +28,30 @@ export async function fetchTransactionsByUser(userId: string, year: number, mont
     
     console.log(`Fetching transactions for user ${userId} from ${startDate} to ${endDate}`);
     
+    // 緩存鍵
+    const cacheKey = `transactions_${userId}_${year}_${month}`;
+    
+    // 檢查緩存
+    const cachedData = sessionStorage.getItem(cacheKey);
+    if (cachedData) {
+      const { data, timestamp } = JSON.parse(cachedData);
+      // 檢查緩存是否過期
+      if ((Date.now() - timestamp) / 1000 < CACHE_DURATION) {
+        console.log(`Using cached transactions data for ${userId} (${year}-${month})`);
+        return data;
+      }
+    }
+    
     // 獲取支出
     const expenseUrl = `${SUPABASE_URL}/expenses?user_id=eq.${userId}&datetime=gte.${startDate}&datetime=lte.${endDate}`;
     const expenseResponse = await fetch(expenseUrl, {
       method: "GET",
-      headers,
-      cache: "no-cache"
+      headers: {
+        ...headers,
+        "Prefer": "return=representation",
+        "Cache-Control": "max-age=300" // 5分鐘緩存
+      },
+      next: { revalidate: 300 } // NextJS 緩存配置
     });
     
     if (!expenseResponse.ok) {
@@ -45,8 +66,12 @@ export async function fetchTransactionsByUser(userId: string, year: number, mont
     const incomeUrl = `${SUPABASE_URL}/incomes?user_id=eq.${userId}&datetime=gte.${startDate}&datetime=lte.${endDate}`;
     const incomeResponse = await fetch(incomeUrl, {
       method: "GET",
-      headers,
-      cache: "no-cache"
+      headers: {
+        ...headers,
+        "Prefer": "return=representation",
+        "Cache-Control": "max-age=300" // 5分鐘緩存
+      },
+      next: { revalidate: 300 } // NextJS 緩存配置
     });
     
     if (!incomeResponse.ok) {
@@ -87,6 +112,12 @@ export async function fetchTransactionsByUser(userId: string, year: number, mont
     const transactions = [...expenses, ...incomes];
     console.log(`Found ${transactions.length} transactions: ${expenses.length} expenses, ${incomes.length} incomes`);
     
+    // 更新緩存
+    sessionStorage.setItem(cacheKey, JSON.stringify({
+      data: transactions,
+      timestamp: Date.now()
+    }));
+    
     return transactions;
   } catch (error) {
     console.error("Error fetching transactions by user:", error);
@@ -107,6 +138,20 @@ export async function fetchMonthlySummary(userId: string, year: number, month: n
   balance: number;
 }> {
   try {
+    // 緩存鍵
+    const cacheKey = `summary_${userId}_${year}_${month}`;
+    
+    // 檢查緩存
+    const cachedData = sessionStorage.getItem(cacheKey);
+    if (cachedData) {
+      const { data, timestamp } = JSON.parse(cachedData);
+      // 檢查緩存是否過期
+      if ((Date.now() - timestamp) / 1000 < CACHE_DURATION) {
+        console.log(`Using cached summary data for ${userId} (${year}-${month})`);
+        return data;
+      }
+    }
+    
     // 獲取用戶該月的所有交易
     const transactions = await fetchTransactionsByUser(userId, year, month);
     
@@ -127,6 +172,13 @@ export async function fetchMonthlySummary(userId: string, year: number, month: n
     summary.balance = summary.totalIncome - summary.totalExpense;
     
     console.log(`Monthly summary for ${year}-${month}: Expense=${summary.totalExpense}, Income=${summary.totalIncome}, Balance=${summary.balance}`);
+    
+    // 更新緩存
+    sessionStorage.setItem(cacheKey, JSON.stringify({
+      data: summary,
+      timestamp: Date.now()
+    }));
+    
     return summary;
   } catch (error) {
     console.error("Error fetching monthly summary:", error);
@@ -322,59 +374,32 @@ export async function deleteTransactionApi(id: string, type: string): Promise<bo
 }
 
 /**
- * 將日期格式化為 "YYYY年MM月DD日" 格式
+ * 格式化日期為 "YYYY年MM月DD日" 格式
  * @param dateString ISO 日期字符串
  * @returns 格式化後的日期字符串
  */
 function formatDate(dateString: string): string {
-  try {
-    // Parse the ISO date string
-    const date = new Date(dateString);
-    
-    // Create a new date object using UTC components to avoid timezone issues
-    // This ensures we get the exact date that was stored, regardless of local timezone
-    const utcYear = date.getUTCFullYear();
-    const utcMonth = date.getUTCMonth();
-    const utcDay = date.getUTCDate();
-    
-    // Create a new date with the UTC components but in local time
-    const localDate = new Date(utcYear, utcMonth, utcDay);
-    
-    const year = localDate.getFullYear();
-    const month = (localDate.getMonth() + 1).toString().padStart(2, "0");
-    const day = localDate.getDate().toString().padStart(2, "0");
-    
-    return `${year}年${month}月${day}日`;
-  } catch (error) {
-    console.error("Error formatting date:", error);
-    return new Date().toLocaleDateString("zh-TW", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).replace(/\//g, "年").replace(/\//g, "月") + "日";
-  }
+  const date = new Date(dateString);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  return `${year}年${month}月${day}日`;
 }
 
 /**
  * 將 "YYYY年MM月DD日" 格式的日期解析為 ISO 字符串
- * @param formattedDate 格式化的日期字符串
+ * @param dateString 格式化的日期字符串
  * @returns ISO 日期字符串
  */
-function parseDateToISOString(formattedDate: string): string {
-  try {
-    const match = formattedDate.match(/(\d+)年(\d+)月(\d+)日/);
-    if (match) {
-      const year = parseInt(match[1]);
-      const month = parseInt(match[2]) - 1; // JavaScript 月份從 0 開始
-      const day = parseInt(match[3]);
-      
-      // Create date at noon to avoid timezone issues
-      const date = new Date(Date.UTC(year, month, day, 12, 0, 0));
-      return date.toISOString();
-    }
-    return new Date().toISOString();
-  } catch (error) {
-    console.error("Error parsing date:", error);
+function parseDateToISOString(dateString: string): string {
+  const match = dateString.match(/(\d+)年(\d+)月(\d+)日/);
+  if (!match) {
     return new Date().toISOString();
   }
+  
+  const year = parseInt(match[1]);
+  const month = parseInt(match[2]) - 1; // 月份從0開始
+  const day = parseInt(match[3]);
+  
+  return new Date(year, month, day).toISOString();
 } 

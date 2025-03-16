@@ -11,6 +11,7 @@ import TabSelector from "@/components/tab-selector";
 import TransactionList from "@/components/transaction-list";
 import DebugConsole from "@/components/debug-console";
 import { initConsoleCapture, getCaptureLogs, getCaptureErrors, addCustomLog } from "@/utils/debug";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // LIFF 類型聲明
 declare global {
@@ -26,6 +27,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<"general" | "fixed">("general");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDataLoading, setIsDataLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [summary, setSummary] = useState({
     totalExpense: 0,
@@ -137,10 +139,12 @@ export default function Home() {
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
+      setIsDataLoading(true);
       setError(null);
       
       if (!userId) {
         setIsLoading(false);
+        setIsDataLoading(false);
         return;
       }
       
@@ -167,6 +171,7 @@ export default function Home() {
         setShowDebug(true);
       } finally {
         setIsLoading(false);
+        setIsDataLoading(false);
       }
     };
 
@@ -211,34 +216,86 @@ export default function Home() {
     <div className="flex flex-col min-h-screen bg-gray-100">
       <main className="flex-1 container max-w-md mx-auto px-5 py-4">
         {!isLiffInitialized || !userId ? (
-          <div className="flex flex-col items-center justify-center h-[80vh]">
-            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-gray-600 text-center">
-              {error || "正在連接到LINE，請稍候..."}
-            </p>
-            <div className="flex flex-col items-center mt-4 space-y-2">
-              {error && (
+          <div className="flex flex-col h-[80vh]">
+            <div className="py-4">
+              <Skeleton className="h-10 w-full rounded-xl mb-5 animate-pulse-color" />
+            </div>
+            
+            <div className="bg-white rounded-2xl p-5 shadow-sm mb-5">
+              <div className="flex justify-between items-center mb-4">
+                <Skeleton className="h-6 w-32 animate-pulse-color" />
+                <Skeleton className="h-6 w-24 animate-pulse-color" />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="flex flex-col items-center">
+                  <Skeleton className="h-4 w-16 mb-2 animate-pulse-color" />
+                  <Skeleton className="h-6 w-20 animate-pulse-color" />
+                </div>
+                <div className="flex flex-col items-center">
+                  <Skeleton className="h-4 w-16 mb-2 animate-pulse-color" />
+                  <Skeleton className="h-6 w-20 animate-pulse-color" />
+                </div>
+                <div className="flex flex-col items-center">
+                  <Skeleton className="h-4 w-16 mb-2 animate-pulse-color" />
+                  <Skeleton className="h-6 w-20 animate-pulse-color" />
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white rounded-2xl p-2 mb-5 shadow-sm">
+              <Skeleton className="h-10 w-full rounded-xl animate-pulse-color" />
+            </div>
+            
+            <div className="space-y-4">
+              {[1, 2, 3].map((group) => (
+                <div key={`skeleton-group-${group}`} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                  <div className="flex justify-between items-center px-5 py-3 border-b">
+                    <Skeleton className="h-5 w-24 animate-pulse-color" />
+                    <Skeleton className="h-4 w-16 animate-pulse-color" />
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {[1, 2, 3].map((item) => (
+                      <div key={`skeleton-item-${group}-${item}`} className="px-4 py-3 flex items-center justify-between">
+                        <div className="flex items-center">
+                          <div>
+                            <Skeleton className="h-5 w-24 mb-1 animate-pulse-color" />
+                            <Skeleton className="h-3 w-32 animate-pulse-color" />
+                          </div>
+                        </div>
+                        <div className="flex items-center">
+                          <Skeleton className="h-6 w-16 mr-2 animate-pulse-color" />
+                          <Skeleton className="h-5 w-5 rounded animate-pulse-color" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {error && (
+              <div className="flex flex-col items-center mt-6 space-y-2">
                 <button 
                   onClick={() => window.location.reload()}
                   className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
                 >
                   重新載入
                 </button>
-              )}
-              <button 
-                onClick={toggleDebugConsole}
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors"
-              >
-                {showDebug ? "隱藏調試信息" : "顯示調試信息"}
-              </button>
-            </div>
-            
-            {showDebug && (
-              <DebugConsole 
-                logs={logs} 
-                errors={errorLogs} 
-                title="LIFF 初始化調試信息" 
-              />
+                <button 
+                  onClick={toggleDebugConsole}
+                  className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors"
+                >
+                  {showDebug ? "隱藏調試信息" : "顯示調試信息"}
+                </button>
+                
+                {showDebug && (
+                  <DebugConsole 
+                    logs={logs} 
+                    errors={errorLogs} 
+                    title="LIFF 初始化調試信息" 
+                  />
+                )}
+              </div>
             )}
           </div>
         ) : (
@@ -248,7 +305,7 @@ export default function Home() {
             <MonthSummary 
               currentDate={currentDate} 
               summary={summary} 
-              isLoading={isLoading} 
+              isLoading={isDataLoading} 
             />
 
             <TabSelector 
@@ -283,7 +340,7 @@ export default function Home() {
                   transactions={transactions} 
                   currentDate={currentDate} 
                   activeTab={activeTab}
-                  isLoading={isLoading}
+                  isLoading={isDataLoading}
                   isCollapsed={isCollapsed}
                   onTransactionClick={handleTransactionClick}
                 />

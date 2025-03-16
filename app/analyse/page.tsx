@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback, Suspense, lazy } from "react";
 import { useRouter } from "next/navigation";
 import { initializeLiff } from "@/utils/liff";
 import type { Transaction } from "@/types/transaction";
@@ -11,6 +11,10 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, 
   CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from "recharts";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// 懶加載圖表組件
+const ChartComponents = lazy(() => import('@/components/chart-components'));
 
 // LIFF 類型聲明
 declare global {
@@ -24,6 +28,13 @@ type AnalysisTab = "expense" | "income";
 
 // 圓餅圖的顏色
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#4CAF50', '#9C27B0', '#F44336'];
+
+// 緩存數據的有效期（毫秒）
+const CACHE_EXPIRY = 5 * 60 * 1000; // 5分鐘
+
+// 緩存鍵生成函數
+const generateCacheKey = (userId: string, year: number, month: number) => 
+  `transactions_${userId}_${year}_${month}`;
 
 export default function AnalysePage() {
   const router = useRouter();
@@ -44,6 +55,8 @@ export default function AnalysePage() {
   const [error, setError] = useState<string | null>(null);
   const [categoryData, setCategoryData] = useState<any[]>([]);
   const [dailyData, setDailyData] = useState<any[]>([]);
+  const [dataTimestamp, setDataTimestamp] = useState<number>(0);
+  const [chartsLoaded, setChartsLoaded] = useState(false);
 
   // 初始化控制台捕獲
   useEffect(() => {
@@ -51,60 +64,70 @@ export default function AnalysePage() {
     addCustomLog("分析頁面已啟動，控制台捕獲已初始化");
   }, []);
 
-  // 初始化 LIFF
+  // 延遲加載圖表
   useEffect(() => {
-    const initLiff = async () => {
-      try {
-        // 初始化 LIFF
-        const isInitialized = await initializeLiff();
-        setIsLiffInitialized(isInitialized);
-        
-        if (!isInitialized) {
-          throw new Error("LIFF 初始化失敗");
-        }
-        
-        // 檢查是否已登入
-        if (!window.liff.isLoggedIn()) {
-          // 如果未登入，則導向登入
-          console.log("用戶未登入，導向登入頁面");
-          window.liff.login();
-          return;
-        }
-        
-        // 用戶已登入，獲取用戶資料
-        try {
-          const profile = await window.liff.getProfile();
-          setUserId(profile.userId);
-          addCustomLog(`用戶已登入: ${profile.userId}`);
-        } catch (profileErr) {
-          console.error("獲取用戶資料失敗:", profileErr);
-          setError("獲取用戶資料失敗");
-        }
-      } catch (err) {
-        console.error("LIFF 初始化錯誤:", err);
-        setError("LIFF 初始化失敗");
-      }
+    // 使用 requestIdleCallback 在瀏覽器空閒時加載圖表
+    const loadCharts = () => {
+      setChartsLoaded(true);
     };
 
-    initLiff();
+    if ('requestIdleCallback' in window) {
+      // @ts-ignore
+      window.requestIdleCallback(loadCharts, { timeout: 2000 });
+    } else {
+      // 降級處理：使用 setTimeout
+      setTimeout(loadCharts, 200);
+    }
+
+    return () => {
+      if ('cancelIdleCallback' in window && chartsLoaded === false) {
+        // @ts-ignore
+        window.cancelIdleCallback(loadCharts as any);
+      }
+    };
   }, []);
 
-  // 獲取交易數據
-  useEffect(() => {
-    if (userId) {
-      fetchData();
+  // 初始化 LIFF - 使用 useCallback 優化
+  const initLiff = useCallback(async () => {
+    try {
+      // 初始化 LIFF
+      const isInitialized = await initializeLiff();
+      setIsLiffInitialized(isInitialized);
+      
+      if (!isInitialized) {
+        throw new Error("LIFF 初始化失敗");
+      }
+      
+      // 檢查是否已登入
+      if (!window.liff.isLoggedIn()) {
+        // 如果未登入，則導向登入
+        console.log("用戶未登入，導向登入頁面");
+        window.liff.login();
+        return;
+      }
+      
+      // 用戶已登入，獲取用戶資料
+      try {
+        const profile = await window.liff.getProfile();
+        setUserId(profile.userId);
+        addCustomLog(`用戶已登入: ${profile.userId}`);
+      } catch (profileErr) {
+        console.error("獲取用戶資料失敗:", profileErr);
+        setError("獲取用戶資料失敗");
+      }
+    } catch (err) {
+      console.error("LIFF 初始化錯誤:", err);
+      setError("LIFF 初始化失敗");
     }
-  }, [userId, currentDate]);
+  }, []);
 
-  // 處理數據並生成圖表數據
+  // 初始化 LIFF
   useEffect(() => {
-    if (transactions.length > 0) {
-      processDataForCharts();
-    }
-  }, [transactions, activeTab, summary]);
+    initLiff();
+  }, [initLiff]);
 
-  // 獲取交易數據
-  const fetchData = async () => {
+  // 從緩存獲取數據或從API獲取
+  const fetchData = useCallback(async () => {
     if (!userId) return;
     
     setIsLoading(true);
@@ -115,33 +138,29 @@ export default function AnalysePage() {
       
       addCustomLog(`正在獲取 ${year}年${month}月 的交易數據`);
       
-      const transactionsData = await fetchTransactionsByUser(userId, year, month);
-      console.log("獲取到的交易數據:", transactionsData);
+      // 檢查緩存
+      const cacheKey = generateCacheKey(userId, year, month);
+      const cachedData = localStorage.getItem(cacheKey);
       
-      // 檢查交易數據的結構
-      if (transactionsData && transactionsData.length > 0) {
-        console.log("交易數據示例:", transactionsData[0]);
-        console.log("交易類型分佈:", {
-          expense: transactionsData.filter(tx => tx.type === "expense").length,
-          income: transactionsData.filter(tx => tx.type === "income").length,
-          other: transactionsData.filter(tx => tx.type !== "expense" && tx.type !== "income").length
-        });
+      if (cachedData) {
+        const { transactions: cachedTransactions, summary: cachedSummary, timestamp } = JSON.parse(cachedData);
         
-        // 檢查類別分佈
-        const categories = transactionsData.reduce((acc, tx) => {
-          const category = tx.category || "未分類";
-          acc[category] = (acc[category] || 0) + 1;
-          return acc;
-        }, {} as Record<string, number>);
-        
-        console.log("類別分佈:", categories);
+        // 檢查緩存是否過期
+        if (Date.now() - timestamp < CACHE_EXPIRY) {
+          addCustomLog(`使用緩存數據: ${cachedTransactions.length} 筆交易`);
+          setTransactions(cachedTransactions);
+          setSummary(cachedSummary);
+          setDataTimestamp(timestamp);
+          setIsLoading(false);
+          return;
+        }
       }
       
-      setTransactions(transactionsData);
+      // 緩存不存在或已過期，從API獲取數據
+      const transactionsData = await fetchTransactionsByUser(userId, year, month);
       
       // 獲取月度摘要
       const summaryData = await fetchMonthlySummary(userId, year, month);
-      console.log("月度摘要:", summaryData);
       
       // 計算平均值 (假設一個月30天)
       const daysInMonth = new Date(year, month, 0).getDate();
@@ -149,24 +168,48 @@ export default function AnalysePage() {
       const averageIncome = summaryData.totalIncome / daysInMonth;
       const averageBalance = summaryData.balance / daysInMonth;
       
-      setSummary({
+      const fullSummary = {
         ...summaryData,
         averageExpense,
         averageIncome,
         averageBalance
-      });
+      };
       
-      addCustomLog(`成功獲取 ${transactionsData.length} 筆交易數據`);
+      // 更新狀態
+      setTransactions(transactionsData);
+      setSummary(fullSummary);
+      
+      // 更新緩存
+      const now = Date.now();
+      setDataTimestamp(now);
+      localStorage.setItem(cacheKey, JSON.stringify({
+        transactions: transactionsData,
+        summary: fullSummary,
+        timestamp: now
+      }));
+      
+      addCustomLog(`成功獲取並緩存 ${transactionsData.length} 筆交易數據`);
     } catch (err) {
       console.error("獲取數據錯誤:", err);
       setError("獲取數據失敗");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [userId, currentDate]);
 
-  // 處理數據並生成圖表數據
-  const processDataForCharts = () => {
+  // 獲取交易數據
+  useEffect(() => {
+    if (userId) {
+      fetchData();
+    }
+  }, [userId, currentDate, fetchData]);
+
+  // 使用 useMemo 優化圖表數據處理
+  const { memoizedCategoryData, memoizedDailyData } = useMemo(() => {
+    if (transactions.length === 0) {
+      return { memoizedCategoryData: [], memoizedDailyData: [] };
+    }
+    
     // 根據當前標籤過濾交易
     let filteredTransactions = transactions;
     
@@ -175,8 +218,6 @@ export default function AnalysePage() {
     } else if (activeTab === "income") {
       filteredTransactions = transactions.filter(tx => tx.type === "income");
     }
-    
-    console.log("過濾後的交易數量:", filteredTransactions.length);
     
     // 生成圓餅圖數據 (按類別分組)
     const categoryGroups: Record<string, number> = {};
@@ -194,8 +235,6 @@ export default function AnalysePage() {
       categoryGroups[category] += Math.abs(amount); // 使用絕對值確保金額為正數
     });
     
-    console.log("類別分組:", categoryGroups);
-    
     // 轉換為圓餅圖數據格式，並按金額降序排序
     const pieData = Object.keys(categoryGroups)
       .map(category => ({
@@ -204,10 +243,6 @@ export default function AnalysePage() {
       }))
       .filter(item => item.value > 0) // 過濾掉值為0的項目
       .sort((a, b) => b.value - a.value); // 按金額降序排序
-    
-    console.log("圓餅圖數據:", pieData);
-    addCustomLog(`圓餅圖數據: ${JSON.stringify(pieData)}`);
-    setCategoryData(pieData);
     
     // 生成線圖數據 (按日期分組)
     const dailyGroups: Record<string, number> = {};
@@ -261,19 +296,27 @@ export default function AnalysePage() {
         };
       });
     
-    console.log("線圖數據:", lineData);
-    setDailyData(lineData);
-  };
+    return { 
+      memoizedCategoryData: pieData, 
+      memoizedDailyData: lineData 
+    };
+  }, [transactions, activeTab, summary, currentDate]);
+
+  // 更新圖表數據
+  useEffect(() => {
+    setCategoryData(memoizedCategoryData);
+    setDailyData(memoizedDailyData);
+  }, [memoizedCategoryData, memoizedDailyData]);
 
   // 處理月份變更
-  const handleMonthChange = (newDate: Date) => {
+  const handleMonthChange = useCallback((newDate: Date) => {
     setCurrentDate(newDate);
-  };
+  }, []);
 
   // 處理標籤變更
-  const handleTabChange = (tab: AnalysisTab) => {
+  const handleTabChange = useCallback((tab: AnalysisTab) => {
     setActiveTab(tab);
-  };
+  }, []);
 
   // 自定義工具提示
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -292,6 +335,53 @@ export default function AnalysePage() {
     }
     return null;
   };
+
+  // 渲染骨架屏
+  const renderSkeleton = () => (
+    <>
+      <div className="bg-white rounded-2xl p-4 mb-5 shadow-sm">
+        <Skeleton className="h-6 w-32 mb-2" />
+        <Skeleton className="h-4 w-48 mb-3" />
+        <div className="flex justify-center items-center">
+          <Skeleton className="h-[300px] w-[300px] rounded-full" />
+        </div>
+        <div className="mt-3">
+          <div className="bg-gray-50 rounded-xl p-3">
+            <div className="grid grid-cols-2 gap-x-8 gap-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <Skeleton className="w-3 h-3 rounded mr-2" />
+                    <Skeleton className="h-4 w-20" />
+                  </div>
+                  <Skeleton className="h-4 w-12" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl p-5 shadow-sm">
+        <Skeleton className="h-6 w-32 mb-2" />
+        <Skeleton className="h-4 w-48 mb-3" />
+        <Skeleton className="h-[200px] w-full mb-4" />
+        <div className="mt-4">
+          <div className="bg-gray-50 rounded-xl p-4">
+            <div className="grid grid-cols-3 gap-x-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="p-2">
+                  <Skeleton className="h-3 w-16 mb-1" />
+                  <Skeleton className="h-4 w-12 mb-1" />
+                  <Skeleton className="h-4 w-14" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <main className="container mx-auto max-w-md p-5 min-h-screen">
@@ -340,195 +430,24 @@ export default function AnalysePage() {
       </div>
 
       {/* 圖表區域 */}
-      <div className="bg-white rounded-2xl p-4 mb-5 shadow-sm">
-        <h2 className="text-lg font-medium">類別分佈</h2>
-        <div className="text-xs text-gray-500 mb-3 pb-2 border-b border-gray-100">
-          {activeTab === "expense" ? "支出類別佔比分析" : "收入類別佔比分析"}
-        </div>
-        
-        {isLoading ? (
-          <div className="flex justify-center items-center h-64">
-            <p>載入中...</p>
-          </div>
-        ) : categoryData.length > 0 ? (
-          <>
-            <ResponsiveContainer width="100%" height={300} className="mt-0">
-              <PieChart margin={{ top: 5, right: 5, bottom: 5, left: 5 }} key={`pie-chart-${activeTab}-${categoryData.length}`}>
-                <Pie
-                  data={categoryData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  innerRadius={70}
-                  outerRadius={120}
-                  fill="#8884d8"
-                  dataKey="value"
-                  nameKey="name"
-                  label={false}
-                  paddingAngle={0}
-                  isAnimationActive={true}
-                  animationDuration={500}
-                  strokeWidth={0}
-                  minAngle={1}
-                >
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  formatter={(value: number) => {
-                    const total = activeTab === "expense" ? summary.totalExpense : summary.totalIncome;
-                    return `${((value / (total || 1)) * 100).toFixed(1)}%`;
-                  }} 
-                  labelFormatter={(name) => `${name}`}
-                  isAnimationActive={true}
-                  animationDuration={500}
-                />
-                {/* 中間顯示總金額 */}
-                <text
-                  x="50%"
-                  y="50%"
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  className="text-sm font-medium"
-                >
-                  <tspan x="50%" dy="-15" fontSize="14" fill="#666">
-                    {activeTab === "expense" ? "總支出" : "總收入"}
-                  </tspan>
-                  <tspan x="50%" dy="28" fontSize="20" fontWeight="bold" fill="#333">
-                    ${activeTab === "expense" ? summary.totalExpense.toFixed(0) : summary.totalIncome.toFixed(0)}
-                  </tspan>
-                </text>
-              </PieChart>
-            </ResponsiveContainer>
-            
-            {/* 日均支出/收入 - 小字顯示在圓餅圖下方 */}
-            <div className="text-center text-xs text-gray-500 mt-0 mb-2">
-              日均{activeTab === "expense" ? "支出" : "收入"}: ${activeTab === "expense" ? summary.averageExpense.toFixed(2) : summary.averageIncome.toFixed(2)}
-            </div>
-            
-            {/* 自定義圖例 */}
-            <div className="mt-3">
-              <div className="bg-gray-50 rounded-xl p-3">
-                <div className="grid grid-cols-2 gap-x-8 gap-y-3">
-                  {categoryData.map((entry, index) => (
-                    <div key={`legend-${index}`} className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div 
-                          className="w-3 h-3 rounded mr-2 flex-shrink-0" 
-                          style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                        />
-                        <span className="text-sm font-medium text-gray-700 truncate max-w-[100px]">{entry.name}</span>
-                      </div>
-                      <span className="text-sm font-medium text-gray-900">
-                        {(entry.value / (activeTab === "expense" ? summary.totalExpense : summary.totalIncome) * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex justify-center items-center h-64">
-            <p>無數據</p>
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-2xl p-5 shadow-sm">
-        <h2 className="text-lg font-medium">每日分佈</h2>
-        
-        {isLoading ? (
-          <div className="flex justify-center items-center h-64">
-            <p>載入中...</p>
-          </div>
-        ) : dailyData.length > 0 ? (
-          <>
-            <div className="text-xs text-gray-500 mb-3 pb-2 border-b border-gray-100">
-              {activeTab === "expense" ? "每日支出分佈圖表" : "每日收入分佈圖表"}
-            </div>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart
-                data={dailyData}
-                margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
-                key={`bar-chart-${activeTab}-${dailyData.length}`}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis 
-                  dataKey="day" 
-                  tick={{ fontSize: 12 }}
-                  interval="preserveEnd"
-                  tickMargin={10}
-                  axisLine={{ stroke: '#E5E7EB' }}
-                  tickLine={false}
-                />
-                <YAxis 
-                  hide={true}
-                  domain={[0, 'dataMax + 5']}
-                />
-                <Bar 
-                  dataKey="percentage" 
-                  fill="#10b981"
-                  isAnimationActive={true}
-                  animationDuration={500}
-                  unit="%"
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={20}
-                  name={activeTab === "expense" ? "支出佔比" : "收入佔比"}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-            
-            {/* 趨勢摘要 */}
-            <div className="mt-4">
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="grid grid-cols-3 gap-x-2">
-                  <div className="p-2">
-                    <div className="text-xs text-gray-500 mb-1">最高日</div>
-                    <div className="text-sm font-medium">
-                      {dailyData.reduce((max, item) => item.percentage > max.percentage ? item : max, dailyData[0]).day}
-                    </div>
-                    <div className="text-green-500 font-medium">
-                      {dailyData.reduce((max, item) => item.percentage > max.percentage ? item : max, dailyData[0]).percentage.toFixed(1)}%
-                    </div>
-                  </div>
-                  
-                  <div className="p-2">
-                    <div className="text-xs text-gray-500 mb-1">最低日</div>
-                    <div className="text-sm font-medium">
-                      {dailyData.filter(item => item.percentage > 0).reduce((min, item) => 
-                        item.percentage < min.percentage ? item : min, 
-                        dailyData.find(item => item.percentage > 0) || dailyData[0]
-                      ).day}
-                    </div>
-                    <div className="text-green-500 font-medium">
-                      {dailyData.filter(item => item.percentage > 0).reduce((min, item) => 
-                        item.percentage < min.percentage ? item : min, 
-                        dailyData.find(item => item.percentage > 0) || dailyData[0]
-                      ).percentage.toFixed(1)}%
-                    </div>
-                  </div>
-                  
-                  <div className="p-2">
-                    <div className="text-xs text-gray-500 mb-1">日均</div>
-                    <div className="text-sm font-medium">
-                      {activeTab === "expense" ? "支出" : "收入"}
-                    </div>
-                    <div className="text-green-500 font-medium">
-                      {(100 / dailyData.filter(item => item.percentage > 0).length).toFixed(1)}%
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="flex justify-center items-center h-64">
-            <p>無數據</p>
-          </div>
-        )}
-      </div>
+      {isLoading ? (
+        renderSkeleton()
+      ) : (
+        <Suspense fallback={renderSkeleton()}>
+          {chartsLoaded ? (
+            <ChartComponents 
+              categoryData={categoryData}
+              dailyData={dailyData}
+              activeTab={activeTab}
+              summary={summary}
+              dataTimestamp={dataTimestamp}
+              COLORS={COLORS}
+            />
+          ) : (
+            renderSkeleton()
+          )}
+        </Suspense>
+      )}
 
       {/* 錯誤顯示 */}
       {error && (
