@@ -18,19 +18,28 @@ const CACHE_DURATION = 60 * 5; // 5分鐘緩存
  * 根據用戶ID和月份獲取交易數據
  * @param userId 用戶ID
  * @param year 年份
- * @param month 月份 (1-12)
+ * @param month 月份 (1-12)，如果不提供則獲取整年數據
  * @returns 交易數據陣列
  */
-export async function fetchTransactionsByUser(userId: string, year: number, month: number): Promise<Transaction[]> {
+export async function fetchTransactionsByUser(userId: string, year: number, month?: number): Promise<Transaction[]> {
   try {
-    // 設置時間為中午12點，避免時區問題導致日期偏移
-    const startDate = new Date(year, month - 1, 1, 12, 0, 0).toISOString(); // 月份從0開始，所以減1
-    const endDate = new Date(year, month, 0, 12, 0, 0).toISOString(); // 下個月的第0天就是當月最後一天
-    
-    console.log(`Fetching transactions for user ${userId} from ${startDate} to ${endDate}`);
-    
-    // 緩存鍵
-    const cacheKey = `transactions_${userId}_${year}_${month}`;
+    let startDate: string;
+    let endDate: string;
+    let cacheKey: string;
+
+    if (month) {
+      // 月度數據 - 設置時間為中午12點，避免時區問題導致日期偏移
+      startDate = new Date(year, month - 1, 1, 12, 0, 0).toISOString(); // 月份從0開始，所以減1
+      endDate = new Date(year, month, 0, 12, 0, 0).toISOString(); // 下個月的第0天就是當月最後一天
+      cacheKey = `transactions_${userId}_${year}_${month}`;
+      console.log(`Fetching monthly transactions for user ${userId} from ${startDate} to ${endDate}`);
+    } else {
+      // 年度數據
+      startDate = new Date(year, 0, 1, 12, 0, 0).toISOString(); // 1月1日
+      endDate = new Date(year, 11, 31, 12, 0, 0).toISOString(); // 12月31日
+      cacheKey = `transactions_${userId}_${year}_yearly`;
+      console.log(`Fetching yearly transactions for user ${userId} from ${startDate} to ${endDate}`);
+    }
     
     // 檢查緩存
     const cachedData = sessionStorage.getItem(cacheKey);
@@ -38,7 +47,7 @@ export async function fetchTransactionsByUser(userId: string, year: number, mont
       const { data, timestamp } = JSON.parse(cachedData);
       // 檢查緩存是否過期
       if ((Date.now() - timestamp) / 1000 < CACHE_DURATION) {
-        console.log(`Using cached transactions data for ${userId} (${year}-${month})`);
+        console.log(`Using cached transactions data for ${userId} (${year}${month ? `-${month}` : ' yearly'})`);
         return data;
       }
     }
@@ -183,6 +192,66 @@ export async function fetchMonthlySummary(userId: string, year: number, month: n
     return summary;
   } catch (error) {
     console.error("Error fetching monthly summary:", error);
+    return { totalExpense: 0, totalIncome: 0, balance: 0 };
+  }
+}
+
+/**
+ * 獲取年度摘要
+ * @param userId 用戶ID
+ * @param year 年份
+ * @returns 年度摘要數據
+ */
+export async function fetchYearlySummary(userId: string, year: number): Promise<{
+  totalExpense: number;
+  totalIncome: number;
+  balance: number;
+}> {
+  try {
+    // 緩存鍵
+    const cacheKey = `summary_${userId}_${year}_yearly`;
+    
+    // 檢查緩存
+    const cachedData = sessionStorage.getItem(cacheKey);
+    if (cachedData) {
+      const { data, timestamp } = JSON.parse(cachedData);
+      // 檢查緩存是否過期
+      if ((Date.now() - timestamp) / 1000 < CACHE_DURATION) {
+        console.log(`Using cached yearly summary data for ${userId} (${year})`);
+        return data;
+      }
+    }
+    
+    // 獲取用戶該年的所有交易
+    const transactions = await fetchTransactionsByUser(userId, year);
+    
+    // 計算總支出和總收入
+    const summary = transactions.reduce(
+      (acc, transaction) => {
+        if (transaction.type === "expense") {
+          acc.totalExpense += Math.abs(transaction.amount);
+        } else {
+          acc.totalIncome += transaction.amount;
+        }
+        return acc;
+      },
+      { totalExpense: 0, totalIncome: 0, balance: 0 }
+    );
+    
+    // 計算結餘
+    summary.balance = summary.totalIncome - summary.totalExpense;
+    
+    console.log(`Yearly summary for ${year}: Expense=${summary.totalExpense}, Income=${summary.totalIncome}, Balance=${summary.balance}`);
+    
+    // 更新緩存
+    sessionStorage.setItem(cacheKey, JSON.stringify({
+      data: summary,
+      timestamp: Date.now()
+    }));
+    
+    return summary;
+  } catch (error) {
+    console.error("Error fetching yearly summary:", error);
     return { totalExpense: 0, totalIncome: 0, balance: 0 };
   }
 }

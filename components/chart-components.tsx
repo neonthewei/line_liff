@@ -3,11 +3,13 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, 
   CartesianGrid, Tooltip, ResponsiveContainer 
 } from "recharts";
+import { ViewType } from './month-selector';
 
 type ChartComponentsProps = {
   categoryData: any[];
   dailyData: any[];
   activeTab: "expense" | "income";
+  activeView: ViewType;
   summary: {
     totalExpense: number;
     totalIncome: number;
@@ -24,6 +26,7 @@ const ChartComponents: React.FC<ChartComponentsProps> = ({
   categoryData,
   dailyData,
   activeTab,
+  activeView,
   summary,
   dataTimestamp,
   COLORS
@@ -34,6 +37,7 @@ const ChartComponents: React.FC<ChartComponentsProps> = ({
         <h2 className="text-lg font-medium">類別分佈</h2>
         <div className="text-xs text-gray-500 mb-3 pb-2 border-b border-gray-100">
           {activeTab === "expense" ? "支出類別佔比分析" : "收入類別佔比分析"}
+          {activeView === "year" && " (全年)"}
         </div>
         
         {categoryData.length > 0 ? (
@@ -77,7 +81,10 @@ const ChartComponents: React.FC<ChartComponentsProps> = ({
                   className="text-sm font-medium"
                 >
                   <tspan x="50%" dy="-15" fontSize="14" fill="#666">
-                    {activeTab === "expense" ? "總支出" : "總收入"}
+                    {activeView === "month" ? 
+                      (activeTab === "expense" ? "總支出" : "總收入") : 
+                      (activeTab === "expense" ? "年度總支出" : "年度總收入")
+                    }
                   </tspan>
                   <tspan x="50%" dy="28" fontSize="20" fontWeight="bold" fill="#333">
                     ${activeTab === "expense" ? summary.totalExpense.toFixed(0) : summary.totalIncome.toFixed(0)}
@@ -88,7 +95,10 @@ const ChartComponents: React.FC<ChartComponentsProps> = ({
             
             {/* 日均支出/收入 - 小字顯示在圓餅圖下方 */}
             <div className="text-center text-xs text-gray-500 mt-0 mb-2">
-              日均{activeTab === "expense" ? "支出" : "收入"}: ${activeTab === "expense" ? summary.averageExpense.toFixed(2) : summary.averageIncome.toFixed(2)}
+              {activeView === "month" ? 
+                `日均${activeTab === "expense" ? "支出" : "收入"}: $${activeTab === "expense" ? summary.averageExpense.toFixed(2) : summary.averageIncome.toFixed(2)}` :
+                `月均${activeTab === "expense" ? "支出" : "收入"}: $${activeTab === "expense" ? summary.averageExpense.toFixed(2) : summary.averageIncome.toFixed(2)}`
+              }
             </div>
             
             {/* 自定義圖例 */}
@@ -121,12 +131,17 @@ const ChartComponents: React.FC<ChartComponentsProps> = ({
       </div>
 
       <div className="bg-white rounded-2xl p-5 shadow-sm">
-        <h2 className="text-lg font-medium">每日分佈</h2>
+        <h2 className="text-lg font-medium">
+          {activeView === "month" ? "每日分佈" : "每月分佈"}
+        </h2>
         
         {dailyData.length > 0 ? (
           <>
-            <div className="text-xs text-gray-500 mb-3 pb-2 border-b border-gray-100">
-              {activeTab === "expense" ? "每日支出分佈圖表" : "每日收入分佈圖表"}
+            <div className="text-xs text-gray-500 mb-8 pb-2 border-b border-gray-100">
+              {activeView === "month" 
+                ? (activeTab === "expense" ? "每日支出分佈圖表" : "每日收入分佈圖表")
+                : (activeTab === "expense" ? "每月支出分佈圖表" : "每月收入分佈圖表")
+              }
             </div>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart
@@ -136,7 +151,7 @@ const ChartComponents: React.FC<ChartComponentsProps> = ({
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis 
-                  dataKey="day" 
+                  dataKey={activeView === "month" ? "day" : "month"} 
                   tick={{ fontSize: 12 }}
                   interval="preserveEnd"
                   tickMargin={10}
@@ -152,7 +167,7 @@ const ChartComponents: React.FC<ChartComponentsProps> = ({
                   fill="#10b981"
                   isAnimationActive={false}
                   unit="%"
-                  radius={[4, 4, 0, 0]}
+                  radius={[2, 2, 0, 0]}
                   maxBarSize={20}
                   name={activeTab === "expense" ? "支出佔比" : "收入佔比"}
                 />
@@ -160,42 +175,38 @@ const ChartComponents: React.FC<ChartComponentsProps> = ({
             </ResponsiveContainer>
             
             {/* 趨勢摘要 */}
-            <div className="mt-4">
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="grid grid-cols-3 gap-x-2">
-                  <div className="p-2">
-                    <div className="text-xs text-gray-500 mb-1">最高日</div>
-                    <div className="text-sm font-medium">
-                      {dailyData.reduce((max, item) => item.percentage > max.percentage ? item : max, dailyData[0]).day}
+            <div className="mt-6">
+              <div className="grid grid-cols-2 gap-x-4">
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <div className="flex flex-col items-center justify-center text-center">
+                    <div className="text-xs text-gray-500 mb-2">
+                      {activeView === "month" ? "最高日" : "最高月"}
                     </div>
-                    <div className="text-green-500 font-medium">
+                    <div className="text-xl font-bold mb-1">
+                      {dailyData.reduce((max, item) => item.percentage > max.percentage ? item : max, dailyData[0])[activeView === "month" ? "day" : "month"]}
+                    </div>
+                    <div className="text-green-500 font-medium text-lg">
                       {dailyData.reduce((max, item) => item.percentage > max.percentage ? item : max, dailyData[0]).percentage.toFixed(1)}%
                     </div>
                   </div>
-                  
-                  <div className="p-2">
-                    <div className="text-xs text-gray-500 mb-1">最低日</div>
-                    <div className="text-sm font-medium">
+                </div>
+                
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <div className="flex flex-col items-center justify-center text-center">
+                    <div className="text-xs text-gray-500 mb-2">
+                      {activeView === "month" ? "最低日" : "最低月"}
+                    </div>
+                    <div className="text-xl font-bold mb-1">
                       {dailyData.filter(item => item.percentage > 0).reduce((min, item) => 
                         item.percentage < min.percentage ? item : min, 
                         dailyData.find(item => item.percentage > 0) || dailyData[0]
-                      ).day}
+                      )[activeView === "month" ? "day" : "month"]}
                     </div>
-                    <div className="text-green-500 font-medium">
+                    <div className="text-green-500 font-medium text-lg">
                       {dailyData.filter(item => item.percentage > 0).reduce((min, item) => 
                         item.percentage < min.percentage ? item : min, 
                         dailyData.find(item => item.percentage > 0) || dailyData[0]
                       ).percentage.toFixed(1)}%
-                    </div>
-                  </div>
-                  
-                  <div className="p-2">
-                    <div className="text-xs text-gray-500 mb-1">日均</div>
-                    <div className="text-sm font-medium">
-                      {activeTab === "expense" ? "支出" : "收入"}
-                    </div>
-                    <div className="text-green-500 font-medium">
-                      {(100 / dailyData.filter(item => item.percentage > 0).length).toFixed(1)}%
                     </div>
                   </div>
                 </div>

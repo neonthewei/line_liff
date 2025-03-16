@@ -4,8 +4,8 @@ import { useEffect, useState, useMemo, useCallback, Suspense, lazy } from "react
 import { useRouter } from "next/navigation";
 import { initializeLiff } from "@/utils/liff";
 import type { Transaction } from "@/types/transaction";
-import MonthSelector from "@/components/month-selector";
-import { fetchTransactionsByUser, fetchMonthlySummary } from "@/utils/api";
+import MonthSelector, { ViewType } from "@/components/month-selector";
+import { fetchTransactionsByUser, fetchMonthlySummary, fetchYearlySummary } from "@/utils/api";
 import { initConsoleCapture, getCaptureLogs, getCaptureErrors, addCustomLog } from "@/utils/debug";
 import { 
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, 
@@ -33,14 +33,17 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#4CAF50'
 const CACHE_EXPIRY = 5 * 60 * 1000; // 5分鐘
 
 // 緩存鍵生成函數
-const generateCacheKey = (userId: string, year: number, month: number) => 
-  `transactions_${userId}_${year}_${month}`;
+const generateCacheKey = (userId: string, year: number, month: number | null, viewType: ViewType) => 
+  viewType === "month" 
+    ? `transactions_${userId}_${year}_${month}_monthly` 
+    : `transactions_${userId}_${year}_yearly`;
 
 export default function AnalysePage() {
   const router = useRouter();
   const [isLiffInitialized, setIsLiffInitialized] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [activeTab, setActiveTab] = useState<AnalysisTab>("expense");
+  const [activeView, setActiveView] = useState<ViewType>("month");
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
@@ -190,15 +193,14 @@ export default function AnalysePage() {
     
     setIsLoading(true);
     try {
-      // 獲取當月交易
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth() + 1;
       
-      addCustomLog(`正在獲取 ${year}年${month}月 的交易數據`);
-      console.log(`Fetching data for user ${userId}, year ${year}, month ${month}`);
+      addCustomLog(`正在獲取 ${year}年${activeView === "month" ? `${month}月` : ""} 的交易數據`);
+      console.log(`Fetching data for user ${userId}, year ${year}${activeView === "month" ? `, month ${month}` : ""}, view: ${activeView}`);
       
       // 檢查緩存
-      const cacheKey = generateCacheKey(userId, year, month);
+      const cacheKey = generateCacheKey(userId, year, activeView === "month" ? month : null, activeView);
       const cachedData = localStorage.getItem(cacheKey);
       
       if (cachedData) {
@@ -218,36 +220,63 @@ export default function AnalysePage() {
       
       // 緩存不存在或已過期，從API獲取數據
       console.log("Cache expired or not found, fetching from API");
-      const transactionsData = await fetchTransactionsByUser(userId, year, month);
-      console.log(`Fetched ${transactionsData.length} transactions from API`);
       
-      // 獲取月度摘要
-      const summaryData = await fetchMonthlySummary(userId, year, month);
-      console.log("Fetched monthly summary:", summaryData);
+      let transactionsData: Transaction[] = [];
+      let summaryData: any = {};
       
-      // 計算平均值 (假設一個月30天)
-      const daysInMonth = new Date(year, month, 0).getDate();
-      const averageExpense = summaryData.totalExpense / daysInMonth;
-      const averageIncome = summaryData.totalIncome / daysInMonth;
-      const averageBalance = summaryData.balance / daysInMonth;
-      
-      const fullSummary = {
-        ...summaryData,
-        averageExpense,
-        averageIncome,
-        averageBalance
-      };
+      if (activeView === "month") {
+        // 獲取月度數據
+        transactionsData = await fetchTransactionsByUser(userId, year, month);
+        console.log(`Fetched ${transactionsData.length} transactions from API for month ${month}`);
+        
+        // 獲取月度摘要
+        summaryData = await fetchMonthlySummary(userId, year, month);
+        console.log("Fetched monthly summary:", summaryData);
+        
+        // 計算平均值 (假設一個月30天)
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const averageExpense = summaryData.totalExpense / daysInMonth;
+        const averageIncome = summaryData.totalIncome / daysInMonth;
+        const averageBalance = summaryData.balance / daysInMonth;
+        
+        summaryData = {
+          ...summaryData,
+          averageExpense,
+          averageIncome,
+          averageBalance
+        };
+      } else {
+        // 獲取年度數據
+        transactionsData = await fetchTransactionsByUser(userId, year);
+        console.log(`Fetched ${transactionsData.length} transactions from API for year ${year}`);
+        
+        // 獲取年度摘要
+        summaryData = await fetchYearlySummary(userId, year);
+        console.log("Fetched yearly summary:", summaryData);
+        
+        // 計算月平均值
+        const averageExpense = summaryData.totalExpense / 12;
+        const averageIncome = summaryData.totalIncome / 12;
+        const averageBalance = summaryData.balance / 12;
+        
+        summaryData = {
+          ...summaryData,
+          averageExpense,
+          averageIncome,
+          averageBalance
+        };
+      }
       
       // 更新狀態
       setTransactions(transactionsData);
-      setSummary(fullSummary);
+      setSummary(summaryData);
       
       // 更新緩存
       const now = Date.now();
       setDataTimestamp(now);
       localStorage.setItem(cacheKey, JSON.stringify({
         transactions: transactionsData,
-        summary: fullSummary,
+        summary: summaryData,
         timestamp: now
       }));
       
@@ -258,14 +287,14 @@ export default function AnalysePage() {
     } finally {
       setIsLoading(false);
     }
-  }, [userId, currentDate]);
+  }, [userId, currentDate, activeView]);
 
   // 獲取交易數據
   useEffect(() => {
     if (userId) {
       fetchData();
     }
-  }, [userId, currentDate, fetchData]);
+  }, [userId, currentDate, activeView, fetchData]);
 
   // 使用 useMemo 優化圖表數據處理
   const { memoizedCategoryData, memoizedDailyData } = useMemo(() => {
@@ -307,44 +336,78 @@ export default function AnalysePage() {
       .filter(item => item.value > 0) // 過濾掉值為0的項目
       .sort((a, b) => b.value - a.value); // 按金額降序排序
     
-    // 生成線圖數據 (按日期分組)
-    const dailyGroups: Record<string, number> = {};
+    // 生成線圖數據 (按日期或月份分組)
+    const timeGroups: Record<string, number> = {};
     
-    // 初始化當月所有日期
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    
-    for (let i = 1; i <= daysInMonth; i++) {
-      const dateStr = `${i}日`;
-      dailyGroups[dateStr] = 0;
+    if (activeView === "month") {
+      // 按日期分組 - 初始化當月所有日期
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      
+      for (let i = 1; i <= daysInMonth; i++) {
+        const dateStr = `${i}日`;
+        timeGroups[dateStr] = 0;
+      }
+      
+      // 累加每日數據
+      filteredTransactions.forEach(tx => {
+        try {
+          // 從 "YYYY年MM月DD日" 格式解析日期
+          const match = tx.date.match(/(\d+)年(\d+)月(\d+)日/);
+          if (match) {
+            const day = parseInt(match[3]);
+            const dateStr = `${day}日`;
+            // 確保金額是數字
+            const amount = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount || 0));
+            
+            if (timeGroups[dateStr] !== undefined) {
+              timeGroups[dateStr] += Math.abs(amount); // 使用絕對值確保金額為正數
+            }
+          }
+        } catch (error) {
+          console.error("日期解析錯誤:", error, tx.date);
+        }
+      });
+    } else {
+      // 按月份分組
+      for (let i = 1; i <= 12; i++) {
+        const monthStr = `${i}月`;
+        timeGroups[monthStr] = 0;
+      }
+      
+      // 累加每月數據
+      filteredTransactions.forEach(tx => {
+        try {
+          // 從 "YYYY年MM月DD日" 格式解析日期
+          const match = tx.date.match(/(\d+)年(\d+)月(\d+)日/);
+          if (match) {
+            const month = parseInt(match[2]);
+            const monthStr = `${month}月`;
+            // 確保金額是數字
+            const amount = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount || 0));
+            
+            if (timeGroups[monthStr] !== undefined) {
+              timeGroups[monthStr] += Math.abs(amount); // 使用絕對值確保金額為正數
+            }
+          }
+        } catch (error) {
+          console.error("日期解析錯誤:", error, tx.date);
+        }
+      });
     }
     
-    // 累加每日數據
-    filteredTransactions.forEach(tx => {
-      try {
-        // 從 "YYYY年MM月DD日" 格式解析日期
-        const match = tx.date.match(/(\d+)年(\d+)月(\d+)日/);
-        if (match) {
-          const day = parseInt(match[3]);
-          const dateStr = `${day}日`;
-          // 確保金額是數字
-          const amount = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount || 0));
-          
-          if (dailyGroups[dateStr] !== undefined) {
-            dailyGroups[dateStr] += Math.abs(amount); // 使用絕對值確保金額為正數
-          }
-        }
-      } catch (error) {
-        console.error("日期解析錯誤:", error, tx.date);
-      }
-    });
-    
     // 轉換為圖表數據格式
-    const lineData = Object.keys(dailyGroups)
-      .sort((a, b) => parseInt(a) - parseInt(b))
-      .map(day => {
-        const amount = dailyGroups[day];
+    const timeLabels = activeView === "month" ? "day" : "month";
+    const lineData = Object.keys(timeGroups)
+      .sort((a, b) => {
+        // 按數字排序，去掉"日"或"月"後比較
+        const numA = parseInt(a.replace(/[日月]/g, ''));
+        const numB = parseInt(b.replace(/[日月]/g, ''));
+        return numA - numB;
+      })
+      .map(timeLabel => {
+        const amount = timeGroups[timeLabel];
         const totalForActiveTab = activeTab === "expense" 
           ? summary.totalExpense 
           : summary.totalIncome;
@@ -353,7 +416,7 @@ export default function AnalysePage() {
         const percentage = totalForActiveTab > 0 ? (amount / totalForActiveTab * 100) : 0;
         
         return {
-          day,
+          [timeLabels]: timeLabel,
           amount,
           percentage
         };
@@ -363,7 +426,7 @@ export default function AnalysePage() {
       memoizedCategoryData: pieData, 
       memoizedDailyData: lineData 
     };
-  }, [transactions, activeTab, summary, currentDate]);
+  }, [transactions, activeTab, activeView, summary, currentDate]);
 
   // 更新圖表數據
   useEffect(() => {
@@ -372,8 +435,14 @@ export default function AnalysePage() {
   }, [memoizedCategoryData, memoizedDailyData]);
 
   // 處理月份變更
-  const handleMonthChange = useCallback((newDate: Date) => {
+  const handleMonthChange = useCallback((newDate: Date, viewType: ViewType) => {
     setCurrentDate(newDate);
+    setActiveView(viewType);
+  }, []);
+
+  // 處理視圖變更
+  const handleViewChange = useCallback((viewType: ViewType) => {
+    setActiveView(viewType);
   }, []);
 
   // 處理標籤變更
@@ -449,7 +518,12 @@ export default function AnalysePage() {
   return (
     <main className="container mx-auto max-w-md p-5 min-h-screen">
       {/* 月份選擇器 */}
-      <MonthSelector currentDate={currentDate} onMonthChange={handleMonthChange} />
+      <MonthSelector 
+        currentDate={currentDate} 
+        onMonthChange={handleMonthChange} 
+        activeView={activeView}
+        onViewChange={handleViewChange}
+      />
 
       {/* 標籤選擇器 */}
       <div className="flex bg-white rounded-2xl p-2 mb-5 shadow-sm">
@@ -502,6 +576,7 @@ export default function AnalysePage() {
               categoryData={categoryData}
               dailyData={dailyData}
               activeTab={activeTab}
+              activeView={activeView}
               summary={summary}
               dataTimestamp={dataTimestamp}
               COLORS={COLORS}
