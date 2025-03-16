@@ -23,8 +23,9 @@ const CACHE_DURATION = 60 * 5; // 5分鐘緩存
  */
 export async function fetchTransactionsByUser(userId: string, year: number, month: number): Promise<Transaction[]> {
   try {
-    const startDate = new Date(year, month - 1, 1).toISOString(); // 月份從0開始，所以減1
-    const endDate = new Date(year, month, 0).toISOString(); // 下個月的第0天就是當月最後一天
+    // 設置時間為中午12點，避免時區問題導致日期偏移
+    const startDate = new Date(year, month - 1, 1, 12, 0, 0).toISOString(); // 月份從0開始，所以減1
+    const endDate = new Date(year, month, 0, 12, 0, 0).toISOString(); // 下個月的第0天就是當月最後一天
     
     console.log(`Fetching transactions for user ${userId} from ${startDate} to ${endDate}`);
     
@@ -310,10 +311,49 @@ export async function updateTransactionApi(transaction: Transaction): Promise<bo
       // 即使通知發送失敗，我們仍然認為更新成功
     }
     
+    // 清除該用戶的緩存，確保下次獲取數據時能獲取最新數據
+    // 從日期中提取年月
+    const match = transaction.date.match(/(\d+)年(\d+)月(\d+)日/);
+    if (match) {
+      const year = parseInt(match[1]);
+      const month = parseInt(match[2]);
+      
+      // 獲取用戶ID
+      const userId = await getUserIdFromLiff();
+      if (userId) {
+        clearTransactionCache(userId, year, month);
+      } else {
+        // 如果無法獲取用戶ID，清除所有緩存
+        console.log("Could not determine user ID, clearing all caches");
+        sessionStorage.clear();
+      }
+    } else {
+      // 如果無法解析日期，清除所有緩存
+      console.log("Could not parse date, clearing all caches");
+      sessionStorage.clear();
+    }
+    
     return true;
   } catch (error) {
     console.error("Error updating transaction:", error);
     return false;
+  }
+}
+
+/**
+ * 從LIFF獲取用戶ID
+ * @returns 用戶ID或null
+ */
+async function getUserIdFromLiff(): Promise<string | null> {
+  try {
+    if (typeof window !== 'undefined' && window.liff && window.liff.isLoggedIn()) {
+      const profile = await window.liff.getProfile();
+      return profile.userId;
+    }
+    return null;
+  } catch (error) {
+    console.error("Error getting user ID from LIFF:", error);
+    return null;
   }
 }
 
@@ -366,6 +406,28 @@ export async function deleteTransactionApi(id: string, type: string): Promise<bo
       // 即使通知發送失敗，我們仍然認為刪除成功
     }
     
+    // 清除該用戶的緩存，確保下次獲取數據時能獲取最新數據
+    // 從日期中提取年月
+    const match = transaction.date.match(/(\d+)年(\d+)月(\d+)日/);
+    if (match) {
+      const year = parseInt(match[1]);
+      const month = parseInt(match[2]);
+      
+      // 獲取用戶ID
+      const userId = await getUserIdFromLiff();
+      if (userId) {
+        clearTransactionCache(userId, year, month);
+      } else {
+        // 如果無法獲取用戶ID，清除所有緩存
+        console.log("Could not determine user ID, clearing all caches");
+        sessionStorage.clear();
+      }
+    } else {
+      // 如果無法解析日期，清除所有緩存
+      console.log("Could not parse date, clearing all caches");
+      sessionStorage.clear();
+    }
+    
     return true;
   } catch (error) {
     console.error("Error deleting transaction:", error);
@@ -383,7 +445,7 @@ function formatDate(dateString: string): string {
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
   const day = date.getDate();
-  return `${year}年${month}月${day}日`;
+  return `${year}年${month.toString().padStart(2, '0')}月${day.toString().padStart(2, '0')}日`;
 }
 
 /**
@@ -401,5 +463,44 @@ function parseDateToISOString(dateString: string): string {
   const month = parseInt(match[2]) - 1; // 月份從0開始
   const day = parseInt(match[3]);
   
-  return new Date(year, month, day).toISOString();
+  // 設置時間為中午12點，避免時區問題導致日期偏移
+  const date = new Date(year, month, day, 12, 0, 0);
+  return date.toISOString();
+}
+
+/**
+ * 清除特定用戶和月份的交易緩存
+ * @param userId 用戶ID
+ * @param year 年份
+ * @param month 月份 (1-12)
+ */
+export function clearTransactionCache(userId: string, year?: number, month?: number): void {
+  try {
+    if (typeof window === 'undefined' || !window.sessionStorage) {
+      return; // 在服務器端不執行
+    }
+    
+    if (year !== undefined && month !== undefined) {
+      // 清除特定月份的緩存
+      const cacheKey = `transactions_${userId}_${year}_${month}`;
+      const summaryKey = `summary_${userId}_${year}_${month}`;
+      sessionStorage.removeItem(cacheKey);
+      sessionStorage.removeItem(summaryKey);
+      console.log(`Cleared cache for user ${userId} for ${year}-${month}`);
+    } else {
+      // 清除該用戶的所有緩存
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.includes(`_${userId}_`)) {
+          keysToRemove.push(key);
+        }
+      }
+      
+      keysToRemove.forEach(key => sessionStorage.removeItem(key));
+      console.log(`Cleared all cache for user ${userId}, removed ${keysToRemove.length} items`);
+    }
+  } catch (error) {
+    console.error("Error clearing transaction cache:", error);
+  }
 } 

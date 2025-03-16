@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { initializeLiff, navigateInLiff } from "@/utils/liff";
 import type { Transaction } from "@/types/transaction";
 import MonthSelector from "@/components/month-selector";
-import { fetchTransactionsByUser, fetchMonthlySummary } from "@/utils/api";
+import { fetchTransactionsByUser, fetchMonthlySummary, clearTransactionCache } from "@/utils/api";
 import MonthSummary from "@/components/month-summary";
 import TabSelector from "@/components/tab-selector";
 import TransactionList from "@/components/transaction-list";
@@ -48,13 +48,90 @@ export default function Home() {
 
   // 更新日誌顯示
   useEffect(() => {
-    const intervalId = setInterval(() => {
+    const interval = setInterval(() => {
       setLogs(getCaptureLogs());
       setErrorLogs(getCaptureErrors());
     }, 1000);
-
-    return () => clearInterval(intervalId);
+    return () => clearInterval(interval);
   }, []);
+
+  // 定義獲取數據的函數
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    setIsDataLoading(true);
+    setError(null);
+    
+    if (!userId) {
+      setIsLoading(false);
+      setIsDataLoading(false);
+      return;
+    }
+    
+    try {
+      console.log(`開始獲取用戶 ${userId} 的交易數據，日期: ${currentDate.toISOString()}`);
+      
+      // 獲取所選月份的交易數據
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth() + 1; // JavaScript 月份從 0 開始，API需要 1-12
+      
+      // 並行獲取交易數據和月度摘要
+      const [transactionsData, summaryData] = await Promise.all([
+        fetchTransactionsByUser(userId, year, month),
+        fetchMonthlySummary(userId, year, month)
+      ]);
+      
+      console.log(`成功獲取 ${transactionsData.length} 筆交易數據`);
+      setTransactions(transactionsData);
+      setSummary(summaryData);
+    } catch (error) {
+      console.error("獲取交易數據失敗", error);
+      setError("獲取數據失敗，請稍後再試");
+      setTransactions([]);
+      setShowDebug(true);
+    } finally {
+      setIsLoading(false);
+      setIsDataLoading(false);
+    }
+  }, [userId, currentDate]);
+
+  // 每次組件掛載或獲得焦點時刷新數據
+  useEffect(() => {
+    // 初始加載
+    if (userId) {
+      fetchData();
+    }
+
+    // 添加頁面可見性變化事件監聽器
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && userId) {
+        console.log('頁面重新獲得焦點，刷新數據');
+        fetchData();
+      }
+    };
+
+    // 添加頁面焦點事件監聽器
+    const handleFocus = () => {
+      if (userId) {
+        console.log('頁面重新獲得焦點，刷新數據');
+        fetchData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [userId, fetchData, currentDate]);
+
+  // 當月份變化時重新獲取數據
+  useEffect(() => {
+    if (userId) {
+      fetchData();
+    }
+  }, [currentDate, userId, fetchData]);
 
   // 初始化 LIFF 和获取用戶ID
   useEffect(() => {
@@ -135,51 +212,6 @@ export default function Home() {
     initLiff();
   }, []);
 
-  // 获取交易数据
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      setIsDataLoading(true);
-      setError(null);
-      
-      if (!userId) {
-        setIsLoading(false);
-        setIsDataLoading(false);
-        return;
-      }
-      
-      try {
-        console.log(`開始獲取用戶 ${userId} 的交易數據，日期: ${currentDate.toISOString()}`);
-        
-        // 獲取所選月份的交易數據
-        const year = currentDate.getFullYear();
-        const month = currentDate.getMonth() + 1; // JavaScript 月份從 0 開始，API需要 1-12
-        
-        // 並行獲取交易數據和月度摘要
-        const [transactionsData, summaryData] = await Promise.all([
-          fetchTransactionsByUser(userId, year, month),
-          fetchMonthlySummary(userId, year, month)
-        ]);
-        
-        console.log(`成功獲取 ${transactionsData.length} 筆交易數據`);
-        setTransactions(transactionsData);
-        setSummary(summaryData);
-      } catch (error) {
-        console.error("獲取交易數據失敗", error);
-        setError("獲取數據失敗，請稍後再試");
-        setTransactions([]);
-        setShowDebug(true);
-      } finally {
-        setIsLoading(false);
-        setIsDataLoading(false);
-      }
-    };
-
-    if (userId) {
-      fetchData();
-    }
-  }, [userId, currentDate]);
-
   const handleMonthChange = (newDate: Date) => {
     console.log(`切換月份至: ${newDate.toISOString()}`);
     setCurrentDate(newDate);
@@ -201,6 +233,13 @@ export default function Home() {
 
   // 處理交易點擊，使用 LIFF 導航
   const handleTransactionClick = (id: string, type: string) => {
+    // 清除緩存，確保從詳情頁返回時能獲取最新數據
+    if (userId) {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth() + 1;
+      clearTransactionCache(userId, year, month);
+    }
+    
     console.log(`點擊交易: id=${id}, type=${type}`);
     
     // 使用 LIFF 導航而不是 Next.js 路由
