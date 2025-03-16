@@ -12,9 +12,6 @@ const LIFF_ID_TRANSACTIONS = process.env.NEXT_PUBLIC_LIFF_ID_TRANSACTIONS;
 const LIFF_ID_TRANSACTION = process.env.NEXT_PUBLIC_LIFF_ID_TRANSACTION;
 const LIFF_ID_ANALYSE = process.env.NEXT_PUBLIC_LIFF_ID_ANALYSE;
 
-// 防止重複導航的標誌
-let isNavigating = false;
-
 // 獲取當前頁面的 LIFF ID
 export function getLiffId(): string {
   if (typeof window === 'undefined') {
@@ -167,15 +164,6 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
     return;
   }
   
-  // 防止重複導航
-  if (isNavigating) {
-    console.log("Navigation already in progress, ignoring request");
-    return;
-  }
-  
-  // 設置導航標誌
-  isNavigating = true;
-  
   // 記錄導航信息
   console.log("Navigating in LIFF");
   console.log("Target path:", path);
@@ -246,44 +234,29 @@ export function navigateInLiff(path: string, params: Record<string, string> = {}
   console.log("Using internal navigation (same LIFF context)");
   console.log("Final URL:", url.toString());
   
-  // 立即執行導航，不使用 setTimeout
-  // 這樣可以確保導航在任何狀態更新之前發生
-  try {
-    // 使用 window.location.replace 而不是 window.location.href
-    // replace 方法不會在瀏覽器歷史中創建新條目，可能有助於減少重定向問題
-    if (isInitialized && !BYPASS_LIFF && (liff.isInClient() || isInLineInternalBrowser)) {
-      // 如果在 LINE 內部瀏覽器中，跳過 token 檢查
-      if (isInLineInternalBrowser) {
-        console.log("In LINE internal browser, skipping token check");
-        window.location.replace(url.toString());
-        return;
-      }
-      
-      // 嘗試獲取 access token 來檢查是否有效
-      const token = liff.getAccessToken();
-      if (!token) {
-        console.log("No access token found, attempting to login");
-        liff.login({
-          redirectUri: url.toString()
-        });
-        return;
-      }
-      
-      // 使用 window.location.replace 替代 window.location.href
-      window.location.replace(url.toString());
-    } else {
-      window.location.replace(url.toString());
+  if (isInitialized && !BYPASS_LIFF && (liff.isInClient() || isInLineInternalBrowser)) {
+    // 如果在 LINE 內部瀏覽器中，跳過 token 檢查
+    if (isInLineInternalBrowser) {
+      console.log("In LINE internal browser, skipping token check");
+      window.location.href = url.toString();
+      return;
     }
-  } catch (error) {
-    console.error("Navigation error:", error);
-    // 如果導航失敗，重置導航標誌
-    isNavigating = false;
+    
+    // 嘗試獲取 access token 來檢查是否有效
+    const token = liff.getAccessToken();
+    if (!token) {
+      console.log("No access token found, attempting to login");
+      liff.login({
+        redirectUri: url.toString()
+      });
+      return;
+    }
+    
+    // 使用 window.location.href 替代 liff.openWindow
+    window.location.href = url.toString();
+  } else {
+    window.location.href = url.toString();
   }
-  
-  // 設置一個超時，以防導航沒有發生
-  setTimeout(() => {
-    isNavigating = false;
-  }, 1000);
 }
 
 // 獲取 LIFF URL 參數

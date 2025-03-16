@@ -22,31 +22,10 @@ const TransactionItem = memo(({
   transaction: Transaction, 
   onTransactionClick: (id: string, type: string) => void 
 }) => {
-  // 使用 href 屬性直接導航，而不是使用點擊事件處理程序
-  // 構建導航 URL
-  const getNavigationUrl = () => {
-    const baseUrl = "/transaction";
-    const params = new URLSearchParams();
-    params.append("id", transaction.id);
-    params.append("type", transaction.type);
-    params.append("_t", Date.now().toString()); // 添加時間戳以避免緩存問題
-    return `${baseUrl}?${params.toString()}`;
-  };
-  
   return (
-    <a 
-      href={getNavigationUrl()}
-      className="px-4 py-3 flex items-center justify-between cursor-pointer active:bg-gray-100 no-underline block"
-      role="button"
-      tabIndex={0}
-      aria-label={`${transaction.category} ${transaction.type === "expense" ? "支出" : "收入"} ${Math.abs(transaction.amount).toFixed(2)}`}
-      onClick={(e) => {
-        // 仍然調用 onTransactionClick 以保持與原有邏輯的兼容性
-        // 但使用 setTimeout 確保它在導航之後執行
-        setTimeout(() => {
-          onTransactionClick(transaction.id, transaction.type);
-        }, 100);
-      }}
+    <div 
+      onClick={() => onTransactionClick(transaction.id, transaction.type)}
+      className="px-4 py-3 flex items-center justify-between cursor-pointer active:bg-gray-100"
     >
       <div className="flex items-center">
         <div>
@@ -60,7 +39,7 @@ const TransactionItem = memo(({
         </div>
         <ChevronRight className="h-5 w-5 text-gray-400" />
       </div>
-    </a>
+    </div>
   );
 });
 

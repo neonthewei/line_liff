@@ -290,13 +290,17 @@ export default function Home() {
 
   // 處理交易點擊，使用 LIFF 導航
   const handleTransactionClick = (id: string, type: string) => {
-    // 只記錄點擊，不執行任何可能阻塞導航的操作
+    // 清除緩存，確保從詳情頁返回時能獲取最新數據
+    if (userId) {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth() + 1;
+      clearTransactionCache(userId, year, month);
+    }
+    
     console.log(`點擊交易: id=${id}, type=${type}`);
     
-    // 不再調用 navigateInLiff，因為現在使用 <a> 標籤直接導航
-    // 也不再清除緩存，因為這可能會導致頁面重新渲染
-    
-    // 在返回頁面時，我們將依靠頁面的 visibilitychange 和 focus 事件來刷新數據
+    // 使用 LIFF 導航而不是 Next.js 路由
+    navigateInLiff("/transaction", { id, type });
   };
 
   // 切換調試控制台顯示
