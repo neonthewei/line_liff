@@ -3,9 +3,33 @@
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 import { Home, BarChart2, User } from "lucide-react"
+import { useState, useEffect } from "react"
 
 export default function BottomNav() {
   const pathname = usePathname()
+  const [isVisible, setIsVisible] = useState(false)
+  
+  useEffect(() => {
+    // 監聽鍵盤事件
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'p' || event.key === 'P') {
+        setIsVisible(prev => !prev)
+      }
+    }
+    
+    // 添加事件監聽器
+    window.addEventListener('keydown', handleKeyDown)
+    
+    // 清理事件監聽器
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
+  
+  // 如果不可見，則不渲染導航欄
+  if (!isVisible) {
+    return null
+  }
   
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg">
