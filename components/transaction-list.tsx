@@ -22,9 +22,34 @@ const TransactionItem = memo(({
   transaction: Transaction, 
   onTransactionClick: (id: string, type: string) => void 
 }) => {
+  // Handle click with proper event prevention for mobile
+  const handleClick = (e: React.MouseEvent | React.TouchEvent) => {
+    // Prevent default behavior to avoid any browser-specific handling
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Call the click handler with a small delay to prevent UI flicker
+    setTimeout(() => {
+      onTransactionClick(transaction.id, transaction.type);
+    }, 10);
+  };
+
+  // Separate handler for keyboard events
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onTransactionClick(transaction.id, transaction.type);
+    }
+  };
+
   return (
     <div 
-      onClick={() => onTransactionClick(transaction.id, transaction.type)}
+      onClick={handleClick}
+      onTouchEnd={handleClick}
+      role="button"
+      tabIndex={0}
+      aria-label={`${transaction.category} ${transaction.amount}`}
+      onKeyDown={handleKeyDown}
       className="px-4 py-3 flex items-center justify-between cursor-pointer active:bg-gray-100"
     >
       <div className="flex items-center">
@@ -100,11 +125,23 @@ export default function TransactionList({
   const [isProcessing, setIsProcessing] = useState(true);
   const prevTabRef = useRef(activeTab);
   const isTabSwitching = prevTabRef.current !== activeTab;
+  const transactionClickedRef = useRef(false);
   
   // Update the previous tab reference when activeTab changes
   useEffect(() => {
     prevTabRef.current = activeTab;
   }, [activeTab]);
+  
+  // Wrap the onTransactionClick to track when a transaction is clicked
+  const handleTransactionClick = (id: string, type: string) => {
+    transactionClickedRef.current = true;
+    onTransactionClick(id, type);
+    
+    // Reset the flag after a short delay
+    setTimeout(() => {
+      transactionClickedRef.current = false;
+    }, 500);
+  };
   
   // Memoized transaction processing
   const { groupedTransactions, groupedFixedTransactions } = useMemo(() => {
@@ -175,6 +212,12 @@ export default function TransactionList({
   // Simulate data processing delay with staggered loading
   useEffect(() => {
     if (!isLoading) {
+      // Skip processing state if a transaction was clicked to prevent reload effect
+      if (transactionClickedRef.current) {
+        setIsProcessing(false);
+        return;
+      }
+      
       // Use a shorter delay to ensure faster transition
       const timer = setTimeout(() => {
         setIsProcessing(false);
@@ -184,8 +227,8 @@ export default function TransactionList({
     setIsProcessing(true);
   }, [isLoading, transactions]);  // Remove activeTab dependency to prevent loading on tab change
 
-  // Render enhanced skeleton loaders during loading, but not during tab switching
-  if ((isLoading || isProcessing) && !isTabSwitching) {
+  // Render enhanced skeleton loaders during loading, but not during tab switching or transaction clicks
+  if ((isLoading || isProcessing) && !isTabSwitching && !transactionClickedRef.current) {
     // Different skeleton layouts based on active tab
     if (activeTab === "fixed") {
       return (
@@ -289,7 +332,7 @@ export default function TransactionList({
                   <TransactionItem 
                     key={`expense-${transaction.id}-${index}`}
                     transaction={transaction}
-                    onTransactionClick={onTransactionClick}
+                    onTransactionClick={handleTransactionClick}
                   />
                 ))}
               </div>
@@ -330,7 +373,7 @@ export default function TransactionList({
                   <TransactionItem 
                     key={`income-${transaction.id}-${index}`}
                     transaction={transaction}
-                    onTransactionClick={onTransactionClick}
+                    onTransactionClick={handleTransactionClick}
                   />
                 ))}
               </div>
@@ -408,7 +451,7 @@ export default function TransactionList({
                     <TransactionItem 
                       key={`tx-${transaction.id}-${index}`}
                       transaction={transaction}
-                      onTransactionClick={onTransactionClick}
+                      onTransactionClick={handleTransactionClick}
                     />
                   ))}
                 </div>
