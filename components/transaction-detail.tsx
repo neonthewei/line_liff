@@ -18,7 +18,7 @@ import { initializeLiff, closeLiff, getLiffUrlParams, navigateInLiff } from "@/u
 import liff from "@line/liff";
 import { useRouter } from "next/navigation";
 import { Transaction } from "@/types/transaction";
-import { fetchTransactionById, updateTransactionApi, deleteTransactionApi, clearTransactionCache } from "@/utils/api";
+import { fetchTransactionById, updateTransactionApi, deleteTransactionApi, clearTransactionCache, formatTimestamp } from "@/utils/api";
 import { shareTransactionToFriends } from "@/utils/line-messaging";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SUPABASE_URL, SUPABASE_KEY, parseDateToISOString } from "@/utils/api";
@@ -52,6 +52,8 @@ const defaultTransaction: Transaction = {
   isFixed: false,
   fixedFrequency: undefined,
   fixedInterval: 1,
+  created_at: "2025-07-06T12:00:00Z",
+  updated_at: "2025-07-06T12:00:00Z",
 };
 
 // 在組件的 props 接口中添加 onError
@@ -1675,6 +1677,15 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                   </div>
                 </div>
               </>
+            )}
+            
+            {/* 更新時間顯示 */}
+            {transaction.updated_at && (
+              <div className="mt-6 text-center">
+                <p className="text-xs text-gray-400">
+                  最後更新 {formatTimestamp(transaction.updated_at)}
+                </p>
+              </div>
             )}
           </div>
         </div>

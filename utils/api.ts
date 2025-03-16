@@ -15,6 +15,38 @@ const headers = {
 const CACHE_DURATION = 60 * 5; // 5分鐘緩存
 
 /**
+ * 標準化交易資料，確保所有必要的屬性都存在且格式一致
+ * @param apiTransaction API 返回的交易資料
+ * @param type 交易類型 ("income" | "expense")
+ * @returns 標準化後的交易資料
+ */
+function normalizeTransaction(apiTransaction: any, type: string): Transaction {
+  // 確保日期格式正確
+  let formattedDate = "";
+  try {
+    formattedDate = formatDate(apiTransaction.datetime || new Date().toISOString());
+  } catch (error) {
+    console.error("日期格式化錯誤:", error);
+    formattedDate = formatDate(new Date().toISOString());
+  }
+
+  // 標準化交易資料
+  return {
+    id: apiTransaction.id.toString(),
+    category: apiTransaction.category || "其他",
+    amount: type === "expense" ? -Math.abs(apiTransaction.amount) : Math.abs(apiTransaction.amount),
+    date: formattedDate,
+    type: (type === "income" ? "income" : "expense") as "income" | "expense",
+    note: apiTransaction.memo || "",
+    isFixed: apiTransaction.is_fixed || false,
+    fixedFrequency: apiTransaction.frequency as "day" | "week" | "month" || undefined,
+    fixedInterval: apiTransaction.interval || undefined,
+    created_at: apiTransaction.created_at || undefined,
+    updated_at: apiTransaction.updated_at || apiTransaction.created_at || undefined,
+  };
+}
+
+/**
  * 根據用戶ID和月份獲取交易數據
  * @param userId 用戶ID
  * @param year 年份
@@ -92,31 +124,11 @@ export async function fetchTransactionsByUser(userId: string, year: number, mont
     
     const incomeData = await incomeResponse.json();
     
-    // 轉換支出數據
-    const expenses: Transaction[] = expenseData.map((item: any) => ({
-      id: item.id.toString(),
-      category: item.category || "其他",
-      amount: -Math.abs(item.amount), // 支出為負數
-      date: formatDate(item.datetime || new Date().toISOString()),
-      type: "expense",
-      note: item.memo || "",
-      isFixed: item.is_fixed || false,
-      fixedFrequency: item.frequency as "day" | "week" | "month" || undefined,
-      fixedInterval: item.interval || undefined,
-    }));
+    // 使用標準化函數轉換支出數據
+    const expenses: Transaction[] = expenseData.map((item: any) => normalizeTransaction(item, "expense"));
     
-    // 轉換收入數據
-    const incomes: Transaction[] = incomeData.map((item: any) => ({
-      id: item.id.toString(),
-      category: item.category || "其他",
-      amount: Math.abs(item.amount), // 收入為正數
-      date: formatDate(item.datetime || new Date().toISOString()),
-      type: "income",
-      note: item.memo || "",
-      isFixed: item.is_fixed || false,
-      fixedFrequency: item.frequency as "day" | "week" | "month" || undefined,
-      fixedInterval: item.interval || undefined,
-    }));
+    // 使用標準化函數轉換收入數據
+    const incomes: Transaction[] = incomeData.map((item: any) => normalizeTransaction(item, "income"));
     
     // 合併支出和收入
     const transactions = [...expenses, ...incomes];
@@ -257,9 +269,9 @@ export async function fetchYearlySummary(userId: string, year: number): Promise<
 }
 
 /**
- * 根據 ID 獲取交易詳情
- * @param id 交易 ID
- * @param type 交易類型 (expense 或 income)
+ * 根據ID獲取交易詳情
+ * @param id 交易ID
+ * @param type 交易類型 ("income" | "expense")
  * @returns 交易詳情
  */
 export async function fetchTransactionById(id: string, type: string): Promise<Transaction | null> {
@@ -301,21 +313,9 @@ export async function fetchTransactionById(id: string, type: string): Promise<Tr
       return null;
     }
     
-    // 獲取第一個結果
+    // 獲取第一個結果並使用標準化函數處理
     const apiTransaction = data[0];
-    
-    // 轉換為應用程序的交易格式
-    const result: Transaction = {
-      id: apiTransaction.id.toString(),
-      category: apiTransaction.category || "其他",
-      amount: type === "expense" ? -Math.abs(apiTransaction.amount) : Math.abs(apiTransaction.amount),
-      date: formatDate(apiTransaction.datetime || new Date().toISOString()),
-      type: (type === "income" ? "income" : "expense") as "income" | "expense",
-      note: apiTransaction.memo || "",
-      isFixed: apiTransaction.is_fixed || false,
-      fixedFrequency: apiTransaction.frequency as "day" | "week" | "month" || undefined,
-      fixedInterval: apiTransaction.interval || undefined,
-    };
+    const result = normalizeTransaction(apiTransaction, type);
     
     console.log("Transformed transaction data:", result);
     return result;
@@ -588,5 +588,75 @@ export function clearTransactionCache(userId: string, year?: number, month?: num
     }
   } catch (error) {
     console.error("Error clearing transaction cache:", error);
+  }
+}
+
+/**
+ * 格式化時間戳為可讀格式，將 UTC 時間轉換為台北時區 (UTC+8)，使用12小時制並顯示早上/下午/晚上
+ * @param timestamp ISO 格式的時間戳
+ * @returns 格式化後的時間字符串 (YYYY年MM月DD日 早上/下午/晚上 HH:MM)
+ */
+export function formatTimestamp(timestamp: string | undefined): string {
+  if (!timestamp) return "";
+  
+  try {
+    // 直接解析時間戳字符串，然後手動轉換為台北時區 (UTC+8)
+    const match = timestamp.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+    
+    if (!match) {
+      return timestamp; // 如果無法解析，直接返回原始字符串
+    }
+    
+    const year = parseInt(match[1]);
+    const month = parseInt(match[2]);
+    const day = parseInt(match[3]);
+    let hours24 = parseInt(match[4], 10);
+    const minutes = match[5];
+    
+    // 將 UTC 時間轉換為台北時區 (UTC+8)
+    hours24 = (hours24 + 8) % 24;
+    
+    // 如果小時加 8 後超過 24，日期需要加 1
+    let adjustedDay = day;
+    let adjustedMonth = month;
+    let adjustedYear = year;
+    
+    if ((parseInt(match[4], 10) + 8) >= 24) {
+      // 需要進位到下一天
+      const lastDayOfMonth = new Date(year, month, 0).getDate();
+      adjustedDay = day + 1;
+      
+      // 如果日期超過當月最後一天，月份加 1
+      if (adjustedDay > lastDayOfMonth) {
+        adjustedDay = 1;
+        adjustedMonth = month + 1;
+        
+        // 如果月份超過 12，年份加 1
+        if (adjustedMonth > 12) {
+          adjustedMonth = 1;
+          adjustedYear = year + 1;
+        }
+      }
+    }
+    
+    // 轉換為12小時制並添加早上/下午/晚上標識
+    let hours12 = hours24 % 12;
+    if (hours12 === 0) hours12 = 12; // 12小時制中，0點顯示為12點
+    
+    let timePrefix = "";
+    if (hours24 >= 0 && hours24 < 6) {
+      timePrefix = "凌晨"; // 0:00-5:59
+    } else if (hours24 >= 6 && hours24 < 12) {
+      timePrefix = "早上"; // 6:00-11:59
+    } else if (hours24 >= 12 && hours24 < 18) {
+      timePrefix = "下午"; // 12:00-17:59
+    } else {
+      timePrefix = "晚上"; // 18:00-23:59
+    }
+    
+    return `${adjustedYear}年${adjustedMonth.toString().padStart(2, '0')}月${adjustedDay.toString().padStart(2, '0')}日 ${timePrefix}${hours12}:${minutes}`;
+  } catch (error) {
+    console.error("Error formatting timestamp:", error);
+    return timestamp; // 出錯時返回原始字符串
   }
 } 

@@ -46,6 +46,20 @@ export default function Home() {
     addCustomLog("應用程式已啟動，控制台捕獲已初始化");
   }, []);
 
+  // 添加鍵盤事件監聽器，按 O 鍵顯示調試信息
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'o' || event.key === 'O') {
+        setShowDebug(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   // 更新日誌顯示
   useEffect(() => {
     const interval = setInterval(() => {
@@ -303,11 +317,6 @@ export default function Home() {
     navigateInLiff("/transaction", { id, type });
   };
 
-  // 切換調試控制台顯示
-  const toggleDebugConsole = () => {
-    setShowDebug(!showDebug);
-  };
-
   return (
     <div className="flex flex-col min-h-screen bg-gray-100">
       <main className="flex-1 container max-w-md mx-auto px-5 py-4">
@@ -377,12 +386,6 @@ export default function Home() {
                 >
                   重新載入
                 </button>
-                <button 
-                  onClick={toggleDebugConsole}
-                  className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors"
-                >
-                  {showDebug ? "隱藏調試信息" : "顯示調試信息"}
-                </button>
                 
                 {showDebug && (
                   <DebugConsole 
@@ -416,12 +419,7 @@ export default function Home() {
                 <div className="p-4 bg-red-50 text-red-500 rounded-xl text-center">
                   {error}
                 </div>
-                <button 
-                  onClick={toggleDebugConsole}
-                  className="w-full px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors"
-                >
-                  {showDebug ? "隱藏調試信息" : "顯示調試信息"}
-                </button>
+                
                 {showDebug && (
                   <DebugConsole 
                     logs={logs} 
@@ -440,26 +438,26 @@ export default function Home() {
                   isCollapsed={isCollapsed}
                   onTransactionClick={handleTransactionClick}
                 />
-                <div className="mt-8 text-center">
-                  <button 
-                    onClick={toggleDebugConsole}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
-                  >
-                    {showDebug ? "隱藏調試信息" : "顯示調試信息"}
-                  </button>
-                  {showDebug && (
-                    <DebugConsole 
-                      logs={logs} 
-                      errors={errorLogs} 
-                      title="應用調試信息" 
-                    />
-                  )}
-                </div>
+                
+                {showDebug && (
+                  <DebugConsole 
+                    logs={logs} 
+                    errors={errorLogs} 
+                    title="應用調試信息" 
+                  />
+                )}
               </>
             )}
           </>
         )}
       </main>
+      
+      {/* Small debug indicator */}
+      {showDebug && (
+        <div className="fixed bottom-2 right-2 bg-gray-800 text-white text-xs px-2 py-1 rounded-full opacity-70">
+          Debug Mode
+        </div>
+      )}
     </div>
   );
 }
