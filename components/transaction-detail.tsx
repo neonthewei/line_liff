@@ -14,18 +14,29 @@ import {
   ArrowLeft,
   Share2,
 } from "lucide-react";
-import { initializeLiff, closeLiff, getLiffUrlParams, navigateInLiff } from "@/utils/liff";
+import {
+  initializeLiff,
+  closeLiff,
+  getLiffUrlParams,
+  navigateInLiff,
+} from "@/utils/liff";
 import liff from "@line/liff";
 import { useRouter } from "next/navigation";
 import { Transaction } from "@/types/transaction";
-import { fetchTransactionById, updateTransactionApi, deleteTransactionApi, clearTransactionCache, formatTimestamp } from "@/utils/api";
+import {
+  fetchTransactionById,
+  updateTransactionApi,
+  deleteTransactionApi,
+  clearTransactionCache,
+  formatTimestamp,
+} from "@/utils/api";
 import { shareTransactionToFriends } from "@/utils/line-messaging";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SUPABASE_URL, SUPABASE_KEY, parseDateToISOString } from "@/utils/api";
 
 // 開發模式標誌 - 設置為 true 可以在本地開發時繞過 LIFF 初始化
 const DEV_MODE = process.env.NODE_ENV === "development";
-const BYPASS_LIFF = DEV_MODE && (process.env.NEXT_PUBLIC_BYPASS_LIFF === "true");
+const BYPASS_LIFF = DEV_MODE && process.env.NEXT_PUBLIC_BYPASS_LIFF === "true";
 
 // 定義類別介面
 interface Category {
@@ -63,7 +74,7 @@ const defaultTransaction: Transaction = {
   isFixed: false,
   fixedInterval: 1,
   created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString()
+  updated_at: new Date().toISOString(),
 };
 
 // 在組件的 props 接口中添加 onError
@@ -74,7 +85,7 @@ interface TransactionDetailProps {
 // Define a consistent animation style for all content blocks
 const fadeInAnimation = {
   opacity: 0,
-  animation: 'fadeIn 0.3s ease-out forwards'
+  animation: "fadeIn 0.3s ease-out forwards",
 };
 
 // Add skeleton components for the transaction detail page
@@ -88,10 +99,10 @@ const CategorySkeleton = () => (
         <Skeleton className="h-8 w-20 rounded-xl animate-pulse-color" />
       </div>
     </div>
-    
+
     {/* 分隔線 */}
     <div className="border-t border-gray-100"></div>
-    
+
     {/* 類型 */}
     <div className="flex flex-col">
       <div className="flex items-center justify-between">
@@ -111,9 +122,9 @@ const AmountSkeleton = () => (
         <Skeleton className="h-6 w-24 animate-pulse-color" />
       </div>
     </div>
-    
+
     <div className="border-t border-gray-100"></div>
-    
+
     {/* 日期 */}
     <div className="flex items-center justify-between">
       <Skeleton className="h-5 w-16 animate-pulse-color" />
@@ -121,9 +132,9 @@ const AmountSkeleton = () => (
         <Skeleton className="h-6 w-32 animate-pulse-color" />
       </div>
     </div>
-    
+
     <div className="border-t border-gray-100"></div>
-    
+
     {/* 定期支出/收入 */}
     <div className="flex items-center justify-between">
       <Skeleton className="h-5 w-24 animate-pulse-color" />
@@ -152,7 +163,11 @@ const ButtonsSkeleton = () => (
 
 async function getUserIdFromLiff(): Promise<string | null> {
   try {
-    if (typeof window !== 'undefined' && window.liff && window.liff.isLoggedIn()) {
+    if (
+      typeof window !== "undefined" &&
+      window.liff &&
+      window.liff.isLoggedIn()
+    ) {
       const profile = await window.liff.getProfile();
       return profile.userId;
     }
@@ -165,7 +180,8 @@ async function getUserIdFromLiff(): Promise<string | null> {
 
 export default function TransactionDetail({ onError }: TransactionDetailProps) {
   const [transaction, setTransaction] = useState<Transaction | null>(null);
-  const [originalTransaction, setOriginalTransaction] = useState<Transaction | null>(null); // Store original transaction for comparison
+  const [originalTransaction, setOriginalTransaction] =
+    useState<Transaction | null>(null); // Store original transaction for comparison
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
@@ -184,7 +200,10 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [lineId, setLineId] = useState<string>("");
   const [lineType, setLineType] = useState<string>("");
-  const [debugInfo, setDebugInfo] = useState<{url: string, params: Record<string, string>}>({ url: "", params: {} });
+  const [debugInfo, setDebugInfo] = useState<{
+    url: string;
+    params: Record<string, string>;
+  }>({ url: "", params: {} });
   const [debugClickCount, setDebugClickCount] = useState(0);
   const [isFixedExpanded, setIsFixedExpanded] = useState(false);
   const [editFixedInterval, setEditFixedInterval] = useState("");
@@ -196,11 +215,11 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const router = useRouter();
   const [isButtonsDisabled, setIsButtonsDisabled] = useState(true); // Add disable state for buttons
-  
+
   // Check if transaction has been modified
   const hasChanges = useMemo(() => {
     if (!transaction || !originalTransaction) return false;
-    
+
     return (
       transaction.type !== originalTransaction.type ||
       transaction.category !== originalTransaction.category ||
@@ -209,7 +228,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
       transaction.note !== originalTransaction.note
     );
   }, [transaction, originalTransaction]);
-  
+
   // Mark component as mounted on client-side
   useEffect(() => {
     setIsMounted(true);
@@ -217,7 +236,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
 
   // Initialize calendar date on client-side only
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       setCalendarDate(new Date());
     }
   }, []);
@@ -227,42 +246,43 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
     try {
       // 構建 API URL
       const url = `${SUPABASE_URL}/categories`;
-      
+
       // 發送 API 請求
       const response = await fetch(url, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          "apikey": SUPABASE_KEY,
+          apikey: SUPABASE_KEY,
         },
       });
-      
+
       if (!response.ok) {
         throw new Error(`Failed to fetch categories: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       // 先找出用戶已刪除的類別名稱（包括系統預設類別）
       const userDeletedCategoryNames = data
         .filter((cat: Category) => cat.user_id === userId && cat.is_deleted)
         .map((cat: Category) => cat.name);
-      
+
       console.log("User deleted category names:", userDeletedCategoryNames);
-      
+
       // 過濾類別:
       // 1. 包含未刪除的用戶自定義類別
       // 2. 包含未被用戶刪除的系統預設類別
-      const filteredCategories = data.filter((cat: Category) => 
-        // 用戶自定義類別 - 未刪除的
-        (cat.user_id === userId && !cat.is_deleted) ||
-        // 系統預設類別 - 未被用戶刪除的
-        (cat.user_id === null && !userDeletedCategoryNames.includes(cat.name))
+      const filteredCategories = data.filter(
+        (cat: Category) =>
+          // 用戶自定義類別 - 未刪除的
+          (cat.user_id === userId && !cat.is_deleted) ||
+          // 系統預設類別 - 未被用戶刪除的
+          (cat.user_id === null && !userDeletedCategoryNames.includes(cat.name))
       );
-      
+
       console.log("Fetched categories after filtering:", filteredCategories);
       setDbCategories(filteredCategories);
-      
+
       // 更新類別名稱列表
       if (transaction) {
         updateCategoryNamesByType(filteredCategories, transaction.type);
@@ -273,13 +293,16 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
       setCategories(defaultCategories);
     }
   };
-  
+
   // 根據交易類型更新類別名稱列表
-  const updateCategoryNamesByType = (cats: Category[], type: "income" | "expense") => {
+  const updateCategoryNamesByType = (
+    cats: Category[],
+    type: "income" | "expense"
+  ) => {
     const filteredNames = cats
-      .filter(cat => cat.type === type)
-      .map(cat => cat.name);
-    
+      .filter((cat) => cat.type === type)
+      .map((cat) => cat.name);
+
     // 如果沒有找到任何類別，使用預設類別
     if (filteredNames.length === 0) {
       setCategories(defaultCategories);
@@ -290,21 +313,21 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
 
   useEffect(() => {
     if (!isMounted) return;
-    
+
     setIsLoading(true);
 
     async function initialize() {
       try {
         console.log("Initializing transaction detail component");
         console.log("Current URL:", window.location.href);
-        
+
         // 初始化 LIFF
         const liffInitialized = await initializeLiff();
         console.log("LIFF initialization result:", liffInitialized);
         setIsLiffInitialized(liffInitialized);
-        
+
         // 檢查 LIFF 是否已登入，如果未登入或 token 已過期，則重新登入
-        if (liffInitialized && !BYPASS_LIFF && typeof liff !== 'undefined') {
+        if (liffInitialized && !BYPASS_LIFF && typeof liff !== "undefined") {
           try {
             // 嘗試獲取 access token 來檢查是否有效
             const token = liff.getAccessToken();
@@ -315,7 +338,10 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
             }
             console.log("Access token exists, continuing");
           } catch (tokenError) {
-            console.error("Error getting access token, may be expired:", tokenError);
+            console.error(
+              "Error getting access token, may be expired:",
+              tokenError
+            );
             console.log("Attempting to re-login");
             try {
               liff.login();
@@ -325,7 +351,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
             }
           }
         }
-        
+
         // 獲取用戶ID
         const userId = await getUserIdFromLiff();
         if (!userId && !BYPASS_LIFF) {
@@ -334,21 +360,25 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
           if (onError) onError();
           return;
         }
-        
+
         // 獲取 URL 參數
         const params = getLiffUrlParams();
         setDebugInfo({ url: window.location.href, params });
-        
+
         // 獲取交易 ID 和類型
         let id = params.id;
         const type = params.type || "expense";
-        
+
         // 如果沒有從 URL 參數獲取到 ID，嘗試從 URL 路徑獲取
         if (!id) {
           console.log("No ID in URL parameters, trying to extract from path");
           try {
-            const pathParts = window.location.pathname.split('/');
-            if (pathParts.length > 2 && pathParts[1] === 'transaction' && pathParts[2]) {
+            const pathParts = window.location.pathname.split("/");
+            if (
+              pathParts.length > 2 &&
+              pathParts[1] === "transaction" &&
+              pathParts[2]
+            ) {
               id = pathParts[2];
               console.log("Extracted ID from URL path:", id);
             }
@@ -356,12 +386,12 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
             console.error("Failed to extract ID from path:", pathError);
           }
         }
-        
+
         // 如果仍然沒有 ID，嘗試從 localStorage 獲取
         if (!id) {
           console.log("Still no ID, trying localStorage");
           try {
-            const storedId = localStorage.getItem('lastTransactionId');
+            const storedId = localStorage.getItem("lastTransactionId");
             if (storedId) {
               id = storedId;
               console.log("Retrieved ID from localStorage:", id);
@@ -370,34 +400,34 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
             console.error("Failed to access localStorage:", storageError);
           }
         }
-        
+
         if (!id) {
           console.error("No transaction ID provided");
           setIsLoading(false);
           if (onError) onError();
           return;
         }
-        
+
         console.log(`Fetching transaction with ID: ${id}, type: ${type}`);
-        
+
         // 獲取交易數據
         const data = await fetchTransactionById(id, type);
-        
+
         if (data) {
           console.log("Transaction data retrieved successfully:", data);
           // 確保設置 user_id
           const transactionWithUserId = {
             ...data,
-            user_id: userId || data.user_id || "" // 優先使用 LIFF 的 user_id
+            user_id: userId || data.user_id || "", // 優先使用 LIFF 的 user_id
           };
           setTransaction(transactionWithUserId);
           setOriginalTransaction(transactionWithUserId); // Store original state
-          
+
           // 重置編輯狀態
           setEditAmount("");
           setEditNote("");
           setEditFixedInterval("");
-          
+
           // 獲取類別
           await fetchCategories(userId || data.user_id);
         } else {
@@ -405,7 +435,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
           console.warn("Transaction not found, using default");
           const defaultWithUserId = {
             ...defaultTransaction,
-            user_id: userId || ""
+            user_id: userId || "",
           };
           setTransaction(defaultWithUserId);
           setOriginalTransaction(defaultWithUserId); // Store original state
@@ -428,7 +458,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
       const timer = setTimeout(() => {
         setIsButtonsDisabled(false);
       }, 300); // 300ms delay
-      
+
       return () => clearTimeout(timer);
     }
   }, [isMounted]);
@@ -442,40 +472,48 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
 
   const handleTypeChange = async (type: "expense" | "income") => {
     if (!transaction) return;
-    
+
     // 如果類型沒有變化，不做任何操作
     if (transaction.type === type) return;
-    
+
     // 更新本地交易對象的類型和金額
     const updatedTransaction = {
       ...transaction,
       type,
-      amount: type === "expense" ? -Math.abs(transaction.amount) : Math.abs(transaction.amount),
+      amount:
+        type === "expense"
+          ? -Math.abs(transaction.amount)
+          : Math.abs(transaction.amount),
       // 重置類別，因為不同類型有不同的類別選項
-      category: ""
+      category: "",
     };
-    
+
     // 更新本地狀態
     setTransaction(updatedTransaction);
-    
+
     // 根據新類型更新類別列表
     if (dbCategories.length > 0) {
       updateCategoryNamesByType(dbCategories, type);
     }
-    
+
     // 自動展開類型選擇區域
     setIsEditingCategory(true);
-    
+
     // 顯示提示通知
     showToastNotification("請選擇一個類型", "success", 2000);
   };
 
   // 顯示 Toast 通知的輔助函數
-  const showToastNotification = (message: string, type: "success" | "error", duration = 3000, callback?: () => void) => {
+  const showToastNotification = (
+    message: string,
+    type: "success" | "error",
+    duration = 3000,
+    callback?: () => void
+  ) => {
     setToastMessage(message);
     setToastType(type);
     setShowToast(true);
-    
+
     // 延長顯示時間，確保動畫有足夠時間完成
     setTimeout(() => {
       setShowToast(false);
@@ -491,14 +529,15 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
   // 導航回列表頁的輔助函數
   const navigateBackToList = () => {
     // 檢查是否在 LINE 環境中
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       // 檢查是否是從 LINE LIFF 打開的
-      const isFromLiff = window.location.href.includes('liff.line.me') || 
-                        (liff.isInClient && liff.isInClient());
-      
+      const isFromLiff =
+        window.location.href.includes("liff.line.me") ||
+        (liff.isInClient && liff.isInClient());
+
       console.log("Is from LIFF:", isFromLiff);
       console.log("Current URL:", window.location.href);
-      
+
       if (isFromLiff) {
         // 如果是從 LINE LIFF 打開的，使用 closeLiff() 關閉視窗
         console.log("Closing LIFF window");
@@ -525,8 +564,11 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
     try {
       // 關閉確認視窗
       setShowDeleteModal(false);
-      
-      const success = await deleteTransactionApi(transaction.id, transaction.type);
+
+      const success = await deleteTransactionApi(
+        transaction.id,
+        transaction.type
+      );
 
       if (success) {
         // 顯示成功通知
@@ -546,48 +588,51 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
 
   const handleConfirm = async () => {
     if (!transaction) return;
-    
+
     // 如果沒有變更，直接返回，不顯示通知
     if (!hasChanges) {
       navigateBackToList();
       return;
     }
-    
+
     // 驗證類別是否已選擇
     if (!transaction.category) {
       showToastNotification("請選擇一個類型", "error", 2000);
       setIsEditingCategory(true);
       return;
     }
-    
+
     try {
       // 檢查交易類型是否與原始類型不同
       const originalType = getLiffUrlParams().type || "expense";
       const hasTypeChanged = transaction.type !== originalType;
-      
+
       if (hasTypeChanged) {
         // 如果類型已更改，需要刪除舊交易並創建新交易
         console.log("Transaction type changed, deleting old and creating new");
-        
+
         // 先刪除原有的交易
-        const deleteSuccess = await deleteTransactionApi(transaction.id, originalType);
-        
+        const deleteSuccess = await deleteTransactionApi(
+          transaction.id,
+          originalType
+        );
+
         if (!deleteSuccess) {
           showToastNotification("儲存失敗，請稍後再試", "error");
           return;
         }
-        
+
         // 獲取用戶ID
         const userId = await getUserIdFromLiff();
         if (!userId) {
           showToastNotification("無法獲取用戶ID，請重新登入", "error");
           return;
         }
-        
+
         // 構建 API URL
         const endpoint = transaction.type === "income" ? "incomes" : "expenses";
         const url = `${SUPABASE_URL}/${endpoint}`;
-        
+
         // 準備要創建的數據
         const createData = {
           user_id: userId,
@@ -599,32 +644,32 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
           frequency: transaction.fixedFrequency,
           interval: transaction.fixedInterval,
         };
-        
+
         // 發送 API 請求創建新交易
         const response = await fetch(url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "apikey": SUPABASE_KEY,
-            "Prefer": "return=representation",
+            apikey: SUPABASE_KEY,
+            Prefer: "return=representation",
           },
           body: JSON.stringify(createData),
         });
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           console.error("Create error response body:", errorText);
           showToastNotification("儲存失敗，請稍後再試", "error");
           return;
         }
-        
+
         // 解析響應數據
         const data = await response.json();
         if (!data || data.length === 0) {
           showToastNotification("儲存失敗，請稍後再試", "error");
           return;
         }
-        
+
         // 清除緩存
         if (userId) {
           const match = transaction.date.match(/(\d+)年(\d+)月(\d+)日/);
@@ -634,7 +679,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
             clearTransactionCache(userId, year, month);
           }
         }
-        
+
         // 顯示成功通知
         showToastNotification("儲存成功", "success", 800, navigateBackToList);
       } else {
@@ -643,15 +688,19 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
 
         if (success) {
           // 檢查當前頁面路徑，判斷是否在編輯頁
-          const isEditPage = typeof window !== 'undefined' && window.location.pathname.includes('/edit');
-          
+          const isEditPage =
+            typeof window !== "undefined" &&
+            window.location.pathname.includes("/edit");
+
           // 如果是在編輯頁，更新後跳回帳目細項頁
           if (isEditPage) {
             // 導航回交易詳情頁
-            router.push(`/transaction/${transaction.id}?type=${transaction.type}`);
+            router.push(
+              `/transaction/${transaction.id}?type=${transaction.type}`
+            );
             return;
           }
-          
+
           // 顯示成功通知
           showToastNotification("儲存成功", "success", 800, navigateBackToList);
         } else {
@@ -701,12 +750,12 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
   // 儲存日期
   const handleSaveDate = async (date: Date) => {
     if (!transaction) return;
-    
+
     // Use UTC date components to avoid timezone issues
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
     const day = date.getDate();
-    
+
     const formattedDate = `${year}年${month.toString().padStart(2, "0")}月${day
       .toString()
       .padStart(2, "0")}日`;
@@ -763,57 +812,62 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
         showToastNotification("無法獲取用戶ID，請重新登入", "error");
         return;
       }
-      
+
       // 找到要刪除的類別
-      const categoryToRemove = dbCategories.find(cat => cat.name === categoryToDelete);
-      
+      const categoryToRemove = dbCategories.find(
+        (cat) => cat.name === categoryToDelete
+      );
+
       if (categoryToRemove) {
         if (categoryToRemove.user_id === null) {
           // 系統預設類別 - 創建一個用戶特定的"刪除標記"記錄
           const url = `${SUPABASE_URL}/categories`;
-          
+
           // 準備要創建的數據 - 創建一個與系統預設同名但標記為已刪除的用戶特定記錄
           const createData = {
             user_id: userId,
             name: categoryToRemove.name,
             type: categoryToRemove.type,
-            is_deleted: true
+            is_deleted: true,
           };
-          
+
           // 發送 API 請求創建"刪除標記"記錄
           const response = await fetch(url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "apikey": SUPABASE_KEY,
-              "Prefer": "return=representation",
+              apikey: SUPABASE_KEY,
+              Prefer: "return=representation",
             },
             body: JSON.stringify(createData),
           });
-          
+
           if (!response.ok) {
             const errorText = await response.text();
-            console.error("Create delete marker error response body:", errorText);
+            console.error(
+              "Create delete marker error response body:",
+              errorText
+            );
             alert("刪除類別失敗，請稍後再試");
             return;
           }
         } else {
           // 用戶自定義類別 - 直接標記為已刪除
           const url = `${SUPABASE_URL}/categories?id=eq.${categoryToRemove.id}`;
-          
+
           // 發送 API 請求更新類別為已刪除
           const response = await fetch(url, {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
-              "apikey": SUPABASE_KEY,
-              "Prefer": "return=representation",
+              apikey: SUPABASE_KEY,
+              Prefer: "return=representation",
             },
-            body: JSON.stringify({ 
-              is_deleted: true
+            body: JSON.stringify({
+              is_deleted: true,
             }),
           });
-          
+
           if (!response.ok) {
             const errorText = await response.text();
             console.error("Delete category error response body:", errorText);
@@ -821,16 +875,18 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
             return;
           }
         }
-        
+
         // 更新本地類別列表 - 從顯示中移除已刪除的類別
-        setDbCategories(prev => prev.filter(cat => cat.name !== categoryToDelete));
-        setCategories(prev => prev.filter(cat => cat !== categoryToDelete));
-        
+        setDbCategories((prev) =>
+          prev.filter((cat) => cat.name !== categoryToDelete)
+        );
+        setCategories((prev) => prev.filter((cat) => cat !== categoryToDelete));
+
         // 顯示成功通知
         showToastNotification("類別已刪除", "success");
       } else {
         // 如果找不到類別，只更新本地列表
-        setCategories(prev => prev.filter(cat => cat !== categoryToDelete));
+        setCategories((prev) => prev.filter((cat) => cat !== categoryToDelete));
       }
     } catch (error) {
       console.error("Error deleting category:", error);
@@ -847,21 +903,24 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
   // 儲存新類別
   const handleSaveNewCategory = async () => {
     if (newCategory.trim() === "") return;
-    
+
     // 檢查類別是否已存在
     if (categories.includes(newCategory.trim())) {
       alert("此類別已存在");
       return;
     }
-    
+
     // 添加到資料庫
     if (transaction) {
-      const success = await addCategoryToDatabase(newCategory.trim(), transaction.type);
-      
+      const success = await addCategoryToDatabase(
+        newCategory.trim(),
+        transaction.type
+      );
+
       if (success) {
         // 更新本地類別列表
-        setCategories(prev => [...prev, newCategory.trim()]);
-        
+        setCategories((prev) => [...prev, newCategory.trim()]);
+
         // 如果不在編輯模式，自動選擇新類別
         if (!isCategoryEditMode) {
           handleSelectCategory(newCategory.trim());
@@ -870,12 +929,15 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
         alert("新增類別失敗，請稍後再試");
       }
     }
-    
+
     setIsAddingCategory(false);
   };
 
   // 新增類別到資料庫
-  const addCategoryToDatabase = async (categoryName: string, type: "income" | "expense") => {
+  const addCategoryToDatabase = async (
+    categoryName: string,
+    type: "income" | "expense"
+  ) => {
     try {
       // 獲取用戶ID
       const userId = await getUserIdFromLiff();
@@ -883,45 +945,45 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
         showToastNotification("無法獲取用戶ID，請重新登入", "error");
         return false;
       }
-      
+
       // 構建 API URL
       const url = `${SUPABASE_URL}/categories`;
-      
+
       // 準備要創建的數據
       const createData = {
         user_id: userId,
         name: categoryName,
         type: type,
-        is_deleted: false
+        is_deleted: false,
       };
-      
+
       // 發送 API 請求創建新類別
       const response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "apikey": SUPABASE_KEY,
-          "Prefer": "return=representation",
+          apikey: SUPABASE_KEY,
+          Prefer: "return=representation",
         },
         body: JSON.stringify(createData),
       });
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Create category error response body:", errorText);
         return false;
       }
-      
+
       // 解析響應數據
       const data = await response.json();
       if (!data || data.length === 0) {
         return false;
       }
-      
+
       // 更新本地類別列表
       const newCategory = data[0];
-      setDbCategories(prev => [...prev, newCategory]);
-      
+      setDbCategories((prev) => [...prev, newCategory]);
+
       return true;
     } catch (error) {
       console.error("Error adding category to database:", error);
@@ -1020,9 +1082,9 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
   const renderCalendar = () => {
     // Don't render calendar on server-side
     if (!isMounted) {
-      return Array(42).fill(null).map((_, i) => (
-        <div key={`placeholder-${i}`} className="h-8"></div>
-      ));
+      return Array(42)
+        .fill(null)
+        .map((_, i) => <div key={`placeholder-${i}`} className="h-8"></div>);
     }
 
     const year = calendarDate.getFullYear();
@@ -1087,10 +1149,10 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
 
   const handleFixedFrequencyChange = (frequency: "day" | "week" | "month") => {
     if (!transaction) return;
-    
+
     // 確保間隔已設定
     const fixedInterval = transaction.fixedInterval || 1;
-    
+
     const updatedTransaction = {
       ...transaction,
       fixedFrequency: frequency,
@@ -1107,7 +1169,9 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
     }
   };
 
-  const handleFixedIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFixedIntervalChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     // 只允許數字
     const value = e.target.value.replace(/[^0-9]/g, "");
     // 確保值至少為 1
@@ -1121,22 +1185,22 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
 
   const handleSaveFixedInterval = async () => {
     if (!transaction) return;
-    
+
     const fixedInterval = parseInt(editFixedInterval, 10);
     if (isNaN(fixedInterval) || fixedInterval <= 0) {
       setEditFixedInterval("1");
       return;
     }
-    
+
     // 確保頻率已設定
     const fixedFrequency = transaction.fixedFrequency || "month";
-    
+
     const updatedTransaction = {
       ...transaction,
       fixedInterval: fixedInterval,
       fixedFrequency: fixedFrequency,
     };
-    
+
     setTransaction(updatedTransaction);
     setEditFixedInterval("");
   };
@@ -1145,71 +1209,148 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
     return (
       <div className="w-full max-w-md mx-auto pb-6 relative z-10">
         <div className="space-y-4 px-[20px] mt-[20px]">
-          <div style={{ ...fadeInAnimation, animationDelay: '30ms' }}>
-            <CategorySkeleton />
+          {/* 屬性和類型卡片 */}
+          <div
+            className="bg-white rounded-2xl p-4 shadow-sm space-y-4"
+            style={{
+              ...fadeInAnimation,
+              animationDelay: "30ms",
+            }}
+          >
+            {/* 屬性 (交易類型) */}
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-6 w-16 animate-pulse-color" />
+              <div className="flex gap-2">
+                <Skeleton className="h-9 w-20 rounded-xl animate-pulse-color" />
+                <Skeleton className="h-9 w-20 rounded-xl animate-pulse-color" />
+              </div>
+            </div>
+
+            {/* 分隔線 */}
+            <div className="border-t border-gray-100"></div>
+
+            {/* 類型 */}
+            <div className="flex flex-col">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-6 w-16 animate-pulse-color" />
+                <Skeleton className="h-8 w-28 rounded-lg animate-pulse-color" />
+              </div>
+            </div>
           </div>
-          <div style={{ ...fadeInAnimation, animationDelay: '80ms' }}>
-            <AmountSkeleton />
+
+          {/* 金額、日期卡片 */}
+          <div
+            className="bg-white rounded-2xl shadow-sm space-y-4 p-4"
+            style={{
+              ...fadeInAnimation,
+              animationDelay: "80ms",
+            }}
+          >
+            {/* 金額 */}
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-6 w-16 animate-pulse-color" />
+              <div className="flex items-center">
+                <Skeleton className="h-8 w-32 rounded-lg animate-pulse-color" />
+              </div>
+            </div>
+
+            <div className="border-t border-gray-100"></div>
+
+            {/* 日期 */}
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-6 w-16 animate-pulse-color" />
+              <div className="flex items-center">
+                <Skeleton className="h-8 w-36 rounded-lg animate-pulse-color" />
+              </div>
+            </div>
           </div>
-          <div style={{ ...fadeInAnimation, animationDelay: '130ms' }}>
-            <NoteSkeleton />
+
+          {/* 備註卡片 */}
+          <div
+            className="bg-white rounded-2xl p-4 shadow-sm"
+            style={{
+              ...fadeInAnimation,
+              animationDelay: "130ms",
+            }}
+          >
+            <div className="flex flex-col space-y-2">
+              <Skeleton className="h-6 w-16 animate-pulse-color" />
+              <Skeleton className="h-[42px] w-full rounded-lg animate-pulse-color" />
+            </div>
           </div>
-          <div style={{ ...fadeInAnimation, animationDelay: '180ms' }}>
-            <ButtonsSkeleton />
+
+          {/* 按鈕區域 */}
+          <div
+            className="space-y-4 mt-8"
+            style={{
+              ...fadeInAnimation,
+              animationDelay: "180ms",
+            }}
+          >
+            <Skeleton className="h-[52px] w-full rounded-2xl animate-pulse-color" />
+            <Skeleton className="h-[52px] w-full rounded-2xl animate-pulse-color" />
           </div>
         </div>
       </div>
     );
-  if (!transaction) return (
-    <div className="w-full max-w-md mx-auto p-4 flex flex-col justify-center items-center h-screen">
-      <div
-        className="fixed inset-0 z-0"
-        onClick={() => setDebugClickCount(prev => prev + 1)}
-      />
-      <div className="text-center">
-        <div className="text-2xl font-medium text-gray-800 mb-4">找不到交易記錄</div>
-        <p className="text-gray-600 mb-6">您可能已經刪除帳目了</p>
-      </div>
-      
-      {/* 調試信息 - 點擊五次才會顯示 */}
-      {debugClickCount >= 5 && (
-        <div className="mt-8 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-medium text-yellow-700">調試信息</p>
-            <div className="h-px flex-1 bg-yellow-200 mx-2"></div>
+  if (!transaction)
+    return (
+      <div className="w-full max-w-md mx-auto p-4 flex flex-col justify-center items-center h-screen">
+        <div
+          className="fixed inset-0 z-0"
+          onClick={() => setDebugClickCount((prev) => prev + 1)}
+        />
+        <div className="text-center">
+          <div className="text-2xl font-medium text-gray-800 mb-4">
+            找不到交易記錄
           </div>
-          <div className="space-y-2 overflow-hidden">
-            <div className="flex flex-col">
-              <span className="text-sm text-yellow-700">完整 URL:</span>
-              <span className="text-xs text-yellow-600 break-all">{debugInfo.url}</span>
+          <p className="text-gray-600 mb-6">您可能已經刪除帳目了</p>
+        </div>
+
+        {/* 調試信息 - 點擊五次才會顯示 */}
+        {debugClickCount >= 5 && (
+          <div className="mt-8 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium text-yellow-700">調試信息</p>
+              <div className="h-px flex-1 bg-yellow-200 mx-2"></div>
             </div>
-            <div className="flex flex-col">
-              <span className="text-sm text-yellow-700">解析參數:</span>
-              <div className="text-xs text-yellow-600">
-                {Object.entries(debugInfo.params).map(([key, value]) => (
-                  <div key={key} className="flex justify-between">
-                    <span>{key}:</span>
-                    <span>{value}</span>
-                  </div>
-                ))}
+            <div className="space-y-2 overflow-hidden">
+              <div className="flex flex-col">
+                <span className="text-sm text-yellow-700">完整 URL:</span>
+                <span className="text-xs text-yellow-600 break-all">
+                  {debugInfo.url}
+                </span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm text-yellow-700">解析參數:</span>
+                <div className="text-xs text-yellow-600">
+                  {Object.entries(debugInfo.params).map(([key, value]) => (
+                    <div key={key} className="flex justify-between">
+                      <span>{key}:</span>
+                      <span>{value}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
+        )}
+      </div>
+    );
 
   return (
     <>
       {/* Toast 通知 */}
       {showToast && (
-        <div 
+        <div
           className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg transition-all duration-300 animate-fadeInDown ${
-            toastType === "success" ? "bg-green-500 text-white" : "bg-red-500 text-white"
+            toastType === "success"
+              ? "bg-green-500 text-white"
+              : "bg-red-500 text-white"
           }`}
           style={{
-            animation: 'fadeInDown 0.3s ease-out, fadeOutUp 0.3s ease-in forwards 2.5s'
+            animation:
+              "fadeInDown 0.3s ease-out, fadeOutUp 0.3s ease-in forwards 2.5s",
           }}
         >
           <div className="flex items-center">
@@ -1222,14 +1363,14 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
           </div>
         </div>
       )}
-      
+
       {/* 刪除確認視窗 */}
       {showDeleteModal && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 animate-fadeIn"
           onClick={cancelDelete}
         >
-          <div 
+          <div
             className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-xl transform animate-scaleInStatic"
             onClick={(e) => e.stopPropagation()} // 防止點擊內容區域時關閉視窗
           >
@@ -1237,8 +1378,12 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
                 <Trash2 className="h-6 w-6 text-red-500" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">確定要刪除嗎？</h3>
-              <p className="text-sm text-gray-500">此操作無法復原，刪除後資料將永久消失。</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                確定要刪除嗎？
+              </h3>
+              <p className="text-sm text-gray-500">
+                此操作無法復原，刪除後資料將永久消失。
+              </p>
             </div>
             <div className="flex gap-3 mt-6">
               <button
@@ -1257,9 +1402,10 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
           </div>
         </div>
       )}
-      
-      <div className="fixed inset-0 z-0 bg-[#F1F2F5]"
-        onClick={() => setDebugClickCount(prev => prev + 1)}
+
+      <div
+        className="fixed inset-0 z-0 bg-[#F1F2F5]"
+        onClick={() => setDebugClickCount((prev) => prev + 1)}
       />
       <div className="w-full max-w-md mx-auto pb-6 relative z-10">
         <div className="space-y-4 px-[20px] mt-[20px]">
@@ -1553,10 +1699,10 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                           className="px-2 py-1 pr-4 border border-gray-200 rounded-lg bg-white focus:outline-none"
                         >
                           {generateMonthOptions().map((month) => (
-                          <option key={month} value={month}>
-                            {getMonthName(month)}
-                          </option>
-                        ))}
+                            <option key={month} value={month}>
+                              {getMonthName(month)}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
@@ -1592,22 +1738,30 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
               </div>
             </div>
 
-
-
             {/* 固定支出/收入 - Hidden */}
             <div className="hidden flex items-center justify-between">
-              <span className="text-gray-600 pl-2">定期{transaction.type === "expense" ? "支出" : "收入"}</span>
+              <span className="text-gray-600 pl-2">
+                定期{transaction.type === "expense" ? "支出" : "收入"}
+              </span>
               <div className="flex items-center">
                 <div
                   className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
                   onClick={handleToggleFixedExpanded}
                   tabIndex={0}
-                  onKeyDown={(e) => e.key === "Enter" && handleToggleFixedExpanded()}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && handleToggleFixedExpanded()
+                  }
                   aria-label={isFixedExpanded ? "收起定期設定" : "展開定期設定"}
                 >
                   <span className="text-gray-800">
-                    {transaction.isFixed 
-                      ? `每 ${transaction.fixedInterval || 1} ${transaction.fixedFrequency === "day" ? "日" : transaction.fixedFrequency === "week" ? "週" : "月"}`
+                    {transaction.isFixed
+                      ? `每 ${transaction.fixedInterval || 1} ${
+                          transaction.fixedFrequency === "day"
+                            ? "日"
+                            : transaction.fixedFrequency === "week"
+                            ? "週"
+                            : "月"
+                        }`
                       : "未設定"}
                   </span>
                   {isFixedExpanded ? (
@@ -1618,11 +1772,9 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                 </div>
               </div>
             </div>
-            
+
             {/* 定期支出/收入設定區域 - Hidden */}
-            <div 
-              className="hidden overflow-hidden transition-all duration-300 ease-in-out"
-            >
+            <div className="hidden overflow-hidden transition-all duration-300 ease-in-out">
               <div className="bg-gray-50 rounded-xl p-4">
                 <div className="space-y-4">
                   {/* 開關按鈕 */}
@@ -1640,41 +1792,58 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                           isFixed: !transaction.isFixed,
                           // 如果關閉固定支出/收入，重置相關設定
                           // 如果開啟固定支出/收入，設定預設值
-                          ...(transaction.isFixed 
-                            ? { fixedFrequency: undefined, fixedInterval: undefined } 
-                            : { 
-                                fixedFrequency: "month" as "day" | "week" | "month", 
-                                fixedInterval: 1 
-                              })
+                          ...(transaction.isFixed
+                            ? {
+                                fixedFrequency: undefined,
+                                fixedInterval: undefined,
+                              }
+                            : {
+                                fixedFrequency: "month" as
+                                  | "day"
+                                  | "week"
+                                  | "month",
+                                fixedInterval: 1,
+                              }),
                         };
                         setTransaction(updatedTransaction);
                       }}
                     >
                       <span
                         className={`inline-block h-5 w-9 transform rounded-lg bg-white transition-transform duration-200 ease-in-out ${
-                          transaction.isFixed ? "translate-x-[2.5rem]" : "translate-x-1"
+                          transaction.isFixed
+                            ? "translate-x-[2.5rem]"
+                            : "translate-x-1"
                         }`}
                       />
                     </button>
                   </div>
-                  
+
                   {/* 合併頻率和間隔設定 */}
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600">頻率</span>
                     <div className="flex items-center gap-2">
                       {/* 間隔輸入 - 始終顯示輸入框，但根據開關狀態決定是否禁用 */}
                       <div className="flex items-center">
-                        <span className={`mr-2 ${transaction.isFixed ? "text-gray-600" : "text-gray-400"}`}>每</span>
+                        <span
+                          className={`mr-2 ${
+                            transaction.isFixed
+                              ? "text-gray-600"
+                              : "text-gray-400"
+                          }`}
+                        >
+                          每
+                        </span>
                         <div className="inline-flex items-center bg-white rounded-lg overflow-hidden border border-gray-300">
                           <button
                             className={`flex items-center justify-center w-7 h-8 ${
-                              transaction.isFixed 
-                                ? "text-gray-600 hover:bg-gray-100 active:bg-gray-200" 
+                              transaction.isFixed
+                                ? "text-gray-600 hover:bg-gray-100 active:bg-gray-200"
                                 : "text-gray-400 cursor-not-allowed opacity-50 bg-gray-50"
                             }`}
                             onClick={() => {
                               if (!transaction.isFixed) return;
-                              const currentValue = transaction.fixedInterval || 1;
+                              const currentValue =
+                                transaction.fixedInterval || 1;
                               if (currentValue > 1) {
                                 const updatedTransaction = {
                                   ...transaction,
@@ -1692,55 +1861,67 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                             type="text"
                             inputMode="numeric"
                             pattern="[0-9]*"
-                            value={transaction.fixedInterval !== undefined ? transaction.fixedInterval.toString() : "1"}
+                            value={
+                              transaction.fixedInterval !== undefined
+                                ? transaction.fixedInterval.toString()
+                                : "1"
+                            }
                             onChange={(e) => {
                               if (!transaction.isFixed) return; // 如果關閉則不處理
-                              
+
                               // 只允許數字
-                              const value = e.target.value.replace(/[^0-9]/g, "");
+                              const value = e.target.value.replace(
+                                /[^0-9]/g,
+                                ""
+                              );
                               // 確保值至少為 1
                               const numValue = parseInt(value, 10);
                               if (value === "" || isNaN(numValue)) {
                                 return;
                               }
-                              
+
                               const updatedTransaction = {
                                 ...transaction,
                                 fixedInterval: numValue,
                                 // 確保頻率已設定
-                                fixedFrequency: transaction.fixedFrequency || "month"
+                                fixedFrequency:
+                                  transaction.fixedFrequency || "month",
                               };
-                              
+
                               setTransaction(updatedTransaction);
                             }}
                             onBlur={(e) => {
                               if (!transaction.isFixed) return; // 如果關閉則不處理
-                              
+
                               // 確保值至少為 1
-                              if (e.target.value === "" || parseInt(e.target.value, 10) <= 0) {
+                              if (
+                                e.target.value === "" ||
+                                parseInt(e.target.value, 10) <= 0
+                              ) {
                                 const updatedTransaction = {
                                   ...transaction,
-                                  fixedInterval: 1
+                                  fixedInterval: 1,
                                 };
                                 setTransaction(updatedTransaction);
                               }
                             }}
                             className={`w-8 px-0 py-1 text-center focus:outline-none border-0 ${
-                              transaction.isFixed 
-                                ? "text-gray-800" 
+                              transaction.isFixed
+                                ? "text-gray-800"
                                 : "bg-gray-50 text-gray-400"
                             }`}
                             disabled={!transaction.isFixed}
                           />
                           <button
                             className={`flex items-center justify-center w-7 h-8 ${
-                              transaction.isFixed 
-                                ? "text-gray-600 hover:bg-gray-100 active:bg-gray-200" 
+                              transaction.isFixed
+                                ? "text-gray-600 hover:bg-gray-100 active:bg-gray-200"
                                 : "text-gray-400 cursor-not-allowed opacity-50 bg-gray-50"
                             }`}
                             onClick={() => {
                               if (!transaction.isFixed) return;
-                              const currentValue = transaction.fixedInterval || 1;
+                              const currentValue =
+                                transaction.fixedInterval || 1;
                               const updatedTransaction = {
                                 ...transaction,
                                 fixedInterval: currentValue + 1,
@@ -1754,7 +1935,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                           </button>
                         </div>
                       </div>
-                      
+
                       {/* 頻率選擇 - 根據開關狀態決定是否禁用 */}
                       <div className="flex gap-1">
                         <button
@@ -1766,7 +1947,8 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                               : "bg-gray-100 text-gray-400 cursor-not-allowed"
                           }`}
                           onClick={() => {
-                            if (transaction.isFixed) handleFixedFrequencyChange("day");
+                            if (transaction.isFixed)
+                              handleFixedFrequencyChange("day");
                           }}
                           disabled={!transaction.isFixed}
                         >
@@ -1781,7 +1963,8 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                               : "bg-gray-100 text-gray-400 cursor-not-allowed"
                           }`}
                           onClick={() => {
-                            if (transaction.isFixed) handleFixedFrequencyChange("week");
+                            if (transaction.isFixed)
+                              handleFixedFrequencyChange("week");
                           }}
                           disabled={!transaction.isFixed}
                         >
@@ -1796,7 +1979,8 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                               : "bg-gray-100 text-gray-400 cursor-not-allowed"
                           }`}
                           onClick={() => {
-                            if (transaction.isFixed) handleFixedFrequencyChange("month");
+                            if (transaction.isFixed)
+                              handleFixedFrequencyChange("month");
                           }}
                           disabled={!transaction.isFixed}
                         >
@@ -1818,9 +2002,12 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                 <textarea
                   value={transaction.note}
                   onChange={(e) => {
-                    const updatedTransaction = { ...transaction, note: e.target.value };
+                    const updatedTransaction = {
+                      ...transaction,
+                      note: e.target.value,
+                    };
                     setTransaction(updatedTransaction);
-                    
+
                     // 自动调整高度
                     e.target.style.height = "auto";
                     e.target.style.height = e.target.scrollHeight + "px";
@@ -1834,9 +2021,9 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                     // 移除自動儲存
                   }}
                   className="w-full px-3 py-2 rounded-lg focus:outline-none border border-gray-300 text-gray-800 resize-none overflow-hidden"
-                  style={{ 
+                  style={{
                     height: "38px", // 初始高度设为一行
-                    minHeight: "38px" // 最小高度为一行
+                    minHeight: "38px", // 最小高度为一行
                   }}
                   placeholder="輸入備註"
                   rows={1}
@@ -1855,7 +2042,9 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                 hasChanges
                   ? "bg-[#22c55e] text-white active:bg-green-600"
                   : "bg-gray-200 text-gray-600 active:bg-gray-300"
-              } transition-[background-color] duration-150 ${isButtonsDisabled ? 'pointer-events-none' : ''}`}
+              } transition-[background-color] duration-150 ${
+                isButtonsDisabled ? "pointer-events-none" : ""
+              }`}
             >
               {hasChanges ? (
                 <>
@@ -1874,12 +2063,14 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
             <button
               onClick={handleDelete}
               disabled={isButtonsDisabled}
-              className={`w-full py-3 rounded-2xl bg-red-500 text-white flex items-center justify-center transition-colors duration-150 active:bg-red-600 ${isButtonsDisabled ? 'pointer-events-none' : ''}`}
+              className={`w-full py-3 rounded-2xl bg-red-500 text-white flex items-center justify-center transition-colors duration-150 active:bg-red-600 ${
+                isButtonsDisabled ? "pointer-events-none" : ""
+              }`}
             >
               <Trash2 size={20} className="mr-2" />
               刪除
             </button>
-            
+
             {/* LINE 參數顯示和調試信息 */}
             {debugClickCount >= 5 && (
               <>
@@ -1887,53 +2078,67 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                 {(lineId || lineType) && (
                   <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm font-medium text-gray-700">LINE 參數資訊</p>
+                      <p className="text-sm font-medium text-gray-700">
+                        LINE 參數資訊
+                      </p>
                       <div className="h-px flex-1 bg-gray-200 mx-2"></div>
                     </div>
                     <div className="space-y-2">
                       {lineId && (
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-gray-500">記錄 ID</span>
-                          <span className="text-sm font-medium text-gray-700">{lineId}</span>
+                          <span className="text-sm font-medium text-gray-700">
+                            {lineId}
+                          </span>
                         </div>
                       )}
                       {lineType && (
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-500">交易類型</span>
-                          <span className="text-sm font-medium text-gray-700">{lineType}</span>
+                          <span className="text-sm text-gray-500">
+                            交易類型
+                          </span>
+                          <span className="text-sm font-medium text-gray-700">
+                            {lineType}
+                          </span>
                         </div>
                       )}
                     </div>
                   </div>
                 )}
-                
+
                 {/* 調試信息 */}
                 <div className="mt-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-medium text-yellow-700">調試信息</p>
+                    <p className="text-sm font-medium text-yellow-700">
+                      調試信息
+                    </p>
                     <div className="h-px flex-1 bg-yellow-200 mx-2"></div>
                   </div>
                   <div className="space-y-2 overflow-hidden">
                     <div className="flex flex-col">
                       <span className="text-sm text-yellow-700">完整 URL:</span>
-                      <span className="text-xs text-yellow-600 break-all">{debugInfo.url}</span>
+                      <span className="text-xs text-yellow-600 break-all">
+                        {debugInfo.url}
+                      </span>
                     </div>
                     <div className="flex flex-col">
                       <span className="text-sm text-yellow-700">解析參數:</span>
                       <div className="text-xs text-yellow-600">
-                        {Object.entries(debugInfo.params).map(([key, value]) => (
-                          <div key={key} className="flex justify-between">
-                            <span>{key}:</span>
-                            <span>{value}</span>
-                          </div>
-                        ))}
+                        {Object.entries(debugInfo.params).map(
+                          ([key, value]) => (
+                            <div key={key} className="flex justify-between">
+                              <span>{key}:</span>
+                              <span>{value}</span>
+                            </div>
+                          )
+                        )}
                       </div>
                     </div>
                   </div>
                 </div>
               </>
             )}
-            
+
             {/* 更新時間顯示 */}
             {transaction.updated_at && (
               <div className="mt-6 text-center">

@@ -1,35 +1,47 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { ChevronRight, ArrowLeft, Plus, Edit, Trash2, Check, X, ChevronDown, ChevronUp, Calendar, ChevronLeft } from "lucide-react"
-import { Skeleton } from "@/components/ui/skeleton"
-import { SUPABASE_URL, SUPABASE_KEY } from "@/utils/api"
+import { useEffect, useState } from "react";
+import {
+  ChevronRight,
+  ArrowLeft,
+  Plus,
+  Edit,
+  Trash2,
+  Check,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+  ChevronLeft,
+} from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SUPABASE_URL, SUPABASE_KEY } from "@/utils/api";
 
 // Helper function to check if a transaction is temporary
 const isTemporaryTransaction = (id: string | number): boolean => {
-  return typeof id === 'string' && id.startsWith('temp-');
+  return typeof id === "string" && id.startsWith("temp-");
 };
 
 // Define a consistent animation style for all content blocks
 const fadeInAnimation = {
   opacity: 0,
-  animation: 'fadeIn 0.6s ease-out forwards'
+  animation: "fadeIn 0.6s ease-out forwards",
 };
 
 // Define the recurring transaction type based on the table structure
 interface RecurringTransaction {
-  id: string | number
-  user_id: string
-  name: string
-  amount: number
-  type: "expense" | "income"
-  start_date: string
-  end_date?: string
-  interval: string
-  frequency: number
-  created_at?: string
-  updated_at?: string
-  category?: string
+  id: string | number;
+  user_id: string;
+  name: string;
+  amount: number;
+  type: "expense" | "income";
+  start_date: string;
+  end_date?: string;
+  interval: string;
+  frequency: number;
+  created_at?: string;
+  updated_at?: string;
+  category?: string;
 }
 
 // Add default categories
@@ -57,8 +69,8 @@ interface Category {
 }
 
 interface RecurringTransactionManagerProps {
-  userId: string
-  onClose: () => void
+  userId: string;
+  onClose: () => void;
 }
 
 // Skeleton loader for recurring transaction items
@@ -97,13 +109,14 @@ interface RecurringTransactionEditorProps {
   onDelete: (transactionId: string | number) => void;
 }
 
-const RecurringTransactionEditor = ({ 
-  transaction, 
-  onClose, 
-  onSave, 
-  onDelete 
+const RecurringTransactionEditor = ({
+  transaction,
+  onClose,
+  onSave,
+  onDelete,
 }: RecurringTransactionEditorProps) => {
-  const [editedTransaction, setEditedTransaction] = useState<RecurringTransaction | null>(transaction);
+  const [editedTransaction, setEditedTransaction] =
+    useState<RecurringTransaction | null>(transaction);
   const [isEditingName, setIsEditingName] = useState(false);
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [isEditingInterval, setIsEditingInterval] = useState(false);
@@ -120,45 +133,49 @@ const RecurringTransactionEditor = ({
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [hasChanges, setHasChanges] = useState(false);
-  
+
   // Add fetchCategories function
   const fetchCategories = async () => {
     try {
       // 構建 API URL
       const url = `${SUPABASE_URL}/categories`;
-      
+
       // 發送 API 請求
       const response = await fetch(url, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          "apikey": SUPABASE_KEY,
+          apikey: SUPABASE_KEY,
         },
       });
-      
+
       if (!response.ok) {
         throw new Error(`Failed to fetch categories: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       // 先找出用戶已刪除的類別名稱（包括系統預設類別）
       const userDeletedCategoryNames = data
-        .filter((cat: Category) => cat.user_id === editedTransaction?.user_id && cat.is_deleted)
+        .filter(
+          (cat: Category) =>
+            cat.user_id === editedTransaction?.user_id && cat.is_deleted
+        )
         .map((cat: Category) => cat.name);
-      
+
       // 過濾類別:
       // 1. 包含未刪除的用戶自定義類別
       // 2. 包含未被用戶刪除的系統預設類別
-      const filteredCategories = data.filter((cat: Category) => 
-        // 用戶自定義類別 - 未刪除的
-        (cat.user_id === editedTransaction?.user_id && !cat.is_deleted) ||
-        // 系統預設類別 - 未被用戶刪除的
-        (cat.user_id === null && !userDeletedCategoryNames.includes(cat.name))
+      const filteredCategories = data.filter(
+        (cat: Category) =>
+          // 用戶自定義類別 - 未刪除的
+          (cat.user_id === editedTransaction?.user_id && !cat.is_deleted) ||
+          // 系統預設類別 - 未被用戶刪除的
+          (cat.user_id === null && !userDeletedCategoryNames.includes(cat.name))
       );
-      
+
       setDbCategories(filteredCategories);
-      
+
       // 根據交易類型更新類別名稱列表
       if (editedTransaction) {
         updateCategoryNamesByType(filteredCategories, editedTransaction.type);
@@ -171,11 +188,14 @@ const RecurringTransactionEditor = ({
   };
 
   // 根據交易類型更新類別名稱列表
-  const updateCategoryNamesByType = (cats: Category[], type: "income" | "expense") => {
+  const updateCategoryNamesByType = (
+    cats: Category[],
+    type: "income" | "expense"
+  ) => {
     const filteredNames = cats
-      .filter(cat => cat.type === type)
-      .map(cat => cat.name);
-    
+      .filter((cat) => cat.type === type)
+      .map((cat) => cat.name);
+
     // 如果沒有找到任何類別，使用預設類別
     if (filteredNames.length === 0) {
       setCategories(defaultCategories);
@@ -194,27 +214,30 @@ const RecurringTransactionEditor = ({
   // Handle type change
   const handleTypeChange = (type: "expense" | "income") => {
     if (!editedTransaction) return;
-    
+
     // 如果類型沒有變化，不做任何操作
     if (editedTransaction.type === type) return;
-    
+
     // 更新本地交易對象的類型和金額
     const updatedTransaction = {
       ...editedTransaction,
       type,
-      amount: type === "expense" ? -Math.abs(editedTransaction.amount) : Math.abs(editedTransaction.amount),
+      amount:
+        type === "expense"
+          ? -Math.abs(editedTransaction.amount)
+          : Math.abs(editedTransaction.amount),
       // 重置類別，因為不同類型有不同的類別選項
-      category: ""
+      category: "",
     };
-    
+
     // 更新本地狀態
     setEditedTransaction(updatedTransaction);
-    
+
     // 根據新類型更新類別列表
     if (dbCategories.length > 0) {
       updateCategoryNamesByType(dbCategories, type);
     }
-    
+
     // 自動展開類型選擇區域
     setIsEditingCategory(true);
   };
@@ -227,11 +250,11 @@ const RecurringTransactionEditor = ({
       setEditAmount(Math.abs(transaction.amount).toString());
     }
   }, [transaction]);
-  
+
   // Update hasChanges whenever editedTransaction changes
   useEffect(() => {
     if (editedTransaction && transaction) {
-      const hasChanged = 
+      const hasChanged =
         editedTransaction.name !== transaction.name ||
         editedTransaction.amount !== transaction.amount ||
         editedTransaction.type !== transaction.type ||
@@ -240,60 +263,63 @@ const RecurringTransactionEditor = ({
         editedTransaction.frequency !== transaction.frequency ||
         editedTransaction.start_date !== transaction.start_date ||
         editedTransaction.end_date !== transaction.end_date;
-      
+
       setHasChanges(hasChanged);
     }
   }, [editedTransaction, transaction]);
-  
+
   if (!editedTransaction) return null;
-  
+
   // Handle name change
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setEditName(e.target.value);
   };
-  
+
   // Start editing name
   const handleStartEditName = () => {
     setIsEditingName(true);
     setEditName(editedTransaction.name);
   };
-  
+
   // Save name
   const handleSaveName = () => {
     if (editName.trim()) {
       setEditedTransaction({
         ...editedTransaction,
-        name: editName.trim()
+        name: editName.trim(),
       });
     }
     setIsEditingName(false);
   };
-  
+
   // Handle amount change
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // Only allow numbers and decimal point
     const value = e.target.value.replace(/[^0-9.]/g, "");
     setEditAmount(value);
   };
-  
+
   // Start editing amount
   const handleStartEditAmount = () => {
     setIsEditingAmount(true);
     setEditAmount(Math.abs(editedTransaction.amount).toString());
   };
-  
+
   // Save amount
   const handleSaveAmount = () => {
     const value = parseFloat(editAmount);
     if (!isNaN(value)) {
       setEditedTransaction({
         ...editedTransaction,
-        amount: editedTransaction.type === "expense" ? -Math.abs(value) : Math.abs(value)
+        amount:
+          editedTransaction.type === "expense"
+            ? -Math.abs(value)
+            : Math.abs(value),
       });
     }
     setIsEditingAmount(false);
   };
-  
+
   // Handle key down events for input fields
   const handleKeyDown = (e: React.KeyboardEvent, saveFunction: () => void) => {
     if (e.key === "Enter") {
@@ -303,34 +329,34 @@ const RecurringTransactionEditor = ({
       setIsEditingAmount(false);
     }
   };
-  
+
   // Handle interval change
   const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value);
     if (!isNaN(value) && value > 0) {
       setEditedTransaction({
         ...editedTransaction,
-        frequency: value
+        frequency: value,
       });
     }
   };
-  
+
   // Handle frequency type change
   const handleFrequencyTypeChange = (interval: string) => {
     // Standardize interval values to match database constraints
     let standardizedInterval = interval;
-    
+
     // Map to standardized values that match the database constraint
     if (interval === "week") standardizedInterval = "weekly";
     if (interval === "month") standardizedInterval = "monthly";
     if (interval === "year") standardizedInterval = "yearly";
-    
+
     setEditedTransaction({
       ...editedTransaction,
-      interval: standardizedInterval
+      interval: standardizedInterval,
     });
   };
-  
+
   // Handle save
   const handleSave = () => {
     if (!editedTransaction) return;
@@ -358,10 +384,10 @@ const RecurringTransactionEditor = ({
     setIsEditingAmount(false);
     setIsEditingInterval(false);
     setIsEditingDates(false);
-    
+
     onSave(editedTransaction);
   };
-  
+
   // Handle delete or cancel
   const handleDelete = () => {
     if (isTemporaryTransaction(editedTransaction.id)) {
@@ -372,7 +398,7 @@ const RecurringTransactionEditor = ({
       setShowDeleteModal(true);
     }
   };
-  
+
   // Confirm delete
   const confirmDelete = () => {
     if (editedTransaction) {
@@ -380,12 +406,12 @@ const RecurringTransactionEditor = ({
     }
     setShowDeleteModal(false);
   };
-  
+
   // Cancel delete
   const cancelDelete = () => {
     setShowDeleteModal(false);
   };
-  
+
   // Format date for display
   const formatDateForDisplay = (dateString: string) => {
     try {
@@ -393,20 +419,23 @@ const RecurringTransactionEditor = ({
       const year = date.getFullYear();
       const month = date.getMonth() + 1;
       const day = date.getDate();
-      return `${year}/${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}`;
+      return `${year}/${month.toString().padStart(2, "0")}/${day
+        .toString()
+        .padStart(2, "0")}`;
     } catch (error) {
       return dateString;
     }
   };
-  
+
   // Initialize calendar date based on selected date
   useEffect(() => {
     if (isEditingDates) {
       try {
-        const dateToUse = selectedDate === "start" 
-          ? editedTransaction.start_date 
-          : (editedTransaction.end_date || editedTransaction.start_date);
-        
+        const dateToUse =
+          selectedDate === "start"
+            ? editedTransaction.start_date
+            : editedTransaction.end_date || editedTransaction.start_date;
+
         const date = new Date(dateToUse);
         if (!isNaN(date.getTime())) {
           setCalendarDate(date);
@@ -417,32 +446,32 @@ const RecurringTransactionEditor = ({
       }
     }
   }, [isEditingDates, selectedDate, editedTransaction]);
-  
+
   // Handle date selection
   const handleDateSelect = (date: Date) => {
-    const formattedDate = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
-    
+    const formattedDate = date.toISOString().split("T")[0]; // Format as YYYY-MM-DD
+
     if (selectedDate === "start") {
       setEditedTransaction({
         ...editedTransaction,
-        start_date: formattedDate
+        start_date: formattedDate,
       });
     } else {
       setEditedTransaction({
         ...editedTransaction,
-        end_date: formattedDate
+        end_date: formattedDate,
       });
     }
   };
-  
+
   // Handle removing end date
   const handleRemoveEndDate = () => {
     setEditedTransaction({
       ...editedTransaction,
-      end_date: undefined
+      end_date: undefined,
     });
   };
-  
+
   // Calendar navigation functions
   const handlePrevMonth = () => {
     const newDate = new Date(calendarDate);
@@ -469,7 +498,7 @@ const RecurringTransactionEditor = ({
     newDate.setMonth(month);
     setCalendarDate(newDate);
   };
-  
+
   // Generate year options for select
   const generateYearOptions = () => {
     const currentYear = new Date().getFullYear();
@@ -479,7 +508,7 @@ const RecurringTransactionEditor = ({
     }
     return years;
   };
-  
+
   // Generate month options for select
   const generateMonthOptions = () => {
     const months = [];
@@ -488,58 +517,74 @@ const RecurringTransactionEditor = ({
     }
     return months;
   };
-  
+
   // Get month name
   const getMonthName = (month: number) => {
     const monthNames = [
-      "1月", "2月", "3月", "4月", "5月", "6月",
-      "7月", "8月", "9月", "10月", "11月", "12月"
+      "1月",
+      "2月",
+      "3月",
+      "4月",
+      "5月",
+      "6月",
+      "7月",
+      "8月",
+      "9月",
+      "10月",
+      "11月",
+      "12月",
     ];
     return monthNames[month];
   };
-  
+
   // Get days in month
   const getDaysInMonth = (year: number, month: number) => {
     return new Date(year, month + 1, 0).getDate();
   };
-  
+
   // Get first day of month
   const getFirstDayOfMonth = (year: number, month: number) => {
     return new Date(year, month, 1).getDay();
   };
-  
+
   // Render calendar
   const renderCalendar = () => {
     const year = calendarDate.getFullYear();
     const month = calendarDate.getMonth();
     const daysInMonth = getDaysInMonth(year, month);
     const firstDayOfMonth = getFirstDayOfMonth(year, month);
-    
+
     const days = [];
-    
+
     // Fill in empty cells for days before the first day of the month
     for (let i = 0; i < firstDayOfMonth; i++) {
       days.push(<div key={`empty-${i}`} className="h-8"></div>);
     }
-    
+
     // Fill in the days of the month
     for (let i = 1; i <= daysInMonth; i++) {
       const date = new Date(year, month, i);
-      const dateString = date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
-      
+      const dateString = date.toISOString().split("T")[0]; // Format as YYYY-MM-DD
+
       const isStartDate = editedTransaction.start_date === dateString;
       const isEndDate = editedTransaction.end_date === dateString;
-      const isSelected = (selectedDate === "start" && isStartDate) || 
-                         (selectedDate === "end" && isEndDate);
-      
+      const isSelected =
+        (selectedDate === "start" && isStartDate) ||
+        (selectedDate === "end" && isEndDate);
+
       days.push(
         <button
           key={`day-${i}`}
           className={`relative h-8 w-8 rounded-lg flex items-center justify-center ${
-            isStartDate && isEndDate ? "bg-green-500 text-white" :
-            isStartDate ? "bg-green-500 text-white" :
-            isEndDate ? "bg-blue-500 text-white group" :
-            isSelected ? "bg-gray-300" : ""
+            isStartDate && isEndDate
+              ? "bg-green-500 text-white"
+              : isStartDate
+              ? "bg-green-500 text-white"
+              : isEndDate
+              ? "bg-blue-500 text-white group"
+              : isSelected
+              ? "bg-gray-300"
+              : ""
           }`}
           onClick={() => handleDateSelect(date)}
         >
@@ -559,10 +604,10 @@ const RecurringTransactionEditor = ({
         </button>
       );
     }
-    
+
     return days;
   };
-  
+
   // Add category management functions
   const handleToggleEditCategory = () => {
     if (!editedTransaction) return;
@@ -591,7 +636,7 @@ const RecurringTransactionEditor = ({
       // 更新本地狀態
       setEditedTransaction({
         ...editedTransaction,
-        category
+        category,
       });
 
       // 如果是臨時交易（新建中），不需要更新資料庫
@@ -600,30 +645,32 @@ const RecurringTransactionEditor = ({
       }
 
       // 更新資料庫
-      const response = await fetch(`${SUPABASE_URL}/recurring?id=eq.${editedTransaction.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_KEY,
-          "Prefer": "return=minimal"
-        },
-        body: JSON.stringify({
-          category,
-          updated_at: new Date().toISOString()
-        })
-      });
+      const response = await fetch(
+        `${SUPABASE_URL}/recurring?id=eq.${editedTransaction.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: SUPABASE_KEY,
+            Prefer: "return=minimal",
+          },
+          body: JSON.stringify({
+            category,
+            updated_at: new Date().toISOString(),
+          }),
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`Failed to update category: ${response.status}`);
       }
-
     } catch (error) {
       console.error("Error updating category:", error);
       // 如果更新失敗，還原到原始狀態
       if (editedTransaction?.category) {
         setEditedTransaction({
           ...editedTransaction,
-          category: editedTransaction.category
+          category: editedTransaction.category,
         });
       }
       alert("更新類型失敗，請稍後再試");
@@ -639,32 +686,34 @@ const RecurringTransactionEditor = ({
 
     try {
       // Find the category to delete
-      const categoryToRemove = dbCategories.find(cat => cat.name === categoryToDelete);
-      
+      const categoryToRemove = dbCategories.find(
+        (cat) => cat.name === categoryToDelete
+      );
+
       if (categoryToRemove) {
         if (categoryToRemove.user_id === null) {
           // System default category - create a user-specific "delete marker" record
           const url = `${SUPABASE_URL}/categories`;
-          
+
           // Prepare data - create a user-specific record with same name but marked as deleted
           const createData = {
             user_id: editedTransaction?.user_id,
             name: categoryToRemove.name,
             type: categoryToRemove.type,
-            is_deleted: true
+            is_deleted: true,
           };
-          
+
           // Send API request to create "delete marker" record
           const response = await fetch(url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "apikey": SUPABASE_KEY,
-              "Prefer": "return=representation",
+              apikey: SUPABASE_KEY,
+              Prefer: "return=representation",
             },
             body: JSON.stringify(createData),
           });
-          
+
           if (!response.ok) {
             alert("刪除類別失敗，請稍後再試");
             return;
@@ -672,32 +721,34 @@ const RecurringTransactionEditor = ({
         } else {
           // User-defined category - mark as deleted directly
           const url = `${SUPABASE_URL}/categories?id=eq.${categoryToRemove.id}`;
-          
+
           // Send API request to update category as deleted
           const response = await fetch(url, {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
-              "apikey": SUPABASE_KEY,
-              "Prefer": "return=representation",
+              apikey: SUPABASE_KEY,
+              Prefer: "return=representation",
             },
-            body: JSON.stringify({ 
-              is_deleted: true
+            body: JSON.stringify({
+              is_deleted: true,
             }),
           });
-          
+
           if (!response.ok) {
             alert("刪除類別失敗，請稍後再試");
             return;
           }
         }
-        
+
         // Update local category lists
-        setDbCategories(prev => prev.filter(cat => cat.name !== categoryToDelete));
-        setCategories(prev => prev.filter(cat => cat !== categoryToDelete));
+        setDbCategories((prev) =>
+          prev.filter((cat) => cat.name !== categoryToDelete)
+        );
+        setCategories((prev) => prev.filter((cat) => cat !== categoryToDelete));
       } else {
         // If category not found, just update local list
-        setCategories(prev => prev.filter(cat => cat !== categoryToDelete));
+        setCategories((prev) => prev.filter((cat) => cat !== categoryToDelete));
       }
     } catch (error) {
       console.error("Error deleting category:", error);
@@ -712,21 +763,24 @@ const RecurringTransactionEditor = ({
 
   const handleSaveNewCategory = async () => {
     if (newCategory.trim() === "") return;
-    
+
     // Check if category already exists
     if (categories.includes(newCategory.trim())) {
       alert("此類別已存在");
       return;
     }
-    
+
     // Add to database
     if (editedTransaction) {
-      const success = await addCategoryToDatabase(newCategory.trim(), editedTransaction.type);
-      
+      const success = await addCategoryToDatabase(
+        newCategory.trim(),
+        editedTransaction.type
+      );
+
       if (success) {
         // Update local category list
-        setCategories(prev => [...prev, newCategory.trim()]);
-        
+        setCategories((prev) => [...prev, newCategory.trim()]);
+
         // If not in edit mode, automatically select new category
         if (!isCategoryEditMode) {
           handleSelectCategory(newCategory.trim());
@@ -735,48 +789,51 @@ const RecurringTransactionEditor = ({
         alert("新增類別失敗，請稍後再試");
       }
     }
-    
+
     setIsAddingCategory(false);
   };
 
-  const addCategoryToDatabase = async (categoryName: string, type: "income" | "expense") => {
+  const addCategoryToDatabase = async (
+    categoryName: string,
+    type: "income" | "expense"
+  ) => {
     try {
       // Construct API URL
       const url = `${SUPABASE_URL}/categories`;
-      
+
       // Prepare data to create
       const createData = {
         user_id: editedTransaction?.user_id,
         name: categoryName,
         type: type,
-        is_deleted: false
+        is_deleted: false,
       };
-      
+
       // Send API request to create new category
       const response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "apikey": SUPABASE_KEY,
-          "Prefer": "return=representation",
+          apikey: SUPABASE_KEY,
+          Prefer: "return=representation",
         },
         body: JSON.stringify(createData),
       });
-      
+
       if (!response.ok) {
         return false;
       }
-      
+
       // Parse response data
       const data = await response.json();
       if (!data || data.length === 0) {
         return false;
       }
-      
+
       // Update local category list
       const newCategory = data[0];
-      setDbCategories(prev => [...prev, newCategory]);
-      
+      setDbCategories((prev) => [...prev, newCategory]);
+
       return true;
     } catch (error) {
       console.error("Error adding category to database:", error);
@@ -785,19 +842,26 @@ const RecurringTransactionEditor = ({
   };
 
   // 顯示 Toast 通知的輔助函數
-  const showToastNotification = (message: string, type: "success" | "error", duration = 3000, callback?: () => void) => {
-    const toastDiv = document.createElement('div');
+  const showToastNotification = (
+    message: string,
+    type: "success" | "error",
+    duration = 3000,
+    callback?: () => void
+  ) => {
+    const toastDiv = document.createElement("div");
     toastDiv.className = `fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg transition-all duration-300 animate-fadeInDown ${
       type === "success" ? "bg-green-500 text-white" : "bg-red-500 text-white"
     }`;
-    toastDiv.style.animation = 'fadeInDown 0.3s ease-out, fadeOutUp 0.3s ease-in forwards 2.5s';
+    toastDiv.style.animation =
+      "fadeInDown 0.3s ease-out, fadeOutUp 0.3s ease-in forwards 2.5s";
 
-    const content = document.createElement('div');
-    content.className = 'flex items-center';
+    const content = document.createElement("div");
+    content.className = "flex items-center";
     content.innerHTML = `
-      ${type === "success" 
-        ? '<svg class="mr-2 animate-pulse" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
-        : '<svg class="mr-2 animate-pulse" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>'
+      ${
+        type === "success"
+          ? '<svg class="mr-2 animate-pulse" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+          : '<svg class="mr-2 animate-pulse" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>'
       }
       <span class="animate-fadeIn">${message}</span>
     `;
@@ -806,7 +870,7 @@ const RecurringTransactionEditor = ({
     document.body.appendChild(toastDiv);
 
     setTimeout(() => {
-      toastDiv.style.animation = 'fadeOutUp 0.3s ease-in forwards';
+      toastDiv.style.animation = "fadeOutUp 0.3s ease-in forwards";
       setTimeout(() => {
         document.body.removeChild(toastDiv);
       }, 300);
@@ -817,11 +881,11 @@ const RecurringTransactionEditor = ({
     <div className="fixed inset-0 bg-gray-100 z-50 overflow-y-auto">
       {/* Delete confirmation modal - only shown for existing transactions */}
       {showDeleteModal && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 animate-fadeIn"
           onClick={cancelDelete}
         >
-          <div 
+          <div
             className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-xl transform animate-scaleInStatic"
             onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
           >
@@ -829,8 +893,12 @@ const RecurringTransactionEditor = ({
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
                 <Trash2 className="h-6 w-6 text-red-500" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">確定要刪除嗎？</h3>
-              <p className="text-sm text-gray-500">此操作無法復原，刪除後資料將永久消失。</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                確定要刪除嗎？
+              </h3>
+              <p className="text-sm text-gray-500">
+                此操作無法復原，刪除後資料將永久消失。
+              </p>
             </div>
             <div className="flex gap-3 mt-6">
               <button
@@ -849,10 +917,10 @@ const RecurringTransactionEditor = ({
           </div>
         </div>
       )}
-      
+
       {/* Fixed background */}
       <div className="fixed inset-0 z-0 bg-[#F1F2F5]" />
-      
+
       {/* Main content */}
       <div className="w-full max-w-md mx-auto pb-6 relative z-10">
         <div className="space-y-4 px-[20px] mt-[20px]">
@@ -884,10 +952,10 @@ const RecurringTransactionEditor = ({
                 </button>
               </div>
             </div>
-            
+
             {/* Divider */}
             <div className="border-t border-gray-100"></div>
-            
+
             {/* Category */}
             <div className="flex flex-col">
               <div className="flex items-center justify-between">
@@ -901,7 +969,9 @@ const RecurringTransactionEditor = ({
                   }
                   aria-label="展開類型選單"
                 >
-                  <span className="text-gray-800">{editedTransaction?.category || "請選擇類型"}</span>
+                  <span className="text-gray-800">
+                    {editedTransaction?.category || "請選擇類型"}
+                  </span>
                   {isEditingCategory ? (
                     <ChevronUp className="ml-2 text-gray-400" />
                   ) : (
@@ -1033,7 +1103,7 @@ const RecurringTransactionEditor = ({
               </div>
             </div>
           </div>
-          
+
           {/* Card 2: Amount, recurrence, and date range */}
           <div className="bg-white rounded-2xl p-4 shadow-sm space-y-4">
             {/* Amount - clickable to edit */}
@@ -1065,21 +1135,24 @@ const RecurringTransactionEditor = ({
                     className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
                     onClick={handleStartEditAmount}
                     tabIndex={0}
-                    onKeyDown={(e) => e.key === "Enter" && handleStartEditAmount()}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && handleStartEditAmount()
+                    }
                     aria-label="編輯金額"
                   >
                     <span className="text-gray-800">
-                      {editedTransaction.type === "expense" ? "-" : ""}${Math.abs(editedTransaction.amount)}
+                      {editedTransaction.type === "expense" ? "-" : ""}$
+                      {Math.abs(editedTransaction.amount)}
                     </span>
                     <Edit className="h-5 w-5 mr-0.5 ml-2.5 text-gray-400" />
                   </div>
                 )}
               </div>
             </div>
-            
+
             {/* Divider */}
             <div className="border-t border-gray-100"></div>
-            
+
             {/* Recurrence */}
             <div className="flex flex-col">
               <div className="flex items-center justify-between">
@@ -1088,15 +1161,24 @@ const RecurringTransactionEditor = ({
                   className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
                   onClick={() => setIsEditingInterval(!isEditingInterval)}
                   tabIndex={0}
-                  onKeyDown={(e) => e.key === "Enter" && setIsEditingInterval(!isEditingInterval)}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" &&
+                    setIsEditingInterval(!isEditingInterval)
+                  }
                   aria-label="編輯週期"
                 >
                   <span className="text-gray-800">
-                    每 {editedTransaction.frequency} {
-                      editedTransaction.interval === "day" || editedTransaction.interval === "daily" ? "天" :
-                      editedTransaction.interval === "week" || editedTransaction.interval === "weekly" ? "週" :
-                      editedTransaction.interval === "month" || editedTransaction.interval === "monthly" ? "月" : "年"
-                    }
+                    每 {editedTransaction.frequency}{" "}
+                    {editedTransaction.interval === "day" ||
+                    editedTransaction.interval === "daily"
+                      ? "天"
+                      : editedTransaction.interval === "week" ||
+                        editedTransaction.interval === "weekly"
+                      ? "週"
+                      : editedTransaction.interval === "month" ||
+                        editedTransaction.interval === "monthly"
+                      ? "月"
+                      : "年"}
                   </span>
                   {isEditingInterval ? (
                     <ChevronUp className="ml-2 text-gray-400" />
@@ -1105,7 +1187,7 @@ const RecurringTransactionEditor = ({
                   )}
                 </div>
               </div>
-              
+
               {/* Recurrence dropdown */}
               <div
                 className={`overflow-hidden transition-all duration-300 ease-in-out ${
@@ -1126,7 +1208,7 @@ const RecurringTransactionEditor = ({
                             if (editedTransaction.frequency > 1) {
                               setEditedTransaction({
                                 ...editedTransaction,
-                                frequency: editedTransaction.frequency - 1
+                                frequency: editedTransaction.frequency - 1,
                               });
                             }
                           }}
@@ -1147,7 +1229,7 @@ const RecurringTransactionEditor = ({
                           onClick={() => {
                             setEditedTransaction({
                               ...editedTransaction,
-                              frequency: editedTransaction.frequency + 1
+                              frequency: editedTransaction.frequency + 1,
                             });
                           }}
                           aria-label="增加間隔"
@@ -1156,14 +1238,15 @@ const RecurringTransactionEditor = ({
                         </button>
                       </div>
                     </div>
-                    
+
                     {/* Frequency type selection */}
                     <div className="flex items-center justify-between">
                       <span className="text-gray-600">單位</span>
                       <div className="flex gap-1">
                         <button
                           className={`px-3 py-1 rounded-xl text-sm transition-all duration-150 ${
-                            editedTransaction.interval === "day" || editedTransaction.interval === "daily"
+                            editedTransaction.interval === "day" ||
+                            editedTransaction.interval === "daily"
                               ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
                               : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
                           }`}
@@ -1173,7 +1256,8 @@ const RecurringTransactionEditor = ({
                         </button>
                         <button
                           className={`px-3 py-1 rounded-xl text-sm transition-all duration-150 ${
-                            editedTransaction.interval === "week" || editedTransaction.interval === "weekly"
+                            editedTransaction.interval === "week" ||
+                            editedTransaction.interval === "weekly"
                               ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
                               : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
                           }`}
@@ -1183,7 +1267,8 @@ const RecurringTransactionEditor = ({
                         </button>
                         <button
                           className={`px-3 py-1 rounded-xl text-sm transition-all duration-150 ${
-                            editedTransaction.interval === "month" || editedTransaction.interval === "monthly"
+                            editedTransaction.interval === "month" ||
+                            editedTransaction.interval === "monthly"
                               ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
                               : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
                           }`}
@@ -1193,7 +1278,8 @@ const RecurringTransactionEditor = ({
                         </button>
                         <button
                           className={`px-3 py-1 rounded-xl text-sm transition-all duration-150 ${
-                            editedTransaction.interval === "year" || editedTransaction.interval === "yearly"
+                            editedTransaction.interval === "year" ||
+                            editedTransaction.interval === "yearly"
                               ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
                               : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
                           }`}
@@ -1207,10 +1293,14 @@ const RecurringTransactionEditor = ({
                 </div>
               </div>
             </div>
-            
+
             {/* Divider */}
-            <div className={`border-t border-gray-100 ${isEditingInterval ? "mt-4" : "mt-0"}`}></div>
-            
+            <div
+              className={`border-t border-gray-100 ${
+                isEditingInterval ? "mt-4" : "mt-0"
+              }`}
+            ></div>
+
             {/* Date range - placeholder for now */}
             <div className="flex flex-col">
               <div className="flex items-center justify-between">
@@ -1219,14 +1309,18 @@ const RecurringTransactionEditor = ({
                   className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
                   onClick={() => setIsEditingDates(!isEditingDates)}
                   tabIndex={0}
-                  onKeyDown={(e) => e.key === "Enter" && setIsEditingDates(!isEditingDates)}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && setIsEditingDates(!isEditingDates)
+                  }
                   aria-label="編輯日期"
                 >
                   <span className="text-gray-800">
                     {formatDateForDisplay(editedTransaction.start_date)}
                     {editedTransaction.end_date && (
                       <span>
-                        {` - ${formatDateForDisplay(editedTransaction.end_date)}`}
+                        {` - ${formatDateForDisplay(
+                          editedTransaction.end_date
+                        )}`}
                       </span>
                     )}
                     {!editedTransaction.end_date && " 開始"}
@@ -1238,7 +1332,7 @@ const RecurringTransactionEditor = ({
                   )}
                 </div>
               </div>
-              
+
               {/* Date range dropdown */}
               <div
                 className={`overflow-hidden transition-all duration-300 ease-in-out ${
@@ -1272,7 +1366,7 @@ const RecurringTransactionEditor = ({
                         結束日期
                       </button>
                     </div>
-                    
+
                     {/* Calendar */}
                     <div className="p-3">
                       {/* Year and month selectors */}
@@ -1319,7 +1413,7 @@ const RecurringTransactionEditor = ({
                           <ChevronRight size={20} />
                         </button>
                       </div>
-                      
+
                       {/* Weekday headers */}
                       <div className="grid grid-cols-7 mb-2">
                         {["日", "一", "二", "三", "四", "五", "六"].map(
@@ -1333,7 +1427,7 @@ const RecurringTransactionEditor = ({
                           )
                         )}
                       </div>
-                      
+
                       {/* Calendar days */}
                       <div className="grid grid-cols-7 gap-1">
                         {renderCalendar()}
@@ -1344,7 +1438,7 @@ const RecurringTransactionEditor = ({
               </div>
             </div>
           </div>
-          
+
           {/* Card 3: Name (備註) */}
           <div className="bg-white rounded-2xl p-4 shadow-sm">
             <div className="flex flex-col space-y-2">
@@ -1356,9 +1450,9 @@ const RecurringTransactionEditor = ({
                     if (!editedTransaction) return;
                     setEditedTransaction({
                       ...editedTransaction,
-                      name: e.target.value
+                      name: e.target.value,
                     });
-                    
+
                     // 自動調整高度
                     e.target.style.height = "auto";
                     e.target.style.height = e.target.scrollHeight + "px";
@@ -1375,22 +1469,18 @@ const RecurringTransactionEditor = ({
               </div>
             </div>
           </div>
-          
+
           {/* Action buttons */}
           <div className="space-y-4 mt-8">
             {/* Save/Return button */}
             <button
               onClick={handleSave}
               className={`w-full py-3 rounded-2xl flex items-center justify-center ${
-                isTemporaryTransaction(editedTransaction.id) ? (
-                  "bg-[#22c55e] text-white active:bg-green-600"
-                ) : (
-                  hasChanges ? (
-                    "bg-[#22c55e] text-white active:bg-green-600"
-                  ) : (
-                    "bg-gray-200 text-gray-600 active:bg-gray-300"
-                  )
-                )
+                isTemporaryTransaction(editedTransaction.id)
+                  ? "bg-[#22c55e] text-white active:bg-green-600"
+                  : hasChanges
+                  ? "bg-[#22c55e] text-white active:bg-green-600"
+                  : "bg-gray-200 text-gray-600 active:bg-gray-300"
               } transition-[background-color] duration-150`}
             >
               {isTemporaryTransaction(editedTransaction.id) ? (
@@ -1398,30 +1488,26 @@ const RecurringTransactionEditor = ({
                   <Plus size={20} className="mr-2" />
                   新增
                 </>
+              ) : hasChanges ? (
+                <>
+                  <Check size={20} className="mr-2" />
+                  更新
+                </>
               ) : (
-                hasChanges ? (
-                  <>
-                    <Check size={20} className="mr-2" />
-                    更新
-                  </>
-                ) : (
-                  <>
-                    <ArrowLeft size={20} className="mr-2" />
-                    返回
-                  </>
-                )
+                <>
+                  <ArrowLeft size={20} className="mr-2" />
+                  返回
+                </>
               )}
             </button>
-            
+
             {/* Delete button or Cancel button based on whether it's a new transaction */}
             <button
               onClick={handleDelete}
               className={`w-full py-3 rounded-2xl flex items-center justify-center ${
-                isTemporaryTransaction(editedTransaction.id) ? (
-                  "bg-gray-200 text-gray-600 active:bg-gray-300"
-                ) : (
-                  "bg-red-500 text-white active:bg-red-600"
-                )
+                isTemporaryTransaction(editedTransaction.id)
+                  ? "bg-gray-200 text-gray-600 active:bg-gray-300"
+                  : "bg-red-500 text-white active:bg-red-600"
               } transition-[background-color] duration-150`}
             >
               {isTemporaryTransaction(editedTransaction.id) ? (
@@ -1436,21 +1522,26 @@ const RecurringTransactionEditor = ({
                 </>
               )}
             </button>
-            
+
             {/* Last updated timestamp - only show for existing transactions */}
-            {!isTemporaryTransaction(editedTransaction.id) && editedTransaction.updated_at && (
-              <div className="mt-6 text-center">
-                <p className="text-xs text-gray-400">
-                  最後更新 {new Date(editedTransaction.updated_at).toLocaleString('zh-TW', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </p>
-              </div>
-            )}
+            {!isTemporaryTransaction(editedTransaction.id) &&
+              editedTransaction.updated_at && (
+                <div className="mt-6 text-center">
+                  <p className="text-xs text-gray-400">
+                    最後更新{" "}
+                    {new Date(editedTransaction.updated_at).toLocaleString(
+                      "zh-TW",
+                      {
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }
+                    )}
+                  </p>
+                </div>
+              )}
           </div>
         </div>
       </div>
@@ -1458,11 +1549,17 @@ const RecurringTransactionEditor = ({
   );
 };
 
-export default function RecurringTransactionManager({ userId, onClose }: RecurringTransactionManagerProps) {
+export default function RecurringTransactionManager({
+  userId,
+  onClose,
+}: RecurringTransactionManagerProps) {
   const [isLoading, setIsLoading] = useState(true);
-  const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransaction[]>([]);
+  const [recurringTransactions, setRecurringTransactions] = useState<
+    RecurringTransaction[]
+  >([]);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTransaction, setSelectedTransaction] = useState<RecurringTransaction | null>(null);
+  const [selectedTransaction, setSelectedTransaction] =
+    useState<RecurringTransaction | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -1470,11 +1567,16 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
   const [toastType, setToastType] = useState<"success" | "error">("success");
 
   // 顯示 Toast 通知的輔助函數
-  const showToastNotification = (message: string, type: "success" | "error", duration = 3000, callback?: () => void) => {
+  const showToastNotification = (
+    message: string,
+    type: "success" | "error",
+    duration = 3000,
+    callback?: () => void
+  ) => {
     setToastMessage(message);
     setToastType(type);
     setShowToast(true);
-    
+
     // 延長顯示時間，確保動畫有足夠時間完成
     setTimeout(() => {
       setShowToast(false);
@@ -1492,44 +1594,51 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
     const fetchRecurringTransactions = async () => {
       try {
         setIsLoading(true);
-        
+
         // Supabase API URL and key should be environment variables
         const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
         const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY;
-        
+
         if (!SUPABASE_URL || !SUPABASE_KEY) {
           throw new Error("Supabase credentials not found");
         }
-        
+
         // Fetch data from the recurring table
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/recurring?user_id=eq.${userId}&order=created_at.desc`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": SUPABASE_KEY,
-          },
-        });
-        
+        const response = await fetch(
+          `${SUPABASE_URL}/rest/v1/recurring?user_id=eq.${userId}&order=created_at.desc`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: SUPABASE_KEY,
+            },
+          }
+        );
+
         if (!response.ok) {
-          throw new Error(`Failed to fetch recurring transactions: ${response.statusText}`);
+          throw new Error(
+            `Failed to fetch recurring transactions: ${response.statusText}`
+          );
         }
-        
+
         const data = await response.json();
         setRecurringTransactions(data);
       } catch (error) {
         console.error("Error fetching recurring transactions:", error);
-        setError("Failed to load recurring transactions. Please try again later.");
+        setError(
+          "Failed to load recurring transactions. Please try again later."
+        );
       } finally {
         setIsLoading(false);
       }
     };
-    
+
     fetchRecurringTransactions();
   }, [userId]);
 
   // Create a new empty transaction template
   const createEmptyTransaction = (): RecurringTransaction => {
-    const today = new Date().toISOString().split('T')[0]; // Format as YYYY-MM-DD
+    const today = new Date().toISOString().split("T")[0]; // Format as YYYY-MM-DD
     return {
       id: `temp-${Date.now()}`, // Temporary ID that will be replaced by the database
       user_id: userId,
@@ -1540,7 +1649,7 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
       interval: "monthly", // Using standardized value that matches database constraint
       frequency: 1,
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
     };
   };
 
@@ -1554,73 +1663,77 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
   const standardizeIntervalValue = (interval: string): string => {
     // Convert to lowercase for consistency
     const normalizedInterval = interval.toLowerCase();
-    
+
     // Map to standardized values that match the database constraint
     if (normalizedInterval === "day") return "daily";
     if (normalizedInterval === "week") return "weekly";
     if (normalizedInterval === "month") return "monthly";
     if (normalizedInterval === "year") return "yearly";
-    
+
     // If it's already in the correct format, return as is
     if (["daily", "weekly", "monthly", "yearly"].includes(normalizedInterval)) {
       return normalizedInterval;
     }
-    
+
     // Default fallback
     return "monthly";
   };
 
   // Handle save new transaction
-  const handleSaveNewTransaction = async (newTransaction: RecurringTransaction) => {
+  const handleSaveNewTransaction = async (
+    newTransaction: RecurringTransaction
+  ) => {
     try {
       // Supabase API URL and key
       const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY;
-      
+
       if (!SUPABASE_URL || !SUPABASE_KEY) {
         throw new Error("Supabase credentials not found");
       }
-      
+
       // Standardize the interval value
-      const standardizedInterval = standardizeIntervalValue(newTransaction.interval);
-      
+      const standardizedInterval = standardizeIntervalValue(
+        newTransaction.interval
+      );
+
       // Log the data being sent
       console.log("Sending data to Supabase:", {
         user_id: userId,
         name: newTransaction.name || "未命名",
         amount: newTransaction.amount,
         type: newTransaction.type,
-        category: newTransaction.category,  // 添加 category
+        category: newTransaction.category, // 添加 category
         interval: standardizedInterval,
         frequency: newTransaction.frequency,
         start_date: newTransaction.start_date,
         end_date: newTransaction.end_date,
       });
-      
+
       // Create transaction in Supabase
       const response = await fetch(`${SUPABASE_URL}/rest/v1/recurring`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "apikey": SUPABASE_KEY,
-          "Prefer": "return=representation",
-          "Authorization": `Bearer ${SUPABASE_KEY}`
+          apikey: SUPABASE_KEY,
+          Prefer: "return=representation",
+          Authorization: `Bearer ${SUPABASE_KEY}`,
         },
         body: JSON.stringify({
           user_id: userId,
           name: newTransaction.name || "未命名",
           amount: newTransaction.amount,
           type: newTransaction.type,
-          category: newTransaction.category,  // 添加 category
+          category: newTransaction.category, // 添加 category
           interval: standardizedInterval,
           frequency: newTransaction.frequency,
           start_date: newTransaction.start_date,
           end_date: newTransaction.end_date,
           created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
+          updated_at: new Date().toISOString(),
+        }),
       });
-      
+
       if (!response.ok) {
         // Get the error response body if possible
         let errorBody = "";
@@ -1629,30 +1742,32 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
         } catch (e) {
           errorBody = "Could not read error response body";
         }
-        
+
         console.error("Supabase error details:", {
           status: response.status,
           statusText: response.statusText,
-          errorBody
+          errorBody,
         });
-        
-        throw new Error(`Failed to create transaction: ${response.status} ${response.statusText}`);
+
+        throw new Error(
+          `Failed to create transaction: ${response.status} ${response.statusText}`
+        );
       }
-      
+
       const createdTransaction = await response.json();
       console.log("Successfully created transaction:", createdTransaction);
-      
+
       // Update local state
-      setRecurringTransactions(prevTransactions => 
-        [createdTransaction[0], ...prevTransactions]
-      );
-      
+      setRecurringTransactions((prevTransactions) => [
+        createdTransaction[0],
+        ...prevTransactions,
+      ]);
+
       // Remove success toast notification
-      
+
       // Close editor
       setIsCreating(false);
       setSelectedTransaction(null);
-      
     } catch (error) {
       console.error("Error creating transaction:", error);
       showToastNotification("建立失敗，請稍後再試", "error");
@@ -1676,7 +1791,10 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
       }
       return acc;
     },
-    { expenses: [] as RecurringTransaction[], incomes: [] as RecurringTransaction[] }
+    {
+      expenses: [] as RecurringTransaction[],
+      incomes: [] as RecurringTransaction[],
+    }
   );
 
   // Format date to display in a user-friendly way
@@ -1687,7 +1805,9 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
       const year = date.getFullYear();
       const month = date.getMonth() + 1;
       const day = date.getDate();
-      return `${year}/${month.toString().padStart(2, '0')}/${day.toString().padStart(2, '0')}`;
+      return `${year}/${month.toString().padStart(2, "0")}/${day
+        .toString()
+        .padStart(2, "0")}`;
     } catch (error) {
       return dateString;
     }
@@ -1703,13 +1823,13 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
       month: "月",
       monthly: "月",
       year: "年",
-      yearly: "年"
+      yearly: "年",
     };
-    
+
     // Convert interval to lowercase to handle any case variations
     const normalizedInterval = interval.toLowerCase();
     const intervalText = intervalMap[normalizedInterval] || normalizedInterval;
-    
+
     return `每${frequency}${intervalText}`;
   };
 
@@ -1720,19 +1840,23 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
   };
 
   // Handle save transaction
-  const handleSaveTransaction = async (updatedTransaction: RecurringTransaction) => {
+  const handleSaveTransaction = async (
+    updatedTransaction: RecurringTransaction
+  ) => {
     try {
       // Supabase API URL and key
       const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY;
-      
+
       if (!SUPABASE_URL || !SUPABASE_KEY) {
         throw new Error("Supabase credentials not found");
       }
-      
+
       // Standardize the interval value
-      const standardizedInterval = standardizeIntervalValue(updatedTransaction.interval);
-      
+      const standardizedInterval = standardizeIntervalValue(
+        updatedTransaction.interval
+      );
+
       // Log the data being updated
       console.log("Updating transaction in Supabase:", {
         id: updatedTransaction.id,
@@ -1744,28 +1868,31 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
         start_date: updatedTransaction.start_date,
         end_date: updatedTransaction.end_date,
       });
-      
+
       // Update transaction in Supabase
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/recurring?id=eq.${updatedTransaction.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_KEY,
-          "Prefer": "return=minimal",
-          "Authorization": `Bearer ${SUPABASE_KEY}`
-        },
-        body: JSON.stringify({
-          name: updatedTransaction.name,
-          amount: updatedTransaction.amount,
-          type: updatedTransaction.type,
-          interval: standardizedInterval,
-          frequency: updatedTransaction.frequency,
-          start_date: updatedTransaction.start_date,
-          end_date: updatedTransaction.end_date,
-          updated_at: new Date().toISOString()
-        })
-      });
-      
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/recurring?id=eq.${updatedTransaction.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: SUPABASE_KEY,
+            Prefer: "return=minimal",
+            Authorization: `Bearer ${SUPABASE_KEY}`,
+          },
+          body: JSON.stringify({
+            name: updatedTransaction.name,
+            amount: updatedTransaction.amount,
+            type: updatedTransaction.type,
+            interval: standardizedInterval,
+            frequency: updatedTransaction.frequency,
+            start_date: updatedTransaction.start_date,
+            end_date: updatedTransaction.end_date,
+            updated_at: new Date().toISOString(),
+          }),
+        }
+      );
+
       if (!response.ok) {
         // Get the error response body if possible
         let errorBody = "";
@@ -1774,31 +1901,32 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
         } catch (e) {
           errorBody = "Could not read error response body";
         }
-        
+
         console.error("Supabase update error details:", {
           status: response.status,
           statusText: response.statusText,
-          errorBody
+          errorBody,
         });
-        
-        throw new Error(`Failed to update transaction: ${response.status} ${response.statusText}`);
+
+        throw new Error(
+          `Failed to update transaction: ${response.status} ${response.statusText}`
+        );
       }
-      
+
       console.log("Successfully updated transaction");
-      
+
       // Update local state
-      setRecurringTransactions(prevTransactions => 
-        prevTransactions.map(tx => 
+      setRecurringTransactions((prevTransactions) =>
+        prevTransactions.map((tx) =>
           tx.id === updatedTransaction.id ? updatedTransaction : tx
         )
       );
-      
+
       // Remove success toast
-      
+
       // Close editor
       setIsEditing(false);
       setSelectedTransaction(null);
-      
     } catch (error) {
       console.error("Error updating transaction:", error);
       showToastNotification("更新失敗，請稍後再試", "error");
@@ -1811,36 +1939,38 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
       // Supabase API URL and key
       const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY;
-      
+
       if (!SUPABASE_URL || !SUPABASE_KEY) {
         throw new Error("Supabase credentials not found");
       }
-      
+
       // Delete transaction from Supabase
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/recurring?id=eq.${transactionId}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": SUPABASE_KEY
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/recurring?id=eq.${transactionId}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: SUPABASE_KEY,
+          },
         }
-      });
-      
+      );
+
       if (!response.ok) {
         throw new Error(`Failed to delete transaction: ${response.statusText}`);
       }
-      
+
       // Update local state
-      setRecurringTransactions(prevTransactions => 
-        prevTransactions.filter(tx => tx.id !== transactionId)
+      setRecurringTransactions((prevTransactions) =>
+        prevTransactions.filter((tx) => tx.id !== transactionId)
       );
-      
+
       // Remove success toast
-      
+
       // Close editor
       setIsEditing(false);
       setIsCreating(false);
       setSelectedTransaction(null);
-      
     } catch (error) {
       console.error("Error deleting transaction:", error);
       showToastNotification("刪除失敗，請稍後再試", "error");
@@ -1848,22 +1978,24 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
   };
 
   // Calculate monthly equivalent amount based on recurrence pattern
-  const calculateMonthlyAmount = (transaction: RecurringTransaction): number => {
+  const calculateMonthlyAmount = (
+    transaction: RecurringTransaction
+  ): number => {
     const { amount, interval, frequency } = transaction;
     const normalizedInterval = interval.toLowerCase();
-    
+
     // Convert all intervals to monthly equivalent
     switch (normalizedInterval) {
-      case 'day':
+      case "day":
         return (amount * 30) / frequency; // Approximate 30 days per month
-      case 'week':
-      case 'weekly':
+      case "week":
+      case "weekly":
         return (amount * 4.33) / frequency; // Approximate 4.33 weeks per month
-      case 'month':
-      case 'monthly':
+      case "month":
+      case "monthly":
         return amount / frequency;
-      case 'year':
-      case 'yearly':
+      case "year":
+      case "yearly":
         return amount / (12 * frequency);
       default:
         return amount; // Default fallback
@@ -1872,12 +2004,12 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
 
   // Calculate total monthly expenses and incomes
   const monthlyExpenses = groupedTransactions.expenses.reduce(
-    (sum, tx) => sum + Math.abs(calculateMonthlyAmount(tx)), 
+    (sum, tx) => sum + Math.abs(calculateMonthlyAmount(tx)),
     0
   );
-  
+
   const monthlyIncomes = groupedTransactions.incomes.reduce(
-    (sum, tx) => sum + calculateMonthlyAmount(tx), 
+    (sum, tx) => sum + calculateMonthlyAmount(tx),
     0
   );
 
@@ -1899,17 +2031,25 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
       <div className="fixed inset-0 bg-gray-100 z-50 overflow-y-auto">
         <div className="space-y-4 p-4 max-w-md mx-auto">
           {/* Expense skeleton */}
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden" style={{ ...fadeInAnimation, animationDelay: '50ms' }}>
+          <div
+            className="bg-white rounded-2xl shadow-sm overflow-hidden"
+            style={{ ...fadeInAnimation, animationDelay: "0ms" }}
+          >
             <HeaderSkeleton />
             <div className="divide-y divide-gray-100">
               {[1, 2, 3].map((item) => (
-                <RecurringTransactionSkeleton key={`skeleton-expense-${item}`} />
+                <RecurringTransactionSkeleton
+                  key={`skeleton-expense-${item}`}
+                />
               ))}
             </div>
           </div>
-          
+
           {/* Income skeleton */}
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden" style={{ ...fadeInAnimation, animationDelay: '150ms' }}>
+          <div
+            className="bg-white rounded-2xl shadow-sm overflow-hidden"
+            style={{ ...fadeInAnimation, animationDelay: "0ms" }}
+          >
             <HeaderSkeleton />
             <div className="divide-y divide-gray-100">
               {[1, 2].map((item) => (
@@ -1918,12 +2058,25 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
             </div>
           </div>
         </div>
-        
+
         {/* Bottom buttons skeleton */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100">
+        <div className="fixed bottom-0 left-0 right-0 pt-4 px-4 pb-6 bg-gray-100 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent">
           <div className="max-w-md mx-auto flex gap-3">
-            <Skeleton className="w-[30%] h-12 rounded-2xl animate-pulse-color" />
-            <Skeleton className="w-[70%] h-12 rounded-2xl animate-pulse-color" />
+            <button
+              onClick={onClose}
+              className="w-[30%] py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
+              aria-label="返回"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <button
+              onClick={handleCreateTransaction}
+              className="w-[70%] py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
+              aria-label="新增固定收支"
+            >
+              <Plus className="h-5 w-5 mr-1" />
+              新增
+            </button>
           </div>
         </div>
       </div>
@@ -1937,18 +2090,18 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
         <div className="flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
           <div className="text-red-500 mb-2">載入失敗</div>
           <p className="text-gray-600 mb-4">{error}</p>
-          <button 
+          <button
             onClick={() => window.location.reload()}
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded-xl transition-colors active:bg-gray-300"
           >
             重新整理
           </button>
         </div>
-        
+
         {/* Bottom buttons - back button only */}
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100">
           <div className="max-w-md mx-auto">
-            <button 
+            <button
               onClick={onClose}
               className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 font-medium flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
               aria-label="返回"
@@ -1966,12 +2119,15 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
     <div className="fixed inset-0 bg-gray-100 z-50 overflow-y-auto">
       {/* Toast 通知 */}
       {showToast && (
-        <div 
+        <div
           className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg transition-all duration-300 animate-fadeInDown ${
-            toastType === "success" ? "bg-green-500 text-white" : "bg-red-500 text-white"
+            toastType === "success"
+              ? "bg-green-500 text-white"
+              : "bg-red-500 text-white"
           }`}
           style={{
-            animation: 'fadeInDown 0.3s ease-out, fadeOutUp 0.3s ease-in forwards 2.5s'
+            animation:
+              "fadeInDown 0.3s ease-out, fadeOutUp 0.3s ease-in forwards 2.5s",
           }}
         >
           <div className="flex items-center">
@@ -1984,11 +2140,14 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
           </div>
         </div>
       )}
-      
+
       <div className="space-y-4 p-4 pb-24 max-w-md mx-auto">
         {/* Expenses section */}
         {groupedTransactions.expenses.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden" style={{ ...fadeInAnimation, animationDelay: '50ms' }}>
+          <div
+            className="bg-white rounded-2xl shadow-sm overflow-hidden"
+            style={{ ...fadeInAnimation, animationDelay: "0ms" }}
+          >
             <div className="flex justify-between items-center px-5 py-3 border-b bg-gray-50">
               <div className="font-medium text-base text-gray-700">
                 固定支出
@@ -1999,7 +2158,7 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
             </div>
             <div className="divide-y divide-gray-100">
               {groupedTransactions.expenses.map((transaction, index) => (
-                <div 
+                <div
                   key={transaction.id}
                   onClick={() => handleTransactionClick(transaction)}
                   className="px-4 py-3 flex items-center justify-between cursor-pointer transition-colors duration-150 hover:bg-gray-50 active:bg-gray-100"
@@ -2009,13 +2168,21 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
                 >
                   <div className="flex items-center">
                     <div className="pl-1">
-                      <div className="font-medium text-green-600">{transaction.category || '未分類'}</div>
+                      <div className="font-medium text-green-600">
+                        {transaction.category || "未分類"}
+                      </div>
                       <div className="text-sm text-gray-600 mt-0.5">
-                        {transaction.name ? `${transaction.name} - ` : ''}{formatRecurrence(transaction.interval, transaction.frequency)}
+                        {transaction.name ? `${transaction.name} - ` : ""}
+                        {formatRecurrence(
+                          transaction.interval,
+                          transaction.frequency
+                        )}
                       </div>
                       <div className="text-xs text-gray-500 mt-0.5">
                         從 {formatDate(transaction.start_date)}
-                        {transaction.end_date ? ` 到 ${formatDate(transaction.end_date)}` : " 開始"}
+                        {transaction.end_date
+                          ? ` 到 ${formatDate(transaction.end_date)}`
+                          : " 開始"}
                       </div>
                     </div>
                   </div>
@@ -2030,10 +2197,13 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
             </div>
           </div>
         )}
-        
+
         {/* Incomes section */}
         {groupedTransactions.incomes.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden" style={{ ...fadeInAnimation, animationDelay: `${100 + groupedTransactions.expenses.length * 30}ms` }}>
+          <div
+            className="bg-white rounded-2xl shadow-sm overflow-hidden"
+            style={{ ...fadeInAnimation, animationDelay: "0ms" }}
+          >
             <div className="flex justify-between items-center px-5 py-3 border-b bg-gray-50">
               <div className="font-medium text-base text-gray-700">
                 固定收入
@@ -2044,7 +2214,7 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
             </div>
             <div className="divide-y divide-gray-100">
               {groupedTransactions.incomes.map((transaction, index) => (
-                <div 
+                <div
                   key={transaction.id}
                   onClick={() => handleTransactionClick(transaction)}
                   className="px-4 py-3 flex items-center justify-between cursor-pointer transition-colors duration-150 hover:bg-gray-50 active:bg-gray-100"
@@ -2054,13 +2224,21 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
                 >
                   <div className="flex items-center">
                     <div className="pl-1">
-                      <div className="font-medium text-blue-600">{transaction.category || '未分類'}</div>
+                      <div className="font-medium text-blue-600">
+                        {transaction.category || "未分類"}
+                      </div>
                       <div className="text-sm text-gray-600 mt-0.5">
-                        {transaction.name ? `${transaction.name} - ` : ''}{formatRecurrence(transaction.interval, transaction.frequency)}
+                        {transaction.name ? `${transaction.name} - ` : ""}
+                        {formatRecurrence(
+                          transaction.interval,
+                          transaction.frequency
+                        )}
                       </div>
                       <div className="text-xs text-gray-500 mt-0.5">
                         從 {formatDate(transaction.start_date)}
-                        {transaction.end_date ? ` 到 ${formatDate(transaction.end_date)}` : " 開始"}
+                        {transaction.end_date
+                          ? ` 到 ${formatDate(transaction.end_date)}`
+                          : " 開始"}
                       </div>
                     </div>
                   </div>
@@ -2075,35 +2253,43 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
             </div>
           </div>
         )}
-        
+
         {/* Empty state */}
-        {groupedTransactions.expenses.length === 0 && groupedTransactions.incomes.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 px-4 text-center" style={{ ...fadeInAnimation }}>
-            <div className="text-gray-400 mb-2 text-5xl">💸</div>
-            <h3 className="text-lg font-medium text-gray-700 mb-2">尚無固定收支</h3>
-            <p className="text-gray-500 mb-6">您可以添加固定收支項目來自動記錄定期交易</p>
-            <button 
-              className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
-              onClick={handleCreateTransaction}
+        {groupedTransactions.expenses.length === 0 &&
+          groupedTransactions.incomes.length === 0 && (
+            <div
+              className="flex flex-col items-center justify-center py-12 px-4 text-center"
+              style={{ ...fadeInAnimation, animationDelay: "0ms" }}
             >
-              新增固定收支
-            </button>
-          </div>
-        )}
-        
+              <div className="text-gray-400 mb-2 text-5xl">💸</div>
+              <h3 className="text-lg font-medium text-gray-700 mb-2">
+                尚無固定收支
+              </h3>
+              <p className="text-gray-500 mb-6">
+                您可以添加固定收支項目來自動記錄定期交易
+              </p>
+              <button
+                className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
+                onClick={handleCreateTransaction}
+              >
+                新增固定收支
+              </button>
+            </div>
+          )}
+
         {/* Bottom buttons - back and add buttons side by side */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100">
+        <div className="fixed bottom-0 left-0 right-0 pt-4 px-4 pb-6 bg-gray-100 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent">
           <div className="max-w-md mx-auto flex gap-3">
-            <button 
+            <button
               onClick={onClose}
               className="w-[30%] py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
               aria-label="返回"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <button 
-              className="w-[70%] py-3 rounded-2xl bg-green-500 text-white font-medium flex items-center justify-center transition-colors duration-150 active:bg-green-600 shadow-sm"
+            <button
               onClick={handleCreateTransaction}
+              className="w-[70%] py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
               aria-label="新增固定收支"
             >
               <Plus className="h-5 w-5 mr-1" />
@@ -2114,4 +2300,4 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
       </div>
     </div>
   );
-} 
+}
