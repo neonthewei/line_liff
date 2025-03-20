@@ -12,20 +12,9 @@ import {
   Edit,
   X,
   ArrowLeft,
-  Share2,
 } from "lucide-react";
-import { initializeLiff, closeLiff, getLiffUrlParams, navigateInLiff } from "@/utils/liff";
-import liff from "@line/liff";
-import { useRouter } from "next/navigation";
 import { Transaction } from "@/types/transaction";
-import { fetchTransactionById, updateTransactionApi, deleteTransactionApi, clearTransactionCache, formatTimestamp } from "@/utils/api";
-import { shareTransactionToFriends } from "@/utils/line-messaging";
-import { Skeleton } from "@/components/ui/skeleton";
-import { SUPABASE_URL, SUPABASE_KEY, parseDateToISOString } from "@/utils/api";
-
-// 開發模式標誌 - 設置為 true 可以在本地開發時繞過 LIFF 初始化
-const DEV_MODE = process.env.NODE_ENV === "development";
-const BYPASS_LIFF = DEV_MODE && (process.env.NEXT_PUBLIC_BYPASS_LIFF === "true");
+import { updateTransactionApi, deleteTransactionApi, clearTransactionCache, formatTimestamp, SUPABASE_URL, SUPABASE_KEY, parseDateToISOString } from "@/utils/api";
 
 // 定義類別介面
 interface Category {
@@ -51,23 +40,13 @@ const defaultCategories = [
   "其他",
 ];
 
-// 模擬交易數據 (僅在 API 請求失敗時使用)
-const defaultTransaction: Transaction = {
-  id: "1",
-  category: "餐飲",
-  amount: -28.0,
-  date: "2025年07月06日",
-  type: "expense",
-  note: "吃飯",
-  created_at: "2025-07-06T12:00:00Z",
-  updated_at: "2025-07-06T12:00:00Z",
-};
-
 // 在組件的 props 接口中添加 onError
 interface TransactionDetailProps {
   onError?: () => void;
-  transactionId?: string;
-  transactionType?: string;
+  transaction: Transaction; // 改為直接接收 transaction
+  onUpdate?: (updatedTransaction: Transaction) => void; // 添加更新回調
+  onDelete?: () => void; // 添加刪除回調
+  onBack?: () => void; // 添加返回回調
 }
 
 // Define a consistent animation style for all content blocks
@@ -76,96 +55,22 @@ const fadeInAnimation = {
   animation: 'fadeIn 0.3s ease-out forwards'
 };
 
-// Add skeleton components for the transaction detail page
-const CategorySkeleton = () => (
-  <div className="bg-white rounded-2xl p-4 shadow-sm space-y-4">
-    {/* 屬性 (交易類型) */}
-    <div className="flex items-center justify-between">
-      <Skeleton className="h-5 w-16 animate-pulse-color" />
-      <div className="flex gap-2">
-        <Skeleton className="h-8 w-20 rounded-xl animate-pulse-color" />
-        <Skeleton className="h-8 w-20 rounded-xl animate-pulse-color" />
-      </div>
-    </div>
-    
-    {/* 分隔線 */}
-    <div className="border-t border-gray-100"></div>
-    
-    {/* 類型 */}
-    <div className="flex flex-col">
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-5 w-16 animate-pulse-color" />
-        <Skeleton className="h-6 w-28 animate-pulse-color" />
-      </div>
-    </div>
-  </div>
-);
-
-const AmountSkeleton = () => (
-  <div className="bg-white rounded-2xl shadow-sm space-y-4 p-4">
-    {/* 金額 */}
-    <div className="flex items-center justify-between">
-      <Skeleton className="h-5 w-16 animate-pulse-color" />
-      <div className="flex items-center">
-        <Skeleton className="h-6 w-24 animate-pulse-color" />
-      </div>
-    </div>
-    
-    <div className="border-t border-gray-100"></div>
-    
-    {/* 日期 */}
-    <div className="flex items-center justify-between">
-      <Skeleton className="h-5 w-16 animate-pulse-color" />
-      <div className="flex items-center">
-        <Skeleton className="h-6 w-32 animate-pulse-color" />
-      </div>
-    </div>
-    
-    <div className="border-t border-gray-100"></div>
-    
-    {/* 定期支出/收入 */}
-    <div className="flex items-center justify-between">
-      <Skeleton className="h-5 w-24 animate-pulse-color" />
-      <div className="flex items-center">
-        <Skeleton className="h-6 w-24 animate-pulse-color" />
-      </div>
-    </div>
-  </div>
-);
-
-const NoteSkeleton = () => (
-  <div className="bg-white rounded-2xl p-4 shadow-sm">
-    <div className="flex flex-col space-y-2">
-      <Skeleton className="h-5 w-16 animate-pulse-color" />
-      <Skeleton className="h-[38px] w-full rounded-lg animate-pulse-color" />
-    </div>
-  </div>
-);
-
-const ButtonsSkeleton = () => (
-  <div className="space-y-4 mt-8">
-    <Skeleton className="h-[52px] w-full rounded-2xl animate-pulse-color" />
-    <Skeleton className="h-[52px] w-full rounded-2xl animate-pulse-color" />
-  </div>
-);
-
-async function getUserIdFromLiff(): Promise<string | null> {
-  try {
-    if (typeof window !== 'undefined' && window.liff && window.liff.isLoggedIn()) {
-      const profile = await window.liff.getProfile();
-      return profile.userId;
-    }
-    return null;
-  } catch (error) {
-    console.error("Error getting user ID from LIFF:", error);
-    return null;
-  }
-}
-
-export default function TransactionDetail({ onError, transactionId, transactionType }: TransactionDetailProps) {
-  const [transaction, setTransaction] = useState<Transaction | null>(null);
-  const [originalTransaction, setOriginalTransaction] = useState<Transaction | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+export default function TransactionDetail({ 
+  onError, 
+  transaction: initialTransaction, 
+  onUpdate, 
+  onDelete,
+  onBack 
+}: TransactionDetailProps) {
+  // 確保初始交易數據包含所有必要字段
+  const [transaction, setTransaction] = useState<Transaction>({
+    ...initialTransaction,
+    user_id: initialTransaction.user_id || "" // 確保 user_id 存在
+  });
+  const [originalTransaction, setOriginalTransaction] = useState<Transaction>({
+    ...initialTransaction,
+    user_id: initialTransaction.user_id || "" // 確保 user_id 存在
+  });
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [isEditingDate, setIsEditingDate] = useState(false);
@@ -174,29 +79,19 @@ export default function TransactionDetail({ onError, transactionId, transactionT
   const [editAmount, setEditAmount] = useState("");
   const [editNote, setEditNote] = useState("");
   const [editDate, setEditDate] = useState("");
-  const [calendarDate, setCalendarDate] = useState(new Date(2025, 6, 6));
+  const [calendarDate, setCalendarDate] = useState(new Date());
   const [categories, setCategories] = useState<string[]>(defaultCategories);
   const [dbCategories, setDbCategories] = useState<Category[]>([]);
   const [newCategory, setNewCategory] = useState("");
   const [isAddingCategory, setIsAddingCategory] = useState(false);
-  const [isLiffInitialized, setIsLiffInitialized] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const [lineId, setLineId] = useState<string>("");
-  const [lineType, setLineType] = useState<string>("");
-  const [debugInfo, setDebugInfo] = useState<{url: string, params: Record<string, string>}>({ url: "", params: {} });
-  const [debugClickCount, setDebugClickCount] = useState(0);
-  const [isHidden, setIsHidden] = useState(true);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("success");
-  const [isSharing, setIsSharing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const router = useRouter();
 
   // 檢查資料是否有變動
   const hasChanges = useMemo(() => {
-    if (!transaction || !originalTransaction) return false;
-    
     return (
       transaction.type !== originalTransaction.type ||
       transaction.category !== originalTransaction.category ||
@@ -211,94 +106,15 @@ export default function TransactionDetail({ onError, transactionId, transactionT
     setIsMounted(true);
   }, []);
 
-  // Initialize calendar date on client-side only
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setCalendarDate(new Date());
-    }
-  }, []);
-
   useEffect(() => {
     if (!isMounted) return;
     
-    setIsLoading(true);
-
-    async function initialize() {
-      try {
-        console.log("Initializing transaction detail component");
-        
-        // 初始化 LIFF
-        const liffInitialized = await initializeLiff();
-        console.log("LIFF initialization result:", liffInitialized);
-        setIsLiffInitialized(liffInitialized);
-        
-        // 檢查 LIFF 是否已登入，如果未登入或 token 已過期，則重新登入
-        if (liffInitialized && !BYPASS_LIFF && typeof liff !== 'undefined') {
-          try {
-            // 嘗試獲取 access token 來檢查是否有效
-            const token = liff.getAccessToken();
-            if (!token) {
-              console.log("No access token found, attempting to login");
-              liff.login();
-              return;
-            }
-            console.log("Access token exists, continuing");
-          } catch (tokenError) {
-            console.error("Error getting access token, may be expired:", tokenError);
-            console.log("Attempting to re-login");
-            try {
-              liff.login();
-              return;
-            } catch (loginError) {
-              console.error("Failed to re-login:", loginError);
-            }
-          }
-        }
-
-        if (!transactionId) {
-          console.error("No transaction ID provided");
-          setIsLoading(false);
-          if (onError) onError();
-          return;
-        }
-        
-        console.log(`Fetching transaction with ID: ${transactionId}, type: ${transactionType || "expense"}`);
-        
-        // 獲取交易數據
-        const data = await fetchTransactionById(transactionId, transactionType || "expense");
-        
-        if (data) {
-          console.log("Transaction data retrieved successfully:", data);
-          setTransaction(data);
-          setOriginalTransaction(data); // 保存原始資料
-          // 重置編輯狀態
-          setEditAmount("");
-          setEditNote("");
-          
-          // 獲取用戶ID
-          const userId = await getUserIdFromLiff();
-          
-          // 獲取類別
-          await fetchCategories(userId);
-        } else {
-          // 如果找不到數據，保持 transaction 為 null
-          console.warn("Transaction not found");
-          setTransaction(null);
-          if (onError) onError();
-        }
-      } catch (error) {
-        console.error("Error initializing:", error);
-        if (onError) onError();
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    initialize();
-  }, [isMounted, transactionId, transactionType]);
+    // 獲取類別
+    fetchCategories();
+  }, [isMounted]);
 
   // 從資料庫獲取類別
-  const fetchCategories = async (userId: string | null) => {
+  const fetchCategories = async () => {
     try {
       // 構建 API URL
       const url = `${SUPABASE_URL}/categories`;
@@ -320,31 +136,21 @@ export default function TransactionDetail({ onError, transactionId, transactionT
       
       // 先找出用戶已刪除的類別名稱（包括系統預設類別）
       const userDeletedCategoryNames = data
-        .filter((cat: Category) => cat.user_id === userId && cat.is_deleted)
+        .filter((cat: Category) => cat.user_id === transaction.user_id && cat.is_deleted)
         .map((cat: Category) => cat.name);
       
-      console.log("User deleted category names:", userDeletedCategoryNames);
-      
-      // 過濾類別:
-      // 1. 包含未刪除的用戶自定義類別
-      // 2. 包含未被用戶刪除的系統預設類別
+      // 過濾類別
       const filteredCategories = data.filter((cat: Category) => 
-        // 用戶自定義類別 - 未刪除的
-        (cat.user_id === userId && !cat.is_deleted) ||
-        // 系統預設類別 - 未被用戶刪除的
+        (cat.user_id === transaction.user_id && !cat.is_deleted) ||
         (cat.user_id === null && !userDeletedCategoryNames.includes(cat.name))
       );
       
-      console.log("Fetched categories after filtering:", filteredCategories);
       setDbCategories(filteredCategories);
       
       // 更新類別名稱列表
-      if (transaction) {
-        updateCategoryNamesByType(filteredCategories, transaction.type);
-      }
+      updateCategoryNamesByType(filteredCategories, transaction.type);
     } catch (error) {
       console.error("Error fetching categories:", error);
-      // 如果獲取失敗，使用預設類別
       setCategories(defaultCategories);
     }
   };
@@ -370,6 +176,16 @@ export default function TransactionDetail({ onError, transactionId, transactionT
     }
   }, [transaction?.type, dbCategories]);
 
+  // 更新 setTransaction 的包裝函數，確保 user_id 始終存在
+  const updateTransaction = (updates: Partial<Transaction>) => {
+    setTransaction(current => ({
+      ...current,
+      ...updates,
+      user_id: current.user_id // 保留現有的 user_id
+    }));
+  };
+
+  // 修改 handleTypeChange 使用新的 updateTransaction 函數
   const handleTypeChange = async (type: "expense" | "income") => {
     if (!transaction) return;
     
@@ -377,16 +193,11 @@ export default function TransactionDetail({ onError, transactionId, transactionT
     if (transaction.type === type) return;
     
     // 更新本地交易對象的類型和金額
-    const updatedTransaction = {
-      ...transaction,
+    updateTransaction({
       type,
       amount: type === "expense" ? -Math.abs(transaction.amount) : Math.abs(transaction.amount),
-      // 重置類別，因為不同類型有不同的類別選項
-      category: ""
-    };
-    
-    // 更新本地狀態
-    setTransaction(updatedTransaction);
+      category: "" // 重置類別，因為不同類型有不同的類別選項
+    });
     
     // 根據新類型更新類別列表
     if (dbCategories.length > 0) {
@@ -411,50 +222,18 @@ export default function TransactionDetail({ onError, transactionId, transactionT
     }, duration);
   };
 
-  // 導航回列表頁的輔助函數
-  const navigateBackToList = () => {
-    // 檢查是否在 LINE 環境中
-    if (typeof window !== 'undefined') {
-      // 檢查是否是從 LINE LIFF 打開的
-      const isFromLiff = window.location.href.includes('liff.line.me') || 
-                        (liff.isInClient && liff.isInClient());
-      
-      console.log("Is from LIFF:", isFromLiff);
-      console.log("Current URL:", window.location.href);
-      
-      if (isFromLiff) {
-        // 如果是從 LINE LIFF 打開的，使用 closeLiff() 關閉視窗
-        console.log("Closing LIFF window");
-        closeLiff();
-      } else {
-        // 如果不是從 LINE LIFF 打開的，使用普通導航
-        console.log("Using normal navigation");
-        window.location.href = "/";
-      }
-    } else {
-      // 在 SSR 環境中，使用 router 導航
-      router.push("/");
-    }
-  };
-
   const handleDelete = async () => {
     if (!transaction) return;
-    // 顯示自定義確認視窗，而不是使用系統的 confirm
     setShowDeleteModal(true);
   };
 
   const confirmDelete = async () => {
-    if (!transaction) return;
     try {
-      // 關閉確認視窗
       setShowDeleteModal(false);
-      
       const success = await deleteTransactionApi(transaction.id, transaction.type);
 
       if (success) {
-        // 先導航回列表頁
-        navigateBackToList();
-        // 然後顯示成功通知
+        onDelete?.();
         showToastNotification("刪除成功", "success");
       } else {
         showToastNotification("刪除失敗，請稍後再試", "error");
@@ -465,34 +244,27 @@ export default function TransactionDetail({ onError, transactionId, transactionT
     }
   };
 
-  const cancelDelete = () => {
-    setShowDeleteModal(false);
-  };
-
   const handleConfirm = async () => {
-    if (!transaction) return;
-    
-    // 如果沒有變動，直接關閉
     if (!hasChanges) {
-      if (onError) onError();
+      onBack?.();
       return;
     }
-    
+
     // 驗證類別是否已選擇
     if (!transaction.category) {
       showToastNotification("請選擇一個類型", "error", 2000);
       setIsEditingCategory(true);
       return;
     }
-    
+
     try {
       // 檢查交易類型是否與原始類型不同
-      const originalType = getLiffUrlParams().type || "expense";
+      const originalType = originalTransaction.type;
       const hasTypeChanged = transaction.type !== originalType;
       
       if (hasTypeChanged) {
         // 如果類型已更改，需要刪除舊交易並創建新交易
-        console.log("Transaction type changed, deleting old and creating new");
+        console.log("交易類型已變更，刪除舊交易並創建新交易");
         
         // 先刪除原有的交易
         const deleteSuccess = await deleteTransactionApi(transaction.id, originalType);
@@ -502,25 +274,26 @@ export default function TransactionDetail({ onError, transactionId, transactionT
           return;
         }
         
-        // 獲取用戶ID
-        const userId = await getUserIdFromLiff();
-        if (!userId) {
-          showToastNotification("無法獲取用戶ID，請重新登入", "error");
-          return;
-        }
-        
         // 構建 API URL
         const endpoint = transaction.type === "income" ? "incomes" : "expenses";
         const url = `${SUPABASE_URL}/${endpoint}`;
         
         // 準備要創建的數據
-        const createData = {
-          user_id: userId,
+        const createData: any = {
+          user_id: transaction.user_id,
           category: transaction.category,
           amount: Math.abs(transaction.amount),
           datetime: parseDateToISOString(transaction.date),
-          memo: transaction.note,
+          memo: transaction.note || "",
+          is_fixed: transaction.isFixed || false,
         };
+        
+        if (transaction.isFixed) {
+          createData.frequency = transaction.fixedFrequency;
+          createData.interval = transaction.fixedInterval;
+        }
+        
+        console.log("創建新交易:", createData);
         
         // 發送 API 請求創建新交易
         const response = await fetch(url, {
@@ -535,7 +308,7 @@ export default function TransactionDetail({ onError, transactionId, transactionT
         
         if (!response.ok) {
           const errorText = await response.text();
-          console.error("Create error response body:", errorText);
+          console.error("創建交易失敗:", errorText);
           showToastNotification("儲存失敗，請稍後再試", "error");
           return;
         }
@@ -547,39 +320,47 @@ export default function TransactionDetail({ onError, transactionId, transactionT
           return;
         }
         
-        // 清除緩存
-        if (userId) {
-          const match = transaction.date.match(/(\d+)年(\d+)月(\d+)日/);
-          if (match) {
-            const year = parseInt(match[1]);
-            const month = parseInt(match[2]);
-            clearTransactionCache(userId, year, month);
-          }
+        // 清除快取
+        const match = transaction.date.match(/(\d+)年(\d+)月(\d+)日/);
+        if (match) {
+          const year = parseInt(match[1]);
+          const month = parseInt(match[2]);
+          clearTransactionCache(transaction.user_id, year, month);
         }
         
-        // 先導航回列表頁
-        navigateBackToList();
-        // 然後顯示成功通知
+        // 使用新創建的交易 ID 更新 transaction 對象
+        const newTransaction = {
+          ...transaction,
+          id: data[0].id,
+        };
+        
+        // 通知父組件更新成功
+        onUpdate?.(newTransaction);
         showToastNotification("儲存成功", "success");
+        
+        // 確保在返回之前，父組件有足夠時間處理更新和清除快取
+        await new Promise(resolve => setTimeout(resolve, 300));
+        onBack?.();
       } else {
         // 如果類型沒有變化，使用正常的更新流程
         const success = await updateTransactionApi(transaction);
 
         if (success) {
-          // 檢查當前頁面路徑，判斷是否在編輯頁
-          const isEditPage = typeof window !== 'undefined' && window.location.pathname.includes('/edit');
-          
-          // 如果是在編輯頁，更新後跳回帳目細項頁
-          if (isEditPage) {
-            // 導航回交易詳情頁
-            router.push(`/transaction/${transaction.id}?type=${transaction.type}`);
-            return;
+          // 清除快取
+          const match = transaction.date.match(/(\d+)年(\d+)月(\d+)日/);
+          if (match) {
+            const year = parseInt(match[1]);
+            const month = parseInt(match[2]);
+            clearTransactionCache(transaction.user_id, year, month);
           }
-          
-          // 先導航回列表頁
-          navigateBackToList();
-          // 然後顯示成功通知
+
+          // 通知父組件更新成功
+          onUpdate?.(transaction);
           showToastNotification("儲存成功", "success");
+          
+          // 確保在返回之前，父組件有足夠時間處理更新和清除快取
+          await new Promise(resolve => setTimeout(resolve, 300));
+          onBack?.();
         } else {
           showToastNotification("儲存失敗，請稍後再試", "error");
         }
@@ -597,19 +378,16 @@ export default function TransactionDetail({ onError, transactionId, transactionT
     setEditAmount(Math.abs(transaction.amount).toString());
   };
 
-  // 儲存金額
+  // 修改其他更新函數使用 updateTransaction
   const handleSaveAmount = async () => {
     if (!transaction) return;
     const amount = Number.parseFloat(editAmount);
     if (!isNaN(amount)) {
-      const updatedTransaction = {
-        ...transaction,
-        amount: transaction.type === "expense" ? -amount : amount,
-      };
-      setTransaction(updatedTransaction);
+      updateTransaction({
+        amount: transaction.type === "expense" ? -amount : amount
+      });
       setIsEditingAmount(false);
     } else {
-      // 如果輸入無效，重置為原始值
       setIsEditingAmount(false);
     }
   };
@@ -624,11 +402,10 @@ export default function TransactionDetail({ onError, transactionId, transactionT
     }
   };
 
-  // 儲存日期
+  // 修改其他更新函數使用 updateTransaction
   const handleSaveDate = async (date: Date) => {
     if (!transaction) return;
     
-    // Use UTC date components to avoid timezone issues
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
     const day = date.getDate();
@@ -637,8 +414,7 @@ export default function TransactionDetail({ onError, transactionId, transactionT
       .toString()
       .padStart(2, "0")}日`;
 
-    const updatedTransaction = { ...transaction, date: formattedDate };
-    setTransaction(updatedTransaction);
+    updateTransaction({ date: formattedDate });
     setEditDate(formattedDate);
     setCalendarDate(date);
     setIsEditingDate(false);
@@ -667,11 +443,10 @@ export default function TransactionDetail({ onError, transactionId, transactionT
     }
   };
 
-  // 選擇類別
+  // 修改其他更新函數使用 updateTransaction
   const handleSelectCategory = async (category: string) => {
     if (!transaction) return;
-    const updatedTransaction = { ...transaction, category };
-    setTransaction(updatedTransaction);
+    updateTransaction({ category });
   };
 
   // 刪除類別
@@ -683,13 +458,6 @@ export default function TransactionDetail({ onError, transactionId, transactionT
     }
 
     try {
-      // 獲取用戶ID
-      const userId = await getUserIdFromLiff();
-      if (!userId) {
-        showToastNotification("無法獲取用戶ID，請重新登入", "error");
-        return;
-      }
-      
       // 找到要刪除的類別
       const categoryToRemove = dbCategories.find(cat => cat.name === categoryToDelete);
       
@@ -700,7 +468,7 @@ export default function TransactionDetail({ onError, transactionId, transactionT
           
           // 準備要創建的數據 - 創建一個與系統預設同名但標記為已刪除的用戶特定記錄
           const createData = {
-            user_id: userId,
+            user_id: transaction.user_id,
             name: categoryToRemove.name,
             type: categoryToRemove.type,
             is_deleted: true
@@ -800,22 +568,15 @@ export default function TransactionDetail({ onError, transactionId, transactionT
     setIsAddingCategory(false);
   };
 
-  // 新增類別到資料庫
+  // 修改 addCategoryToDatabase 函數
   const addCategoryToDatabase = async (categoryName: string, type: "income" | "expense") => {
     try {
-      // 獲取用戶ID
-      const userId = await getUserIdFromLiff();
-      if (!userId) {
-        showToastNotification("無法獲取用戶ID，請重新登入", "error");
-        return false;
-      }
-      
       // 構建 API URL
       const url = `${SUPABASE_URL}/categories`;
       
       // 準備要創建的數據
       const createData = {
-        user_id: userId,
+        user_id: transaction.user_id,
         name: categoryName,
         type: type,
         is_deleted: false
@@ -862,11 +623,10 @@ export default function TransactionDetail({ onError, transactionId, transactionT
     setEditNote(transaction.note);
   };
 
-  // 儲存備註
+  // 修改其他更新函數使用 updateTransaction
   const handleSaveNote = async () => {
     if (!transaction) return;
-    const updatedTransaction = { ...transaction, note: editNote };
-    setTransaction(updatedTransaction);
+    updateTransaction({ note: editNote });
     setIsEditingNote(false);
   };
 
@@ -1007,65 +767,6 @@ export default function TransactionDetail({ onError, transactionId, transactionT
     return monthNames[month];
   };
 
-  if (isLoading)
-    return (
-      <div className="w-full max-w-md mx-auto pb-6 relative z-10">
-        <div className="space-y-4 px-[20px] mt-[20px]">
-          <div style={{ ...fadeInAnimation, animationDelay: '30ms' }}>
-            <CategorySkeleton />
-          </div>
-          <div style={{ ...fadeInAnimation, animationDelay: '80ms' }}>
-            <AmountSkeleton />
-          </div>
-          <div style={{ ...fadeInAnimation, animationDelay: '130ms' }}>
-            <NoteSkeleton />
-          </div>
-          <div style={{ ...fadeInAnimation, animationDelay: '180ms' }}>
-            <ButtonsSkeleton />
-          </div>
-        </div>
-      </div>
-    );
-  if (!transaction) return (
-    <div className="w-full max-w-md mx-auto p-4 flex flex-col justify-center items-center h-screen">
-      <div
-        className="fixed inset-0 z-0"
-        onClick={() => setDebugClickCount(prev => prev + 1)}
-      />
-      <div className="text-center">
-        <div className="text-2xl font-medium text-gray-800 mb-4">找不到交易記錄</div>
-        <p className="text-gray-600 mb-6">您可能已經刪除帳目了</p>
-      </div>
-      
-      {/* 調試信息 - 點擊五次才會顯示 */}
-      {debugClickCount >= 5 && (
-        <div className="mt-8 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-medium text-yellow-700">調試信息</p>
-            <div className="h-px flex-1 bg-yellow-200 mx-2"></div>
-          </div>
-          <div className="space-y-2 overflow-hidden">
-            <div className="flex flex-col">
-              <span className="text-sm text-yellow-700">完整 URL:</span>
-              <span className="text-xs text-yellow-600 break-all">{debugInfo.url}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm text-yellow-700">解析參數:</span>
-              <div className="text-xs text-yellow-600">
-                {Object.entries(debugInfo.params).map(([key, value]) => (
-                  <div key={key} className="flex justify-between">
-                    <span>{key}:</span>
-                    <span>{value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <>
       {/* Toast 通知 */}
@@ -1093,7 +794,7 @@ export default function TransactionDetail({ onError, transactionId, transactionT
       {showDeleteModal && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 animate-fadeIn"
-          onClick={cancelDelete}
+          onClick={() => setShowDeleteModal(false)}
         >
           <div 
             className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-xl transform animate-scaleInStatic"
@@ -1108,7 +809,7 @@ export default function TransactionDetail({ onError, transactionId, transactionT
             </div>
             <div className="flex gap-3 mt-6">
               <button
-                onClick={cancelDelete}
+                onClick={() => setShowDeleteModal(false)}
                 className="flex-1 py-2 rounded-xl bg-gray-200 text-gray-700 font-medium transition-all duration-150 active:bg-gray-300"
               >
                 取消
@@ -1124,9 +825,7 @@ export default function TransactionDetail({ onError, transactionId, transactionT
         </div>
       )}
       
-      <div className="fixed inset-0 z-0 bg-[#F1F2F5]"
-        onClick={() => setDebugClickCount(prev => prev + 1)}
-      />
+      <div className="fixed inset-0 z-0 bg-[#F1F2F5]" />
       <div className="w-full max-w-md mx-auto pb-6 relative z-10">
         <div className="space-y-4 px-[20px] mt-[20px]">
           {/* 合併屬性和類型到同一個卡片 */}
@@ -1498,16 +1197,16 @@ export default function TransactionDetail({ onError, transactionId, transactionT
             {/* 確認按鈕 */}
             <button
               onClick={handleConfirm}
-              className={`w-full py-3 rounded-2xl flex items-center justify-center transition-colors duration-150 ${
+              className={`w-full py-3 rounded-2xl flex items-center justify-center ${
                 hasChanges
                   ? "bg-[#22c55e] text-white active:bg-green-600"
                   : "bg-gray-200 text-gray-600 active:bg-gray-300"
-              }`}
+              } transition-[background-color] duration-150`}
             >
               {hasChanges ? (
                 <>
                   <Check size={20} className="mr-2" />
-                  完成
+                  更新
                 </>
               ) : (
                 <>
@@ -1525,60 +1224,6 @@ export default function TransactionDetail({ onError, transactionId, transactionT
               <Trash2 size={20} className="mr-2" />
               刪除
             </button>
-
-            {/* LINE 參數顯示和調試信息 */}
-            {debugClickCount >= 5 && (
-              <>
-                {/* LINE 參數顯示 */}
-                {(lineId || lineType) && (
-                  <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm font-medium text-gray-700">LINE 參數資訊</p>
-                      <div className="h-px flex-1 bg-gray-200 mx-2"></div>
-                    </div>
-                    <div className="space-y-2">
-                      {lineId && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-500">記錄 ID</span>
-                          <span className="text-sm font-medium text-gray-700">{lineId}</span>
-                        </div>
-                      )}
-                      {lineType && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-500">交易類型</span>
-                          <span className="text-sm font-medium text-gray-700">{lineType}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                
-                {/* 調試信息 */}
-                <div className="mt-4 p-4 bg-yellow-50 rounded-xl border border-yellow-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm font-medium text-yellow-700">調試信息</p>
-                    <div className="h-px flex-1 bg-yellow-200 mx-2"></div>
-                  </div>
-                  <div className="space-y-2 overflow-hidden">
-                    <div className="flex flex-col">
-                      <span className="text-sm text-yellow-700">完整 URL:</span>
-                      <span className="text-xs text-yellow-600 break-all">{debugInfo.url}</span>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-sm text-yellow-700">解析參數:</span>
-                      <div className="text-xs text-yellow-600">
-                        {Object.entries(debugInfo.params).map(([key, value]) => (
-                          <div key={key} className="flex justify-between">
-                            <span>{key}:</span>
-                            <span>{value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
           </div>
 
           {/* 更新時間顯示 */}

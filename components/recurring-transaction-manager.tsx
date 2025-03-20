@@ -1381,7 +1381,7 @@ const RecurringTransactionEditor = ({
             {/* Save/Return button */}
             <button
               onClick={handleSave}
-              className={`w-full py-3 rounded-2xl flex items-center justify-center transition-colors duration-150 ${
+              className={`w-full py-3 rounded-2xl flex items-center justify-center ${
                 isTemporaryTransaction(editedTransaction.id) ? (
                   "bg-[#22c55e] text-white active:bg-green-600"
                 ) : (
@@ -1391,7 +1391,7 @@ const RecurringTransactionEditor = ({
                     "bg-gray-200 text-gray-600 active:bg-gray-300"
                   )
                 )
-              }`}
+              } transition-[background-color] duration-150`}
             >
               {isTemporaryTransaction(editedTransaction.id) ? (
                 <>
@@ -1416,13 +1416,13 @@ const RecurringTransactionEditor = ({
             {/* Delete button or Cancel button based on whether it's a new transaction */}
             <button
               onClick={handleDelete}
-              className={`w-full py-3 rounded-2xl flex items-center justify-center transition-colors duration-150 ${
+              className={`w-full py-3 rounded-2xl flex items-center justify-center ${
                 isTemporaryTransaction(editedTransaction.id) ? (
                   "bg-gray-200 text-gray-600 active:bg-gray-300"
                 ) : (
                   "bg-red-500 text-white active:bg-red-600"
                 )
-              }`}
+              } transition-[background-color] duration-150`}
             >
               {isTemporaryTransaction(editedTransaction.id) ? (
                 <>

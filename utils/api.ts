@@ -33,6 +33,7 @@ function normalizeTransaction(apiTransaction: any, type: string): Transaction {
   // 標準化交易資料
   return {
     id: apiTransaction.id.toString(),
+    user_id: apiTransaction.user_id,
     category: apiTransaction.category || "其他",
     amount: type === "expense" ? -Math.abs(apiTransaction.amount) : Math.abs(apiTransaction.amount),
     date: formattedDate,

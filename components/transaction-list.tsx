@@ -16,6 +16,7 @@ interface TransactionListProps {
   onTransactionClick: (id: string, type: string) => void
   showDebugInfo?: boolean
   userId: string
+  onTransactionUpdate?: (transactions: Transaction[]) => void
 }
 
 // Memoized transaction item component to prevent unnecessary re-renders
@@ -240,7 +241,8 @@ export default function TransactionList({
   isCollapsed = false,
   onTransactionClick,
   showDebugInfo = false,
-  userId
+  userId,
+  onTransactionUpdate
 }: TransactionListProps) {
   const [isProcessing, setIsProcessing] = useState(true);
   const prevTabRef = useRef(activeTab);
@@ -250,7 +252,7 @@ export default function TransactionList({
   const [showAllTimestamps, setShowAllTimestamps] = useState(false);
   const [animationKey, setAnimationKey] = useState(0);
   const [showRecurringManager, setShowRecurringManager] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState<{ id: string, type: string } | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   
   // 添加全局鍵盤事件監聽器，用於切換所有時間戳顯示
   useEffect(() => {
@@ -299,7 +301,10 @@ export default function TransactionList({
   
   // Handle transaction click
   const handleTransactionClick = (id: string, type: string) => {
-    setSelectedTransaction({ id, type });
+    const transaction = transactions.find(t => t.id === id);
+    if (transaction) {
+      setSelectedTransaction(transaction);
+    }
   };
 
   // Handle closing the detail view
@@ -638,14 +643,44 @@ export default function TransactionList({
         />
       )}
 
-      {/* Render the transaction detail when a transaction is selected */}
+      {/* Transaction Detail */}
       {selectedTransaction && (
         <div className="fixed inset-0 z-50 bg-white">
-          <TransactionDetail 
-            onError={handleCloseDetail}
-            key={`${selectedTransaction.id}-${selectedTransaction.type}`}
-            transactionId={selectedTransaction.id}
-            transactionType={selectedTransaction.type}
+          <TransactionDetail
+            transaction={selectedTransaction}
+            onBack={async () => {
+              handleCloseDetail();
+              // 不在這裡觸發更新，因為如果沒有修改，不需要更新
+              setIsProcessing(false);
+            }}
+            onUpdate={(updatedTransaction) => {
+              // 只在真正有更新時觸發一次更新
+              if (onTransactionUpdate) {
+                // 更新本地的交易記錄
+                const updatedTransactions = transactions.map(t => 
+                  t.id === updatedTransaction.id ? updatedTransaction : t
+                );
+                
+                // 觸發父組件重新獲取數據
+                onTransactionUpdate(updatedTransactions);
+                setIsProcessing(true);
+                setTimeout(() => {
+                  setIsProcessing(false);
+                }, 500);
+              }
+            }}
+            onDelete={() => {
+              // 刪除時觸發更新
+              if (onTransactionUpdate) {
+                const updatedTransactions = transactions.filter(t => t.id !== selectedTransaction.id);
+                onTransactionUpdate(updatedTransactions);
+                setIsProcessing(true);
+                setTimeout(() => {
+                  setIsProcessing(false);
+                }, 500);
+              }
+              handleCloseDetail();
+            }}
           />
         </div>
       )}

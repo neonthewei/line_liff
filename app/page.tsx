@@ -430,14 +430,55 @@ export default function Home() {
               </div>
             ) : (
               <>
-                <TransactionList 
-                  transactions={transactions} 
-                  currentDate={currentDate} 
+                <TransactionList
+                  transactions={transactions}
+                  currentDate={currentDate}
                   activeTab={activeTab}
-                  isLoading={isDataLoading}
-                  isCollapsed={isCollapsed}
+                  isLoading={isLoading}
                   onTransactionClick={handleTransactionClick}
-                  userId={userId || ""}
+                  showDebugInfo={showDebug}
+                  userId={userId}
+                  onTransactionUpdate={async (updatedTransactions) => {
+                    console.log("onTransactionUpdate 被調用，開始更新數據...");
+                    
+                    // 清除快取
+                    if (userId) {
+                      const year = currentDate.getFullYear();
+                      const month = currentDate.getMonth() + 1;
+                      console.log(`清除用戶 ${userId} 的 ${year}-${month} 快取數據`);
+                      clearTransactionCache(userId, year, month);
+                    }
+                    
+                    // 重新獲取數據
+                    setIsLoading(true);
+                    console.log("設置載入狀態為 true");
+                    
+                    try {
+                      const year = currentDate.getFullYear();
+                      const month = currentDate.getMonth() + 1;
+                      console.log(`開始並行獲取 ${year}-${month} 的交易數據和月度摘要`);
+                      
+                      // 並行獲取交易數據和月度摘要
+                      const [newTransactions, newSummary] = await Promise.all([
+                        fetchTransactionsByUser(userId, year, month),
+                        fetchMonthlySummary(userId, year, month)
+                      ]);
+                      
+                      console.log(`成功獲取 ${newTransactions.length} 筆交易數據`);
+                      console.log(`新的月度摘要: 支出=${newSummary.totalExpense}, 收入=${newSummary.totalIncome}, 結餘=${newSummary.balance}`);
+                      
+                      // 更新兩個狀態
+                      setTransactions(newTransactions);
+                      setSummary(newSummary);
+                      
+                      console.log("已更新交易列表和月度摘要");
+                    } catch (error) {
+                      console.error("Error fetching updated data:", error);
+                    } finally {
+                      console.log("設置載入狀態為 false");
+                      setIsLoading(false);
+                    }
+                  }}
                 />
                 
                 {showDebug && (

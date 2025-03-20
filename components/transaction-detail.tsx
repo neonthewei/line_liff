@@ -54,16 +54,16 @@ const defaultCategories = [
 // 模擬交易數據 (僅在 API 請求失敗時使用)
 const defaultTransaction: Transaction = {
   id: "1",
+  user_id: "", // 將由 LIFF 初始化時設置
   category: "餐飲",
   amount: -28.0,
   date: "2025年07月06日",
   type: "expense",
-  note: "吃飯",
+  note: "",
   isFixed: false,
-  fixedFrequency: undefined,
   fixedInterval: 1,
-  created_at: "2025-07-06T12:00:00Z",
-  updated_at: "2025-07-06T12:00:00Z",
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString()
 };
 
 // 在組件的 props 接口中添加 onError
@@ -311,6 +311,15 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
           }
         }
         
+        // 獲取用戶ID
+        const userId = await getUserIdFromLiff();
+        if (!userId && !BYPASS_LIFF) {
+          console.error("No user ID available");
+          setIsLoading(false);
+          if (onError) onError();
+          return;
+        }
+        
         // 獲取 URL 參數
         const params = getLiffUrlParams();
         setDebugInfo({ url: window.location.href, params });
@@ -361,100 +370,33 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
         
         if (data) {
           console.log("Transaction data retrieved successfully:", data);
-          setTransaction(data);
+          // 確保設置 user_id
+          const transactionWithUserId = {
+            ...data,
+            user_id: userId || data.user_id || "" // 優先使用 LIFF 的 user_id
+          };
+          setTransaction(transactionWithUserId);
+          
           // 重置編輯狀態
           setEditAmount("");
           setEditNote("");
           setEditFixedInterval("");
           
-          // 獲取用戶ID
-          const userId = await getUserIdFromLiff();
-          
           // 獲取類別
-          await fetchCategories(userId);
+          await fetchCategories(userId || data.user_id);
         } else {
-          // 如果找不到數據，保持 transaction 為 null
-          console.warn("Transaction not found");
-          setTransaction(null);
+          // 如果找不到數據，使用預設值並設置 user_id
+          console.warn("Transaction not found, using default");
+          const defaultWithUserId = {
+            ...defaultTransaction,
+            user_id: userId || ""
+          };
+          setTransaction(defaultWithUserId);
           if (onError) onError();
         }
       } catch (error) {
         console.error("Error initializing:", error);
         if (onError) onError();
-        
-        // 即使初始化失敗，也嘗試使用 URL 參數
-        try {
-          console.log("Attempting recovery after initialization error");
-          
-          // 直接從 URL 獲取參數
-          const urlParams = new URLSearchParams(window.location.search);
-          let id = urlParams.get("id") || "";
-          const type = urlParams.get("type") || "expense";
-          
-          // 如果沒有從 URL 參數獲取到 ID，嘗試從 URL 路徑獲取
-          if (!id) {
-            console.log("Recovery: No ID in URL parameters, trying to extract from path");
-            try {
-              const pathParts = window.location.pathname.split('/');
-              if (pathParts.length > 2 && pathParts[1] === 'transaction' && pathParts[2]) {
-                id = pathParts[2];
-                console.log("Recovery: Extracted ID from URL path:", id);
-              }
-            } catch (pathError) {
-              console.error("Recovery: Failed to extract ID from path:", pathError);
-            }
-          }
-          
-          // 如果仍然沒有 ID，嘗試從 localStorage 獲取
-          if (!id) {
-            console.log("Recovery: Still no ID, trying localStorage");
-            try {
-              const storedId = localStorage.getItem('lastTransactionId');
-              if (storedId) {
-                id = storedId;
-                console.log("Recovery: Retrieved ID from localStorage:", id);
-              }
-            } catch (storageError) {
-              console.error("Recovery: Failed to access localStorage:", storageError);
-            }
-          }
-          
-          if (!id) {
-            console.error("Recovery: No transaction ID provided");
-            setTransaction(null);
-            return;
-          }
-          
-          console.log(`Recovery: Fetching transaction with ID: ${id}, type: ${type}`);
-          
-          // 獲取交易數據
-          const data = await fetchTransactionById(id, type);
-          
-          if (data) {
-            console.log("Recovery: Transaction data retrieved successfully:", data);
-            setTransaction(data);
-            // 重置編輯狀態
-            setEditAmount("");
-            setEditNote("");
-            setEditFixedInterval("");
-            
-            // 獲取用戶ID
-            const userId = await getUserIdFromLiff();
-            
-            // 獲取類別
-            await fetchCategories(userId);
-          } else {
-            // 如果找不到數據，保持 transaction 為 null
-            console.warn("Recovery: Transaction not found");
-            setTransaction(null);
-            if (onError) onError();
-          }
-        } catch (innerError) {
-          console.error("Failed to recover from initialization error:", innerError);
-          // 數據獲取失敗，保持 transaction 為 null
-          setTransaction(null);
-          if (onError) onError();
-        }
       } finally {
         setIsLoading(false);
       }

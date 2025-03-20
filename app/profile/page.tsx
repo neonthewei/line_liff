@@ -163,7 +163,8 @@ export default function ProfilePage() {
   }, []);
 
   // 複製用戶 ID 到剪貼簿
-  const handleCopyUserId = () => {
+  const handleCopyUserId = (e: React.MouseEvent) => {
+    e.stopPropagation(); // 阻止事件冒泡
     if (userProfile?.userId) {
       navigator.clipboard.writeText(userProfile.userId)
         .then(() => {
@@ -278,6 +279,7 @@ export default function ProfilePage() {
           </p>
           <button 
             onClick={handleCopyUserId}
+            onMouseDown={(e) => e.stopPropagation()}
             className="text-gray-400 hover:text-green-500 transition-colors focus:outline-none"
             aria-label="複製用戶ID"
             tabIndex={0}
