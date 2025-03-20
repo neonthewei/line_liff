@@ -77,27 +77,46 @@
 
 /* Animation styles for transaction detail */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .animate-fadeIn {
-  animation: fadeIn 0.3s ease-in-out;
+  animation: none;
+  opacity: 1;
 }
 
 /* For elements that need both fade and position movement */
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-fadeInUp {
-  animation: fadeInUp 0.3s ease-in-out;
+  animation: none;
+  opacity: 1;
+  transform: translateY(0);
 }
 
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.8); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .animate-scaleIn {
@@ -105,8 +124,14 @@
 }
 
 @keyframes scaleInStatic {
-  from { opacity: 0; transform: scale(0.9); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .animate-scaleInStatic {
@@ -114,9 +139,15 @@
 }
 
 @keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.1); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .animate-pulse-once {
@@ -125,24 +156,44 @@
 
 /* Toast notification animations */
 @keyframes fadeInDown {
-  from { opacity: 0; transform: translate(-50%, -20px); }
-  to { opacity: 1; transform: translate(-50%, 0); }
+  from {
+    opacity: 0;
+    transform: translate(-50%, -20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 
 @keyframes fadeOutUp {
-  from { opacity: 1; transform: translate(-50%, 0); }
-  to { opacity: 0; transform: translate(-50%, -20px); }
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -20px);
+  }
 }
 
 .animate-fadeInDown {
-  animation: fadeInDown 0.3s ease-out;
+  animation: none;
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 /* Skeleton loading animation */
 @keyframes pulseColor {
-  0% { background-color: rgba(229, 231, 235, 0.4); }
-  50% { background-color: rgba(209, 213, 219, 0.6); }
-  100% { background-color: rgba(229, 231, 235, 0.4); }
+  0% {
+    background-color: rgba(229, 231, 235, 0.4);
+  }
+  50% {
+    background-color: rgba(209, 213, 219, 0.6);
+  }
+  100% {
+    background-color: rgba(229, 231, 235, 0.4);
+  }
 }
 
 .animate-pulse-color {
@@ -158,4 +209,3 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-

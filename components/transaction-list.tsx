@@ -249,8 +249,7 @@ const EmptyStateSkeleton = () => {
 
 // Define a consistent animation style for all content blocks
 const fadeInAnimation = {
-  opacity: 0,
-  animation: "fadeIn 0.6s ease-out forwards", // Increased from 0.3s to 0.6s for slower animation
+  // 移除動畫效果，讓元素直接顯示
 };
 
 export default function TransactionList({
@@ -587,14 +586,14 @@ export default function TransactionList({
                 </div>
 
                 <div
-                  className={`transition-all ${
-                    isCollapsed
-                      ? "duration-150 max-h-0 opacity-0 scale-y-95 origin-top"
-                      : "duration-500 max-h-[2000px] opacity-100 scale-y-100"
-                  } overflow-hidden ease-in-out`}
-                  style={{
-                    transitionDelay: isCollapsed ? "0ms" : "0ms",
-                  }}
+                  className={`${
+                    isCollapsed ? "hidden" : "block"
+                  } overflow-hidden`}
+                  style={
+                    {
+                      // 移除過渡效果
+                    }
+                  }
                 >
                   <div className="divide-y divide-gray-100">
                     {dayTransactions.map((transaction, index) => (
