@@ -343,56 +343,12 @@ export default function Home() {
     <div className="flex flex-col min-h-screen bg-gray-100">
       <main className="flex-1 container max-w-md mx-auto px-5 py-4">
         {!isLiffInitialized || !userId ? (
-          <div className="flex flex-col h-[80vh]">
-            <div className="py-4">
-              <Skeleton className="h-10 w-full rounded-xl mb-5 animate-pulse-color" />
-            </div>
-
-            <div className="bg-white rounded-2xl p-5 shadow-sm mb-5">
-              <div className="flex justify-between items-center mb-4">
-                <Skeleton className="h-6 w-32 animate-pulse-color" />
-                <Skeleton className="h-6 w-24 animate-pulse-color" />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="flex flex-col items-center">
-                  <Skeleton className="h-4 w-16 mb-2 animate-pulse-color" />
-                  <Skeleton className="h-6 w-20 animate-pulse-color" />
-                </div>
-                <div className="flex flex-col items-center">
-                  <Skeleton className="h-4 w-16 mb-2 animate-pulse-color" />
-                  <Skeleton className="h-6 w-20 animate-pulse-color" />
-                </div>
-                <div className="flex flex-col items-center">
-                  <Skeleton className="h-4 w-16 mb-2 animate-pulse-color" />
-                  <Skeleton className="h-6 w-20 animate-pulse-color" />
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl p-2 mb-5 shadow-sm">
-              <Skeleton className="h-10 w-full rounded-xl animate-pulse-color" />
-            </div>
-
-            <div className="space-y-4">
-              {[1, 2, 3].map((group) => (
-                <div
-                  key={`skeleton-group-${group}`}
-                  className="bg-white rounded-2xl shadow-sm overflow-hidden"
-                >
-                  <HeaderSkeleton />
-                  <div className="divide-y divide-gray-100">
-                    {Array.from({ length: 3 }).map((_, index) => (
-                      <TransactionSkeleton
-                        key={`skeleton-item-${group}-${index}`}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
+          <div className="flex flex-col h-[80vh] justify-center items-center">
             {error && (
-              <div className="flex flex-col items-center mt-6 space-y-2">
+              <div className="flex flex-col items-center mt-6 space-y-4">
+                <div className="p-4 bg-red-50 text-red-500 rounded-xl text-center">
+                  {error}
+                </div>
                 <button
                   onClick={() => window.location.reload()}
                   className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
