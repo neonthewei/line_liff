@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo, memo, useRef } from "react"
 import { ChevronRight, Bug } from "lucide-react"
 import type { Transaction } from "@/types/transaction"
 import { Skeleton } from "@/components/ui/skeleton"
+import RecurringTransactionManager from "./recurring-transaction-manager"
+import TransactionDetail from "./transaction-detail copy"
 
 interface TransactionListProps {
   transactions: Transaction[]
@@ -13,6 +15,7 @@ interface TransactionListProps {
   isCollapsed?: boolean
   onTransactionClick: (id: string, type: string) => void
   showDebugInfo?: boolean
+  userId: string
 }
 
 // Memoized transaction item component to prevent unnecessary re-renders
@@ -152,7 +155,7 @@ const TransactionItem = memo(({
       }`}
     >
       <div className="flex items-center">
-        <div>
+        <div className="pl-1">
           <div className={`font-medium ${transaction.type === "expense" ? "text-green-600" : "text-blue-600"}`}>{transaction.category}</div>
           {transaction.note && <div className="text-xs text-gray-500 mt-0.5">{transaction.note}</div>}
           
@@ -175,7 +178,7 @@ const TransactionItem = memo(({
       </div>
       <div className="flex items-center">
         <div className="text-lg font-bold mr-2 text-gray-900">
-          {transaction.type === "expense" ? "-" : "+"}${Math.abs(transaction.amount).toFixed(2)}
+          {transaction.type === "expense" ? "-" : "+"}${Math.abs(transaction.amount)}
         </div>
         <ChevronRight className="h-5 w-5 text-gray-400" />
       </div>
@@ -236,7 +239,8 @@ export default function TransactionList({
   isLoading = false,
   isCollapsed = false,
   onTransactionClick,
-  showDebugInfo = false
+  showDebugInfo = false,
+  userId
 }: TransactionListProps) {
   const [isProcessing, setIsProcessing] = useState(true);
   const prevTabRef = useRef(activeTab);
@@ -244,6 +248,9 @@ export default function TransactionList({
   const transactionClickedRef = useRef(false);
   const [isDebugMode, setIsDebugMode] = useState(showDebugInfo);
   const [showAllTimestamps, setShowAllTimestamps] = useState(false);
+  const [animationKey, setAnimationKey] = useState(0);
+  const [showRecurringManager, setShowRecurringManager] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<{ id: string, type: string } | null>(null);
   
   // 添加全局鍵盤事件監聽器，用於切換所有時間戳顯示
   useEffect(() => {
@@ -274,28 +281,37 @@ export default function TransactionList({
     setIsDebugMode(prev => !prev);
   };
   
-  // Update the previous tab reference when activeTab changes
+  // Update the previous tab reference when activeTab changes and reset animation
   useEffect(() => {
-    prevTabRef.current = activeTab;
+    if (prevTabRef.current !== activeTab) {
+      // Tab is changing, trigger animation reset
+      setAnimationKey(prev => prev + 1);
+      
+      // Set a small delay before updating the previous tab reference
+      // This ensures animations have time to reset properly
+      const timer = setTimeout(() => {
+        prevTabRef.current = activeTab;
+      }, 50);
+      
+      return () => clearTimeout(timer);
+    }
   }, [activeTab]);
   
-  // Wrap the onTransactionClick to track when a transaction is clicked
+  // Handle transaction click
   const handleTransactionClick = (id: string, type: string) => {
-    transactionClickedRef.current = true;
-    onTransactionClick(id, type);
-    
-    // Reset the flag after a short delay
-    setTimeout(() => {
-      transactionClickedRef.current = false;
-    }, 500);
+    setSelectedTransaction({ id, type });
+  };
+
+  // Handle closing the detail view
+  const handleCloseDetail = () => {
+    setSelectedTransaction(null);
   };
   
   // Memoized transaction processing
-  const { groupedTransactions, groupedFixedTransactions } = useMemo(() => {
+  const { groupedTransactions } = useMemo(() => {
     if (transactions.length === 0) {
       return { 
-        groupedTransactions: {}, 
-        groupedFixedTransactions: { expense: [], income: [] } 
+        groupedTransactions: {}
       };
     }
 
@@ -304,39 +320,7 @@ export default function TransactionList({
       (activeTab === "general" ? !transaction.isFixed : transaction.isFixed)
     );
     
-    // 如果是固定支出/收入標籤，按類型分組
-    if (activeTab === "fixed") {
-      const expenseTransactions = filteredData.filter(tx => tx.type === "expense");
-      const incomeTransactions = filteredData.filter(tx => tx.type === "income");
-      
-      // 對固定支出和收入按 updated_at 排序
-      const sortByUpdatedAt = (a: Transaction, b: Transaction) => {
-        // 如果沒有 updated_at，則使用 created_at
-        const aTime = a.updated_at || a.created_at || "";
-        const bTime = b.updated_at || b.created_at || "";
-        
-        // 如果都沒有時間戳，保持原順序
-        if (!aTime && !bTime) return 0;
-        if (!aTime) return 1;
-        if (!bTime) return -1;
-        
-        // 比較時間戳，降序排列（最新的在前）
-        return bTime.localeCompare(aTime);
-      };
-      
-      expenseTransactions.sort(sortByUpdatedAt);
-      incomeTransactions.sort(sortByUpdatedAt);
-      
-      return {
-        groupedTransactions: {},
-        groupedFixedTransactions: {
-          expense: expenseTransactions,
-          income: incomeTransactions
-        }
-      };
-    }
-    
-    // 一般記錄按日期分組
+    // 所有記錄按日期分組（不論是一般還是定期）
     const groupedByDate: Record<string, Transaction[]> = {};
     filteredData.forEach((transaction) => {
       // 從 "YYYY年MM月DD日" 格式解析日期
@@ -422,8 +406,7 @@ export default function TransactionList({
     });
 
     return {
-      groupedTransactions: groupedByDate,
-      groupedFixedTransactions: { expense: [], income: [] }
+      groupedTransactions: groupedByDate
     };
   }, [transactions, activeTab]);
 
@@ -436,14 +419,17 @@ export default function TransactionList({
         return;
       }
       
+      // If we're switching tabs, use a shorter delay for smoother tab transitions
+      const delay = isTabSwitching ? 100 : 400;
+      
       // Use a longer delay for smoother transition
       const timer = setTimeout(() => {
         setIsProcessing(false);
-      }, 400); // Increased from 200ms to 400ms for slower animation
+      }, delay);
       return () => clearTimeout(timer);
     }
     setIsProcessing(true);
-  }, [isLoading, transactions]);  // Remove activeTab dependency to prevent loading on tab change
+  }, [isLoading, transactions, isTabSwitching]);  // Add isTabSwitching as dependency
 
   // Debug panel component
   const DebugPanel = () => {
@@ -475,15 +461,7 @@ export default function TransactionList({
           <div>Is Collapsed: {isCollapsed ? 'Yes' : 'No'}</div>
           <div>Transaction Count: {transactions.length}</div>
           <div>Current Date: {currentDate.toISOString()}</div>
-          {activeTab === "general" && (
-            <div>Date Groups: {Object.keys(groupedTransactions).length}</div>
-          )}
-          {activeTab === "fixed" && (
-            <>
-              <div>Fixed Expenses: {groupedFixedTransactions.expense.length}</div>
-              <div>Fixed Income: {groupedFixedTransactions.income.length}</div>
-            </>
-          )}
+          <div>Date Groups: {Object.keys(groupedTransactions).length}</div>
         </div>
         
         {/* Logs section */}
@@ -504,37 +482,6 @@ export default function TransactionList({
 
   // Render enhanced skeleton loaders during loading, but not during tab switching or transaction clicks
   if ((isLoading || isProcessing) && !isTabSwitching && !transactionClickedRef.current) {
-    // Different skeleton layouts based on active tab
-    if (activeTab === "fixed") {
-      return (
-        <>
-          <DebugPanel />
-          <div className="space-y-4 pb-4">
-            {/* Expense skeleton */}
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              <HeaderSkeleton />
-              <div className="divide-y divide-gray-100">
-                {[1, 2, 3].map((item) => (
-                  <TransactionSkeleton key={`skeleton-expense-${item}`} />
-                ))}
-              </div>
-            </div>
-            
-            {/* Income skeleton */}
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              <HeaderSkeleton />
-              <div className="divide-y divide-gray-100">
-                {[1, 2].map((item) => (
-                  <TransactionSkeleton key={`skeleton-income-${item}`} />
-                ))}
-              </div>
-            </div>
-          </div>
-        </>
-      );
-    }
-    
-    // General tab skeleton
     return (
       <>
         <DebugPanel />
@@ -566,134 +513,41 @@ export default function TransactionList({
     );
   }
 
-  // 固定支出/收入的顯示邏輯
-  if (activeTab === "fixed") {
-    const { expense, income } = groupedFixedTransactions;
-    
-    if (expense.length === 0 && income.length === 0) {
-      return (
-        <>
-          <DebugPanel />
-          <div className="text-center py-8 text-gray-500 animate-fadeIn">
-            本月尚無固定記錄
-          </div>
-        </>
-      );
-    }
-    
-    // 注意：expense 和 income 已經在 useMemo 中按 updated_at 排序過了
-    // 不需要再次排序
-    
-    return (
-      <>
-        <DebugPanel />
-        <div className="space-y-4 pb-4">
-          {/* 固定支出區塊 - Apply consistent animation style */}
-          {expense.length > 0 && (
-            <div 
-              className="bg-white rounded-2xl shadow-sm overflow-hidden" 
-              style={{ 
-                ...fadeInAnimation,
-                animationDelay: '100ms' // Increased from 30ms to 100ms
-              }}
-            >
-              <div className="flex justify-between items-center px-5 py-3 border-b bg-gray-50">
-                <div className="font-medium text-base text-gray-700">
-                  固定支出
-                </div>
-                <div className="text-xs text-gray-500">
-                  -${expense.reduce((sum, tx) => sum + Math.abs(tx.amount), 0).toFixed(2)}
-                </div>
-              </div>
-
-              <div 
-                className={`transition-all ${
-                  isCollapsed 
-                    ? 'duration-150 max-h-0 opacity-0 scale-y-95 origin-top' 
-                    : 'duration-500 max-h-[2000px] opacity-100 scale-y-100'
-                } overflow-hidden ease-in-out`}
-                style={{
-                  transitionDelay: isCollapsed ? '100ms' : '200ms' // Increased from 100ms to 200ms
-                }}
-              >
-                <div className="divide-y divide-gray-100">
-                  {expense.map((transaction, index) => (
-                    <TransactionItem 
-                      key={`expense-${transaction.id}-${index}`}
-                      transaction={transaction}
-                      onTransactionClick={handleTransactionClick}
-                      showDebugInfo={isDebugMode}
-                      showTimestamp={showAllTimestamps}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 固定收入區塊 - Apply consistent animation style */}
-          {income.length > 0 && (
-            <div 
-              className="bg-white rounded-2xl shadow-sm overflow-hidden" 
-              style={{ 
-                ...fadeInAnimation,
-                animationDelay: '200ms' // Increased to 200ms for staggered effect
-              }}
-            >
-              <div className="flex justify-between items-center px-5 py-3 border-b bg-gray-50">
-                <div className="font-medium text-base text-gray-700">
-                  固定收入
-                </div>
-                <div className="text-xs text-gray-500">
-                  +${income.reduce((sum, tx) => sum + tx.amount, 0).toFixed(2)}
-                </div>
-              </div>
-
-              <div 
-                className={`transition-all ${
-                  isCollapsed 
-                    ? 'duration-150 max-h-0 opacity-0 scale-y-95 origin-top' 
-                    : 'duration-500 max-h-[2000px] opacity-100 scale-y-100'
-                } overflow-hidden ease-in-out`}
-                style={{
-                  transitionDelay: isCollapsed ? '0ms' : '200ms'
-                }}
-              >
-                <div className="divide-y divide-gray-100">
-                  {income.map((transaction, index) => (
-                    <TransactionItem 
-                      key={`income-${transaction.id}-${index}`}
-                      transaction={transaction}
-                      onTransactionClick={handleTransactionClick}
-                      showDebugInfo={isDebugMode}
-                      showTimestamp={showAllTimestamps}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </>
-    );
-  }
-
-  // 一般記錄的顯示邏輯（按日期分組）
+  // 檢查是否有交易記錄
   if (Object.keys(groupedTransactions).length === 0) {
     return (
       <>
         <DebugPanel />
         <div className="text-center py-8 text-gray-500 animate-fadeIn">
-          本月尚無一般記錄
+          {activeTab === "general" ? "本月尚無一般記錄" : "本月尚無定期記錄"}
         </div>
+        {activeTab === "fixed" && (
+          <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100">
+            <div className="max-w-md mx-auto">
+              <button 
+                className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
+                onClick={() => setShowRecurringManager(true)}
+              >
+                管理定期收支
+              </button>
+            </div>
+          </div>
+        )}
+        {showRecurringManager && (
+          <RecurringTransactionManager 
+            userId={userId}
+            onClose={() => setShowRecurringManager(false)}
+          />
+        )}
       </>
     );
   }
 
+  // 所有記錄（一般和定期）都使用相同的日期分組顯示邏輯
   return (
     <>
       <DebugPanel />
-      <div className="space-y-4 pb-4">
+      <div className="space-y-4 pb-4" key={animationKey}>
         {Object.entries(groupedTransactions)
           .sort(([dateA], [dateB]) => new Date(dateB).getTime() - new Date(dateA).getTime())
           .map(([date, dayTransactions], groupIndex) => {
@@ -711,9 +565,6 @@ export default function TransactionList({
               day: "2-digit",
               weekday: "short",
             });
-            
-            // 注意：dayTransactions 已經在 useMemo 中按 updated_at 排序過了
-            // 不需要再次排序
 
             return (
               <div 
@@ -733,7 +584,7 @@ export default function TransactionList({
                     {(() => {
                       const netAmount = incomeTotal - expenseTotal;
                       const prefix = netAmount >= 0 ? "+" : "-";
-                      return `${prefix}$${Math.abs(netAmount).toFixed(2)}`;
+                      return `${prefix}$${Math.abs(netAmount)}`;
                     })()}
                   </div>
                 </div>
@@ -763,7 +614,41 @@ export default function TransactionList({
               </div>
             );
           })}
+          
+        {/* 管理定期收支按鈕 - 只在定期標籤顯示 */}
+        {activeTab === "fixed" && (
+          <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100">
+            <div className="max-w-md mx-auto">
+              <button 
+                className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
+                onClick={() => setShowRecurringManager(true)}
+              >
+                管理定期收支
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+      
+      {/* Render the recurring transaction manager when showRecurringManager is true */}
+      {showRecurringManager && (
+        <RecurringTransactionManager 
+          userId={userId}
+          onClose={() => setShowRecurringManager(false)}
+        />
+      )}
+
+      {/* Render the transaction detail when a transaction is selected */}
+      {selectedTransaction && (
+        <div className="fixed inset-0 z-50 bg-white">
+          <TransactionDetail 
+            onError={handleCloseDetail}
+            key={`${selectedTransaction.id}-${selectedTransaction.type}`}
+            transactionId={selectedTransaction.id}
+            transactionType={selectedTransaction.type}
+          />
+        </div>
+      )}
     </>
   );
 } 

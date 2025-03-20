@@ -58,11 +58,11 @@ export default function TabSelector({
               activeTab === "fixed" ? "text-white" : "text-gray-600"
             } ${activeTab === "fixed" && isCollapsed ? "opacity-80" : ""}`}
             onClick={() => handleTabClick("fixed")}
-            aria-label={`固定標籤 ${activeTab === "fixed" && isCollapsed ? "(已收起)" : ""}`}
+            aria-label={`定期標籤 ${activeTab === "fixed" && isCollapsed ? "(已收起)" : ""}`}
             tabIndex={0}
             onKeyDown={(e) => e.key === "Enter" && handleTabClick("fixed")}
           >
-            固定
+            定期
             {activeTab === "fixed" && isCollapsed && (
               <span className="ml-1 text-xs">▼</span>
             )}

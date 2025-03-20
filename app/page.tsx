@@ -437,6 +437,7 @@ export default function Home() {
                   isLoading={isDataLoading}
                   isCollapsed={isCollapsed}
                   onTransactionClick={handleTransactionClick}
+                  userId={userId || ""}
                 />
                 
                 {showDebug && (

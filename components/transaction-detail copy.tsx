@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   ChevronRight,
   Trash2,
@@ -59,9 +59,6 @@ const defaultTransaction: Transaction = {
   date: "2025年07月06日",
   type: "expense",
   note: "吃飯",
-  isFixed: false,
-  fixedFrequency: undefined,
-  fixedInterval: 1,
   created_at: "2025-07-06T12:00:00Z",
   updated_at: "2025-07-06T12:00:00Z",
 };
@@ -69,6 +66,8 @@ const defaultTransaction: Transaction = {
 // 在組件的 props 接口中添加 onError
 interface TransactionDetailProps {
   onError?: () => void;
+  transactionId?: string;
+  transactionType?: string;
 }
 
 // Define a consistent animation style for all content blocks
@@ -163,8 +162,9 @@ async function getUserIdFromLiff(): Promise<string | null> {
   }
 }
 
-export default function TransactionDetail({ onError }: TransactionDetailProps) {
+export default function TransactionDetail({ onError, transactionId, transactionType }: TransactionDetailProps) {
   const [transaction, setTransaction] = useState<Transaction | null>(null);
+  const [originalTransaction, setOriginalTransaction] = useState<Transaction | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
@@ -185,8 +185,6 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
   const [lineType, setLineType] = useState<string>("");
   const [debugInfo, setDebugInfo] = useState<{url: string, params: Record<string, string>}>({ url: "", params: {} });
   const [debugClickCount, setDebugClickCount] = useState(0);
-  const [isFixedExpanded, setIsFixedExpanded] = useState(false);
-  const [editFixedInterval, setEditFixedInterval] = useState("");
   const [isHidden, setIsHidden] = useState(true);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
@@ -194,6 +192,19 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
   const [isSharing, setIsSharing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const router = useRouter();
+
+  // 檢查資料是否有變動
+  const hasChanges = useMemo(() => {
+    if (!transaction || !originalTransaction) return false;
+    
+    return (
+      transaction.type !== originalTransaction.type ||
+      transaction.category !== originalTransaction.category ||
+      transaction.amount !== originalTransaction.amount ||
+      transaction.date !== originalTransaction.date ||
+      transaction.note !== originalTransaction.note
+    );
+  }, [transaction, originalTransaction]);
 
   // Mark component as mounted on client-side
   useEffect(() => {
@@ -206,6 +217,85 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
       setCalendarDate(new Date());
     }
   }, []);
+
+  useEffect(() => {
+    if (!isMounted) return;
+    
+    setIsLoading(true);
+
+    async function initialize() {
+      try {
+        console.log("Initializing transaction detail component");
+        
+        // 初始化 LIFF
+        const liffInitialized = await initializeLiff();
+        console.log("LIFF initialization result:", liffInitialized);
+        setIsLiffInitialized(liffInitialized);
+        
+        // 檢查 LIFF 是否已登入，如果未登入或 token 已過期，則重新登入
+        if (liffInitialized && !BYPASS_LIFF && typeof liff !== 'undefined') {
+          try {
+            // 嘗試獲取 access token 來檢查是否有效
+            const token = liff.getAccessToken();
+            if (!token) {
+              console.log("No access token found, attempting to login");
+              liff.login();
+              return;
+            }
+            console.log("Access token exists, continuing");
+          } catch (tokenError) {
+            console.error("Error getting access token, may be expired:", tokenError);
+            console.log("Attempting to re-login");
+            try {
+              liff.login();
+              return;
+            } catch (loginError) {
+              console.error("Failed to re-login:", loginError);
+            }
+          }
+        }
+
+        if (!transactionId) {
+          console.error("No transaction ID provided");
+          setIsLoading(false);
+          if (onError) onError();
+          return;
+        }
+        
+        console.log(`Fetching transaction with ID: ${transactionId}, type: ${transactionType || "expense"}`);
+        
+        // 獲取交易數據
+        const data = await fetchTransactionById(transactionId, transactionType || "expense");
+        
+        if (data) {
+          console.log("Transaction data retrieved successfully:", data);
+          setTransaction(data);
+          setOriginalTransaction(data); // 保存原始資料
+          // 重置編輯狀態
+          setEditAmount("");
+          setEditNote("");
+          
+          // 獲取用戶ID
+          const userId = await getUserIdFromLiff();
+          
+          // 獲取類別
+          await fetchCategories(userId);
+        } else {
+          // 如果找不到數據，保持 transaction 為 null
+          console.warn("Transaction not found");
+          setTransaction(null);
+          if (onError) onError();
+        }
+      } catch (error) {
+        console.error("Error initializing:", error);
+        if (onError) onError();
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    initialize();
+  }, [isMounted, transactionId, transactionType]);
 
   // 從資料庫獲取類別
   const fetchCategories = async (userId: string | null) => {
@@ -273,196 +363,6 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
     }
   };
 
-  useEffect(() => {
-    if (!isMounted) return;
-    
-    setIsLoading(true);
-
-    async function initialize() {
-      try {
-        console.log("Initializing transaction detail component");
-        console.log("Current URL:", window.location.href);
-        
-        // 初始化 LIFF
-        const liffInitialized = await initializeLiff();
-        console.log("LIFF initialization result:", liffInitialized);
-        setIsLiffInitialized(liffInitialized);
-        
-        // 檢查 LIFF 是否已登入，如果未登入或 token 已過期，則重新登入
-        if (liffInitialized && !BYPASS_LIFF && typeof liff !== 'undefined') {
-          try {
-            // 嘗試獲取 access token 來檢查是否有效
-            const token = liff.getAccessToken();
-            if (!token) {
-              console.log("No access token found, attempting to login");
-              liff.login();
-              return;
-            }
-            console.log("Access token exists, continuing");
-          } catch (tokenError) {
-            console.error("Error getting access token, may be expired:", tokenError);
-            console.log("Attempting to re-login");
-            try {
-              liff.login();
-              return;
-            } catch (loginError) {
-              console.error("Failed to re-login:", loginError);
-            }
-          }
-        }
-        
-        // 獲取 URL 參數
-        const params = getLiffUrlParams();
-        setDebugInfo({ url: window.location.href, params });
-        
-        // 獲取交易 ID 和類型
-        let id = params.id;
-        const type = params.type || "expense";
-        
-        // 如果沒有從 URL 參數獲取到 ID，嘗試從 URL 路徑獲取
-        if (!id) {
-          console.log("No ID in URL parameters, trying to extract from path");
-          try {
-            const pathParts = window.location.pathname.split('/');
-            if (pathParts.length > 2 && pathParts[1] === 'transaction' && pathParts[2]) {
-              id = pathParts[2];
-              console.log("Extracted ID from URL path:", id);
-            }
-          } catch (pathError) {
-            console.error("Failed to extract ID from path:", pathError);
-          }
-        }
-        
-        // 如果仍然沒有 ID，嘗試從 localStorage 獲取
-        if (!id) {
-          console.log("Still no ID, trying localStorage");
-          try {
-            const storedId = localStorage.getItem('lastTransactionId');
-            if (storedId) {
-              id = storedId;
-              console.log("Retrieved ID from localStorage:", id);
-            }
-          } catch (storageError) {
-            console.error("Failed to access localStorage:", storageError);
-          }
-        }
-        
-        if (!id) {
-          console.error("No transaction ID provided");
-          setIsLoading(false);
-          if (onError) onError();
-          return;
-        }
-        
-        console.log(`Fetching transaction with ID: ${id}, type: ${type}`);
-        
-        // 獲取交易數據
-        const data = await fetchTransactionById(id, type);
-        
-        if (data) {
-          console.log("Transaction data retrieved successfully:", data);
-          setTransaction(data);
-          // 重置編輯狀態
-          setEditAmount("");
-          setEditNote("");
-          setEditFixedInterval("");
-          
-          // 獲取用戶ID
-          const userId = await getUserIdFromLiff();
-          
-          // 獲取類別
-          await fetchCategories(userId);
-        } else {
-          // 如果找不到數據，保持 transaction 為 null
-          console.warn("Transaction not found");
-          setTransaction(null);
-          if (onError) onError();
-        }
-      } catch (error) {
-        console.error("Error initializing:", error);
-        if (onError) onError();
-        
-        // 即使初始化失敗，也嘗試使用 URL 參數
-        try {
-          console.log("Attempting recovery after initialization error");
-          
-          // 直接從 URL 獲取參數
-          const urlParams = new URLSearchParams(window.location.search);
-          let id = urlParams.get("id") || "";
-          const type = urlParams.get("type") || "expense";
-          
-          // 如果沒有從 URL 參數獲取到 ID，嘗試從 URL 路徑獲取
-          if (!id) {
-            console.log("Recovery: No ID in URL parameters, trying to extract from path");
-            try {
-              const pathParts = window.location.pathname.split('/');
-              if (pathParts.length > 2 && pathParts[1] === 'transaction' && pathParts[2]) {
-                id = pathParts[2];
-                console.log("Recovery: Extracted ID from URL path:", id);
-              }
-            } catch (pathError) {
-              console.error("Recovery: Failed to extract ID from path:", pathError);
-            }
-          }
-          
-          // 如果仍然沒有 ID，嘗試從 localStorage 獲取
-          if (!id) {
-            console.log("Recovery: Still no ID, trying localStorage");
-            try {
-              const storedId = localStorage.getItem('lastTransactionId');
-              if (storedId) {
-                id = storedId;
-                console.log("Recovery: Retrieved ID from localStorage:", id);
-              }
-            } catch (storageError) {
-              console.error("Recovery: Failed to access localStorage:", storageError);
-            }
-          }
-          
-          if (!id) {
-            console.error("Recovery: No transaction ID provided");
-            setTransaction(null);
-            return;
-          }
-          
-          console.log(`Recovery: Fetching transaction with ID: ${id}, type: ${type}`);
-          
-          // 獲取交易數據
-          const data = await fetchTransactionById(id, type);
-          
-          if (data) {
-            console.log("Recovery: Transaction data retrieved successfully:", data);
-            setTransaction(data);
-            // 重置編輯狀態
-            setEditAmount("");
-            setEditNote("");
-            setEditFixedInterval("");
-            
-            // 獲取用戶ID
-            const userId = await getUserIdFromLiff();
-            
-            // 獲取類別
-            await fetchCategories(userId);
-          } else {
-            // 如果找不到數據，保持 transaction 為 null
-            console.warn("Recovery: Transaction not found");
-            setTransaction(null);
-            if (onError) onError();
-          }
-        } catch (innerError) {
-          console.error("Failed to recover from initialization error:", innerError);
-          // 數據獲取失敗，保持 transaction 為 null
-          setTransaction(null);
-          if (onError) onError();
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    initialize();
-  }, [isMounted, onError]);
-
   // 當交易類型變更時，更新類別列表
   useEffect(() => {
     if (transaction && dbCategories.length > 0) {
@@ -501,20 +401,13 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
   };
 
   // 顯示 Toast 通知的輔助函數
-  const showToastNotification = (message: string, type: "success" | "error", duration = 3000, callback?: () => void) => {
+  const showToastNotification = (message: string, type: "success" | "error", duration = 3000) => {
     setToastMessage(message);
     setToastType(type);
     setShowToast(true);
     
-    // 延長顯示時間，確保動畫有足夠時間完成
     setTimeout(() => {
       setShowToast(false);
-      if (callback) {
-        // 為回調函數添加額外延遲，確保淡出動畫完成後再執行
-        setTimeout(() => {
-          callback();
-        }, 300);
-      }
     }, duration);
   };
 
@@ -559,8 +452,10 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
       const success = await deleteTransactionApi(transaction.id, transaction.type);
 
       if (success) {
-        // 顯示成功通知
-        showToastNotification("刪除成功", "success", 800, navigateBackToList);
+        // 先導航回列表頁
+        navigateBackToList();
+        // 然後顯示成功通知
+        showToastNotification("刪除成功", "success");
       } else {
         showToastNotification("刪除失敗，請稍後再試", "error");
       }
@@ -576,6 +471,12 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
 
   const handleConfirm = async () => {
     if (!transaction) return;
+    
+    // 如果沒有變動，直接關閉
+    if (!hasChanges) {
+      if (onError) onError();
+      return;
+    }
     
     // 驗證類別是否已選擇
     if (!transaction.category) {
@@ -619,9 +520,6 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
           amount: Math.abs(transaction.amount),
           datetime: parseDateToISOString(transaction.date),
           memo: transaction.note,
-          is_fixed: transaction.isFixed,
-          frequency: transaction.fixedFrequency,
-          interval: transaction.fixedInterval,
         };
         
         // 發送 API 請求創建新交易
@@ -659,8 +557,10 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
           }
         }
         
-        // 顯示成功通知
-        showToastNotification("儲存成功", "success", 800, navigateBackToList);
+        // 先導航回列表頁
+        navigateBackToList();
+        // 然後顯示成功通知
+        showToastNotification("儲存成功", "success");
       } else {
         // 如果類型沒有變化，使用正常的更新流程
         const success = await updateTransactionApi(transaction);
@@ -676,8 +576,10 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
             return;
           }
           
-          // 顯示成功通知
-          showToastNotification("儲存成功", "success", 800, navigateBackToList);
+          // 先導航回列表頁
+          navigateBackToList();
+          // 然後顯示成功通知
+          showToastNotification("儲存成功", "success");
         } else {
           showToastNotification("儲存失敗，請稍後再試", "error");
         }
@@ -1103,66 +1005,6 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
       "12月",
     ];
     return monthNames[month];
-  };
-
-  const handleToggleFixedExpanded = () => {
-    setIsFixedExpanded(!isFixedExpanded);
-  };
-
-  const handleFixedFrequencyChange = (frequency: "day" | "week" | "month") => {
-    if (!transaction) return;
-    
-    // 確保間隔已設定
-    const fixedInterval = transaction.fixedInterval || 1;
-    
-    const updatedTransaction = {
-      ...transaction,
-      fixedFrequency: frequency,
-      fixedInterval: fixedInterval,
-    };
-    setTransaction(updatedTransaction);
-  };
-
-  const handleStartEditFixedInterval = () => {
-    if (!transaction || transaction.fixedInterval === undefined) {
-      setEditFixedInterval("1"); // 預設間隔為 1
-    } else {
-      setEditFixedInterval(transaction.fixedInterval.toString());
-    }
-  };
-
-  const handleFixedIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // 只允許數字
-    const value = e.target.value.replace(/[^0-9]/g, "");
-    // 確保值至少為 1
-    const numValue = parseInt(value, 10);
-    if (value === "" || isNaN(numValue)) {
-      setEditFixedInterval(value);
-    } else {
-      setEditFixedInterval(numValue.toString());
-    }
-  };
-
-  const handleSaveFixedInterval = async () => {
-    if (!transaction) return;
-    
-    const fixedInterval = parseInt(editFixedInterval, 10);
-    if (isNaN(fixedInterval) || fixedInterval <= 0) {
-      setEditFixedInterval("1");
-      return;
-    }
-    
-    // 確保頻率已設定
-    const fixedFrequency = transaction.fixedFrequency || "month";
-    
-    const updatedTransaction = {
-      ...transaction,
-      fixedInterval: fixedInterval,
-      fixedFrequency: fixedFrequency,
-    };
-    
-    setTransaction(updatedTransaction);
-    setEditFixedInterval("");
   };
 
   if (isLoading)
@@ -1614,228 +1456,6 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                 </div>
               </div>
             </div>
-
-            {/* 分隔線 */}
-            <div className="border-t border-gray-100"></div>
-
-            {/* 固定支出/收入 */}
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600 pl-2">定期{transaction.type === "expense" ? "支出" : "收入"}</span>
-              <div className="flex items-center">
-                <div
-                  className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
-                  onClick={handleToggleFixedExpanded}
-                  tabIndex={0}
-                  onKeyDown={(e) => e.key === "Enter" && handleToggleFixedExpanded()}
-                  aria-label={isFixedExpanded ? "收起定期設定" : "展開定期設定"}
-                >
-                  <span className="text-gray-800">
-                    {transaction.isFixed 
-                      ? `每 ${transaction.fixedInterval || 1} ${transaction.fixedFrequency === "day" ? "日" : transaction.fixedFrequency === "week" ? "週" : "月"}`
-                      : "未設定"}
-                  </span>
-                  {isFixedExpanded ? (
-                    <ChevronUp className="ml-2 text-gray-400" />
-                  ) : (
-                    <ChevronDown className="ml-2 text-gray-400" />
-                  )}
-                </div>
-              </div>
-            </div>
-            
-            {/* 定期支出/收入設定區域 */}
-            <div 
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                isFixedExpanded 
-                  ? "max-h-96 opacity-100 mt-4"
-                  : "max-h-0 opacity-0 !mt-0"
-              }`}
-            >
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="space-y-4">
-                  {/* 開關按鈕 */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">啟用</span>
-                    <button
-                      role="switch"
-                      aria-checked={transaction.isFixed}
-                      className={`relative inline-flex h-7 w-[5rem] items-center rounded-xl transition-colors duration-200 ease-in-out focus:outline-none ${
-                        transaction.isFixed ? "bg-[#22c55e]" : "bg-gray-200"
-                      }`}
-                      onClick={() => {
-                        const updatedTransaction = {
-                          ...transaction,
-                          isFixed: !transaction.isFixed,
-                          // 如果關閉固定支出/收入，重置相關設定
-                          // 如果開啟固定支出/收入，設定預設值
-                          ...(transaction.isFixed 
-                            ? { fixedFrequency: undefined, fixedInterval: undefined } 
-                            : { 
-                                fixedFrequency: "month" as "day" | "week" | "month", 
-                                fixedInterval: 1 
-                              })
-                        };
-                        setTransaction(updatedTransaction);
-                      }}
-                    >
-                      <span
-                        className={`inline-block h-5 w-9 transform rounded-lg bg-white transition-transform duration-200 ease-in-out ${
-                          transaction.isFixed ? "translate-x-[2.5rem]" : "translate-x-1"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                  
-                  {/* 合併頻率和間隔設定 */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">頻率</span>
-                    <div className="flex items-center gap-2">
-                      {/* 間隔輸入 - 始終顯示輸入框，但根據開關狀態決定是否禁用 */}
-                      <div className="flex items-center">
-                        <span className={`mr-2 ${transaction.isFixed ? "text-gray-600" : "text-gray-400"}`}>每</span>
-                        <div className="inline-flex items-center bg-white rounded-lg overflow-hidden border border-gray-300">
-                          <button
-                            className={`flex items-center justify-center w-7 h-8 ${
-                              transaction.isFixed 
-                                ? "text-gray-600 hover:bg-gray-100 active:bg-gray-200" 
-                                : "text-gray-400 cursor-not-allowed opacity-50 bg-gray-50"
-                            }`}
-                            onClick={() => {
-                              if (!transaction.isFixed) return;
-                              const currentValue = transaction.fixedInterval || 1;
-                              if (currentValue > 1) {
-                                const updatedTransaction = {
-                                  ...transaction,
-                                  fixedInterval: currentValue - 1,
-                                };
-                                setTransaction(updatedTransaction);
-                              }
-                            }}
-                            disabled={!transaction.isFixed}
-                            aria-label="減少間隔"
-                          >
-                            <ChevronDown size={16} />
-                          </button>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            value={transaction.fixedInterval !== undefined ? transaction.fixedInterval.toString() : "1"}
-                            onChange={(e) => {
-                              if (!transaction.isFixed) return; // 如果關閉則不處理
-                              
-                              // 只允許數字
-                              const value = e.target.value.replace(/[^0-9]/g, "");
-                              // 確保值至少為 1
-                              const numValue = parseInt(value, 10);
-                              if (value === "" || isNaN(numValue)) {
-                                return;
-                              }
-                              
-                              const updatedTransaction = {
-                                ...transaction,
-                                fixedInterval: numValue,
-                                // 確保頻率已設定
-                                fixedFrequency: transaction.fixedFrequency || "month"
-                              };
-                              
-                              setTransaction(updatedTransaction);
-                            }}
-                            onBlur={(e) => {
-                              if (!transaction.isFixed) return; // 如果關閉則不處理
-                              
-                              // 確保值至少為 1
-                              if (e.target.value === "" || parseInt(e.target.value, 10) <= 0) {
-                                const updatedTransaction = {
-                                  ...transaction,
-                                  fixedInterval: 1
-                                };
-                                setTransaction(updatedTransaction);
-                              }
-                            }}
-                            className={`w-8 px-0 py-1 text-center focus:outline-none border-0 ${
-                              transaction.isFixed 
-                                ? "text-gray-800" 
-                                : "bg-gray-50 text-gray-400"
-                            }`}
-                            disabled={!transaction.isFixed}
-                          />
-                          <button
-                            className={`flex items-center justify-center w-7 h-8 ${
-                              transaction.isFixed 
-                                ? "text-gray-600 hover:bg-gray-100 active:bg-gray-200" 
-                                : "text-gray-400 cursor-not-allowed opacity-50 bg-gray-50"
-                            }`}
-                            onClick={() => {
-                              if (!transaction.isFixed) return;
-                              const currentValue = transaction.fixedInterval || 1;
-                              const updatedTransaction = {
-                                ...transaction,
-                                fixedInterval: currentValue + 1,
-                              };
-                              setTransaction(updatedTransaction);
-                            }}
-                            disabled={!transaction.isFixed}
-                            aria-label="增加間隔"
-                          >
-                            <ChevronUp size={16} />
-                          </button>
-                        </div>
-                      </div>
-                      
-                      {/* 頻率選擇 - 根據開關狀態決定是否禁用 */}
-                      <div className="flex gap-1">
-                        <button
-                          className={`px-3 py-1 rounded-xl text-sm transition-all duration-150 ${
-                            transaction.isFixed
-                              ? transaction.fixedFrequency === "day"
-                                ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
-                                : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
-                              : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                          }`}
-                          onClick={() => {
-                            if (transaction.isFixed) handleFixedFrequencyChange("day");
-                          }}
-                          disabled={!transaction.isFixed}
-                        >
-                          日
-                        </button>
-                        <button
-                          className={`px-3 py-1 rounded-xl text-sm transition-all duration-150 ${
-                            transaction.isFixed
-                              ? transaction.fixedFrequency === "week"
-                                ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
-                                : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
-                              : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                          }`}
-                          onClick={() => {
-                            if (transaction.isFixed) handleFixedFrequencyChange("week");
-                          }}
-                          disabled={!transaction.isFixed}
-                        >
-                          週
-                        </button>
-                        <button
-                          className={`px-3 py-1 rounded-xl text-sm transition-all duration-150 ${
-                            transaction.isFixed
-                              ? transaction.fixedFrequency === "month"
-                                ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
-                                : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
-                              : "bg-gray-100 text-gray-400 cursor-not-allowed"
-                          }`}
-                          onClick={() => {
-                            if (transaction.isFixed) handleFixedFrequencyChange("month");
-                          }}
-                          disabled={!transaction.isFixed}
-                        >
-                          月
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* 備註 */}
@@ -1874,14 +1494,27 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
           </div>
 
           {/* 按鈕區域 */}
-          <div className="space-y-4 mt-8">
+          <div className="space-y-4">
             {/* 確認按鈕 */}
             <button
               onClick={handleConfirm}
-              className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
+              className={`w-full py-3 rounded-2xl flex items-center justify-center transition-colors duration-150 ${
+                hasChanges
+                  ? "bg-[#22c55e] text-white active:bg-green-600"
+                  : "bg-gray-200 text-gray-600 active:bg-gray-300"
+              }`}
             >
-              <Check size={20} className="mr-2" />
-              完成
+              {hasChanges ? (
+                <>
+                  <Check size={20} className="mr-2" />
+                  完成
+                </>
+              ) : (
+                <>
+                  <ArrowLeft size={20} className="mr-2" />
+                  返回
+                </>
+              )}
             </button>
 
             {/* 刪除按鈕 */}
@@ -1892,7 +1525,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
               <Trash2 size={20} className="mr-2" />
               刪除
             </button>
-            
+
             {/* LINE 參數顯示和調試信息 */}
             {debugClickCount >= 5 && (
               <>
@@ -1946,16 +1579,16 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                 </div>
               </>
             )}
-            
-            {/* 更新時間顯示 */}
-            {transaction.updated_at && (
-              <div className="mt-6 text-center">
-                <p className="text-xs text-gray-400">
-                  最後更新 {formatTimestamp(transaction.updated_at)}
-                </p>
-              </div>
-            )}
           </div>
+
+          {/* 更新時間顯示 */}
+          {transaction.updated_at && (
+            <div className="mt-6 text-center">
+              <p className="text-xs text-gray-400">
+                最後更新 {formatTimestamp(transaction.updated_at)}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </>

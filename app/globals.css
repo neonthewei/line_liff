@@ -138,6 +138,17 @@
   animation: fadeInDown 0.3s ease-out;
 }
 
+/* Skeleton loading animation */
+@keyframes pulseColor {
+  0% { background-color: rgba(229, 231, 235, 0.4); }
+  50% { background-color: rgba(209, 213, 219, 0.6); }
+  100% { background-color: rgba(229, 231, 235, 0.4); }
+}
+
+.animate-pulse-color {
+  animation: pulseColor 1.5s ease-in-out infinite;
+}
+
 /* Hide scrollbar */
 ::-webkit-scrollbar {
   display: none;

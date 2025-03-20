@@ -85,16 +85,16 @@ export default function MonthSummary({
           </div>
         ) : (
           <>
-            <div className="text-4xl font-bold mb-4">${summary.totalExpense.toFixed(2)}</div>
+            <div className="text-4xl font-bold mb-4">${summary.totalExpense}</div>
 
             <div className="flex justify-between text-sm">
               <div className="flex flex-col">
                 <span className="text-xs opacity-80 mb-0.5">月收入</span>
-                <span className="font-medium">${summary.totalIncome.toFixed(2)}</span>
+                <span className="font-medium">${summary.totalIncome}</span>
               </div>
               <div className="flex flex-col">
                 <span className="text-xs opacity-80 mb-0.5">月結餘</span>
-                <span className="font-medium">${summary.balance.toFixed(2)}</span>
+                <span className="font-medium">${summary.balance}</span>
               </div>
             </div>
           </>
