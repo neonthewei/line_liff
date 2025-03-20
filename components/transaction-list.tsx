@@ -210,7 +210,7 @@ const TransactionItem = memo(
 TransactionItem.displayName = "TransactionItem";
 
 // Enhanced skeleton loader for transaction items with custom animation
-const TransactionSkeleton = () => {
+export const TransactionSkeleton = () => {
   return (
     <div className="px-4 py-3 flex items-center justify-between">
       <div className="flex items-center">
@@ -228,21 +228,11 @@ const TransactionSkeleton = () => {
 };
 
 // Skeleton for the header section
-const HeaderSkeleton = () => {
+export const HeaderSkeleton = () => {
   return (
     <div className="flex justify-between items-center px-5 py-3 border-b bg-gray-50">
       <Skeleton className="h-5 w-24 animate-pulse-color" />
       <Skeleton className="h-4 w-16 animate-pulse-color" />
-    </div>
-  );
-};
-
-// Skeleton for empty state
-const EmptyStateSkeleton = () => {
-  return (
-    <div className="flex flex-col items-center justify-center py-8">
-      <Skeleton className="h-6 w-48 mb-2 animate-pulse-color" />
-      <Skeleton className="h-4 w-32 animate-pulse-color" />
     </div>
   );
 };

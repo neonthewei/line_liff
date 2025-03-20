@@ -5,12 +5,24 @@ import { useRouter } from "next/navigation";
 import { initializeLiff, navigateInLiff } from "@/utils/liff";
 import type { Transaction } from "@/types/transaction";
 import MonthSelector from "@/components/month-selector";
-import { fetchTransactionsByUser, fetchMonthlySummary, clearTransactionCache } from "@/utils/api";
+import {
+  fetchTransactionsByUser,
+  fetchMonthlySummary,
+  clearTransactionCache,
+} from "@/utils/api";
 import MonthSummary from "@/components/month-summary";
 import TabSelector from "@/components/tab-selector";
-import TransactionList from "@/components/transaction-list";
+import TransactionList, {
+  TransactionSkeleton,
+  HeaderSkeleton,
+} from "@/components/transaction-list";
 import DebugConsole from "@/components/debug-console";
-import { initConsoleCapture, getCaptureLogs, getCaptureErrors, addCustomLog } from "@/utils/debug";
+import {
+  initConsoleCapture,
+  getCaptureLogs,
+  getCaptureErrors,
+  addCustomLog,
+} from "@/utils/debug";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // LIFF 類型聲明
@@ -49,14 +61,14 @@ export default function Home() {
   // 添加鍵盤事件監聽器，按 O 鍵顯示調試信息
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'o' || event.key === 'O') {
-        setShowDebug(prev => !prev);
+      if (event.key === "o" || event.key === "O") {
+        setShowDebug((prev) => !prev);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
 
@@ -74,47 +86,50 @@ export default function Home() {
     const initLiff = async () => {
       try {
         // 檢測是否在 LINE 內部瀏覽器中
-        const isInLineInternalBrowser = typeof window !== 'undefined' && 
-          window.navigator.userAgent.includes('Line') && 
-          !window.navigator.userAgent.includes('LIFF');
-        
+        const isInLineInternalBrowser =
+          typeof window !== "undefined" &&
+          window.navigator.userAgent.includes("Line") &&
+          !window.navigator.userAgent.includes("LIFF");
+
         console.log("Is in LINE internal browser:", isInLineInternalBrowser);
-        
+
         // 初始化 LIFF
         const isInitialized = await initializeLiff();
         setIsLiffInitialized(isInitialized);
-        
+
         if (!isInitialized) {
           throw new Error("LIFF 初始化失敗");
         }
-        
+
         // 如果在 LINE 內部瀏覽器中，跳過登入檢查
         if (isInLineInternalBrowser) {
           console.log("In LINE internal browser, skipping login check");
           // 嘗試從 localStorage 獲取用戶 ID
-          const storedUserId = localStorage.getItem('userId');
+          const storedUserId = localStorage.getItem("userId");
           if (storedUserId) {
             console.log("Using stored user ID:", storedUserId);
             setUserId(storedUserId);
             addCustomLog(`使用存儲的用戶 ID: ${storedUserId}`);
-            
+
             // 直接設置 LIFF 初始化完成，以便開始獲取數據
             setIsLiffInitialized(true);
             return;
           } else {
             console.log("No stored user ID found in localStorage");
-            
+
             // 嘗試從 LIFF context 獲取用戶 ID
             try {
-              if (window.liff && typeof window.liff.getContext === 'function') {
+              if (window.liff && typeof window.liff.getContext === "function") {
                 const context = window.liff.getContext();
                 console.log("LIFF Context for user ID:", context);
-                
+
                 if (context && context.userId) {
                   console.log("Found user ID in LIFF context:", context.userId);
                   setUserId(context.userId);
-                  localStorage.setItem('userId', context.userId);
-                  addCustomLog(`從 LIFF context 獲取用戶 ID: ${context.userId}`);
+                  localStorage.setItem("userId", context.userId);
+                  addCustomLog(
+                    `從 LIFF context 獲取用戶 ID: ${context.userId}`
+                  );
                   setIsLiffInitialized(true);
                   return;
                 }
@@ -122,14 +137,14 @@ export default function Home() {
             } catch (contextError) {
               console.error("Error getting LIFF context:", contextError);
             }
-            
+
             // 如果沒有存儲的用戶 ID，顯示提示
             setError("請先在 LINE 應用程式中登入");
             setShowDebug(true);
             return;
           }
         }
-        
+
         // 檢查是否已登入
         if (!window.liff.isLoggedIn()) {
           // 如果未登入，則導向登入
@@ -137,7 +152,7 @@ export default function Home() {
           window.liff.login();
           return;
         }
-        
+
         // 用戶已登入，獲取用戶資料
         try {
           // 先檢查 access token 是否有效
@@ -155,18 +170,21 @@ export default function Home() {
             window.liff.login();
             return;
           }
-          
+
           const profile = await window.liff.getProfile();
           console.log("成功獲取用戶資料:", profile);
-          
+
           if (profile && profile.userId) {
             setUserId(profile.userId);
             // 存儲用戶 ID 到 localStorage
             try {
-              localStorage.setItem('userId', profile.userId);
+              localStorage.setItem("userId", profile.userId);
               console.log("Saved user ID to localStorage:", profile.userId);
             } catch (storageError) {
-              console.error("Failed to save user ID to localStorage:", storageError);
+              console.error(
+                "Failed to save user ID to localStorage:",
+                storageError
+              );
             }
             console.log("用戶 LINE ID:", profile.userId);
             console.log("用戶名稱:", profile.displayName);
@@ -175,12 +193,14 @@ export default function Home() {
           }
         } catch (profileError) {
           console.error("獲取用戶資料失敗", profileError);
-          
+
           // 檢查是否是 token 過期錯誤
-          if (profileError instanceof Error && 
-              profileError.message && 
-              (profileError.message.includes("expired") || 
-               profileError.message.includes("token"))) {
+          if (
+            profileError instanceof Error &&
+            profileError.message &&
+            (profileError.message.includes("expired") ||
+              profileError.message.includes("token"))
+          ) {
             console.log("Access token 已過期，嘗試重新登入");
             // 嘗試重新登入
             try {
@@ -190,7 +210,7 @@ export default function Home() {
               console.error("重新登入失敗", loginError);
             }
           }
-          
+
           setError("無法獲取用戶資料，請確保您已登入LINE並授權應用程式");
           setShowDebug(true);
         }
@@ -209,27 +229,29 @@ export default function Home() {
     setIsLoading(true);
     setIsDataLoading(true);
     setError(null);
-    
+
     if (!userId) {
       console.log("No user ID available, cannot fetch data");
       setIsLoading(false);
       setIsDataLoading(false);
       return;
     }
-    
+
     try {
-      console.log(`開始獲取用戶 ${userId} 的交易數據，日期: ${currentDate.toISOString()}`);
-      
+      console.log(
+        `開始獲取用戶 ${userId} 的交易數據，日期: ${currentDate.toISOString()}`
+      );
+
       // 獲取所選月份的交易數據
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth() + 1; // JavaScript 月份從 0 開始，API需要 1-12
-      
+
       // 並行獲取交易數據和月度摘要
       const [transactionsData, summaryData] = await Promise.all([
         fetchTransactionsByUser(userId, year, month),
-        fetchMonthlySummary(userId, year, month)
+        fetchMonthlySummary(userId, year, month),
       ]);
-      
+
       console.log(`成功獲取 ${transactionsData.length} 筆交易數據`);
       setTransactions(transactionsData);
       setSummary(summaryData);
@@ -253,8 +275,8 @@ export default function Home() {
 
     // 添加頁面可見性變化事件監聽器
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && userId) {
-        console.log('頁面重新獲得焦點，刷新數據');
+      if (document.visibilityState === "visible" && userId) {
+        console.log("頁面重新獲得焦點，刷新數據");
         fetchData();
       }
     };
@@ -262,17 +284,17 @@ export default function Home() {
     // 添加頁面焦點事件監聽器
     const handleFocus = () => {
       if (userId) {
-        console.log('頁面重新獲得焦點，刷新數據');
+        console.log("頁面重新獲得焦點，刷新數據");
         fetchData();
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
 
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
     };
   }, [userId, fetchData, currentDate]);
 
@@ -310,9 +332,9 @@ export default function Home() {
       const month = currentDate.getMonth() + 1;
       clearTransactionCache(userId, year, month);
     }
-    
+
     console.log(`點擊交易: id=${id}, type=${type}`);
-    
+
     // 使用 LIFF 導航而不是 Next.js 路由
     navigateInLiff("/transaction", { id, type });
   };
@@ -325,7 +347,7 @@ export default function Home() {
             <div className="py-4">
               <Skeleton className="h-10 w-full rounded-xl mb-5 animate-pulse-color" />
             </div>
-            
+
             <div className="bg-white rounded-2xl p-5 shadow-sm mb-5">
               <div className="flex justify-between items-center mb-4">
                 <Skeleton className="h-6 w-32 animate-pulse-color" />
@@ -346,52 +368,43 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-white rounded-2xl p-2 mb-5 shadow-sm">
               <Skeleton className="h-10 w-full rounded-xl animate-pulse-color" />
             </div>
-            
+
             <div className="space-y-4">
               {[1, 2, 3].map((group) => (
-                <div key={`skeleton-group-${group}`} className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                  <div className="flex justify-between items-center px-5 py-3 border-b">
-                    <Skeleton className="h-5 w-24 animate-pulse-color" />
-                    <Skeleton className="h-4 w-16 animate-pulse-color" />
-                  </div>
+                <div
+                  key={`skeleton-group-${group}`}
+                  className="bg-white rounded-2xl shadow-sm overflow-hidden"
+                >
+                  <HeaderSkeleton />
                   <div className="divide-y divide-gray-100">
-                    {[1, 2, 3].map((item) => (
-                      <div key={`skeleton-item-${group}-${item}`} className="px-4 py-3 flex items-center justify-between">
-                        <div className="flex items-center">
-                          <div>
-                            <Skeleton className="h-5 w-24 mb-1 animate-pulse-color" />
-                            <Skeleton className="h-3 w-32 animate-pulse-color" />
-                          </div>
-                        </div>
-                        <div className="flex items-center">
-                          <Skeleton className="h-6 w-16 mr-2 animate-pulse-color" />
-                          <Skeleton className="h-5 w-5 rounded animate-pulse-color" />
-                        </div>
-                      </div>
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <TransactionSkeleton
+                        key={`skeleton-item-${group}-${index}`}
+                      />
                     ))}
                   </div>
                 </div>
               ))}
             </div>
-            
+
             {error && (
               <div className="flex flex-col items-center mt-6 space-y-2">
-                <button 
+                <button
                   onClick={() => window.location.reload()}
                   className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
                 >
                   重新載入
                 </button>
-                
+
                 {showDebug && (
-                  <DebugConsole 
-                    logs={logs} 
-                    errors={errorLogs} 
-                    title="LIFF 初始化調試信息" 
+                  <DebugConsole
+                    logs={logs}
+                    errors={errorLogs}
+                    title="LIFF 初始化調試信息"
                   />
                 )}
               </div>
@@ -399,17 +412,20 @@ export default function Home() {
           </div>
         ) : (
           <>
-            <MonthSelector currentDate={currentDate} onMonthChange={handleMonthChange} />
-
-            <MonthSummary 
-              currentDate={currentDate} 
-              summary={summary} 
-              isLoading={isDataLoading} 
+            <MonthSelector
+              currentDate={currentDate}
+              onMonthChange={handleMonthChange}
             />
 
-            <TabSelector 
-              activeTab={activeTab} 
-              onTabChange={handleTabChange} 
+            <MonthSummary
+              currentDate={currentDate}
+              summary={summary}
+              isLoading={isDataLoading}
+            />
+
+            <TabSelector
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
               onToggleCollapse={handleToggleCollapse}
               isCollapsed={isCollapsed}
             />
@@ -419,12 +435,12 @@ export default function Home() {
                 <div className="p-4 bg-red-50 text-red-500 rounded-xl text-center">
                   {error}
                 </div>
-                
+
                 {showDebug && (
-                  <DebugConsole 
-                    logs={logs} 
-                    errors={errorLogs} 
-                    title="數據載入調試信息" 
+                  <DebugConsole
+                    logs={logs}
+                    errors={errorLogs}
+                    title="數據載入調試信息"
                   />
                 )}
               </div>
@@ -440,37 +456,45 @@ export default function Home() {
                   userId={userId}
                   onTransactionUpdate={async (updatedTransactions) => {
                     console.log("onTransactionUpdate 被調用，開始更新數據...");
-                    
+
                     // 清除快取
                     if (userId) {
                       const year = currentDate.getFullYear();
                       const month = currentDate.getMonth() + 1;
-                      console.log(`清除用戶 ${userId} 的 ${year}-${month} 快取數據`);
+                      console.log(
+                        `清除用戶 ${userId} 的 ${year}-${month} 快取數據`
+                      );
                       clearTransactionCache(userId, year, month);
                     }
-                    
+
                     // 重新獲取數據
                     setIsLoading(true);
                     console.log("設置載入狀態為 true");
-                    
+
                     try {
                       const year = currentDate.getFullYear();
                       const month = currentDate.getMonth() + 1;
-                      console.log(`開始並行獲取 ${year}-${month} 的交易數據和月度摘要`);
-                      
+                      console.log(
+                        `開始並行獲取 ${year}-${month} 的交易數據和月度摘要`
+                      );
+
                       // 並行獲取交易數據和月度摘要
                       const [newTransactions, newSummary] = await Promise.all([
                         fetchTransactionsByUser(userId, year, month),
-                        fetchMonthlySummary(userId, year, month)
+                        fetchMonthlySummary(userId, year, month),
                       ]);
-                      
-                      console.log(`成功獲取 ${newTransactions.length} 筆交易數據`);
-                      console.log(`新的月度摘要: 支出=${newSummary.totalExpense}, 收入=${newSummary.totalIncome}, 結餘=${newSummary.balance}`);
-                      
+
+                      console.log(
+                        `成功獲取 ${newTransactions.length} 筆交易數據`
+                      );
+                      console.log(
+                        `新的月度摘要: 支出=${newSummary.totalExpense}, 收入=${newSummary.totalIncome}, 結餘=${newSummary.balance}`
+                      );
+
                       // 更新兩個狀態
                       setTransactions(newTransactions);
                       setSummary(newSummary);
-                      
+
                       console.log("已更新交易列表和月度摘要");
                     } catch (error) {
                       console.error("Error fetching updated data:", error);
@@ -480,12 +504,12 @@ export default function Home() {
                     }
                   }}
                 />
-                
+
                 {showDebug && (
-                  <DebugConsole 
-                    logs={logs} 
-                    errors={errorLogs} 
-                    title="應用調試信息" 
+                  <DebugConsole
+                    logs={logs}
+                    errors={errorLogs}
+                    title="應用調試信息"
                   />
                 )}
               </>
@@ -493,7 +517,7 @@ export default function Home() {
           </>
         )}
       </main>
-      
+
       {/* Small debug indicator */}
       {showDebug && (
         <div className="fixed bottom-2 right-2 bg-gray-800 text-white text-xs px-2 py-1 rounded-full opacity-70">
