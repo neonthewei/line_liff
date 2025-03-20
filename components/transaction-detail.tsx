@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   ChevronRight,
   Trash2,
@@ -165,6 +165,7 @@ async function getUserIdFromLiff(): Promise<string | null> {
 
 export default function TransactionDetail({ onError }: TransactionDetailProps) {
   const [transaction, setTransaction] = useState<Transaction | null>(null);
+  const [originalTransaction, setOriginalTransaction] = useState<Transaction | null>(null); // Store original transaction for comparison
   const [isLoading, setIsLoading] = useState(true);
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
@@ -194,7 +195,21 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
   const [isSharing, setIsSharing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const router = useRouter();
-
+  const [isButtonsDisabled, setIsButtonsDisabled] = useState(true); // Add disable state for buttons
+  
+  // Check if transaction has been modified
+  const hasChanges = useMemo(() => {
+    if (!transaction || !originalTransaction) return false;
+    
+    return (
+      transaction.type !== originalTransaction.type ||
+      transaction.category !== originalTransaction.category ||
+      transaction.amount !== originalTransaction.amount ||
+      transaction.date !== originalTransaction.date ||
+      transaction.note !== originalTransaction.note
+    );
+  }, [transaction, originalTransaction]);
+  
   // Mark component as mounted on client-side
   useEffect(() => {
     setIsMounted(true);
@@ -376,6 +391,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
             user_id: userId || data.user_id || "" // 優先使用 LIFF 的 user_id
           };
           setTransaction(transactionWithUserId);
+          setOriginalTransaction(transactionWithUserId); // Store original state
           
           // 重置編輯狀態
           setEditAmount("");
@@ -392,6 +408,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
             user_id: userId || ""
           };
           setTransaction(defaultWithUserId);
+          setOriginalTransaction(defaultWithUserId); // Store original state
           if (onError) onError();
         }
       } catch (error) {
@@ -404,6 +421,17 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
 
     initialize();
   }, [isMounted, onError]);
+
+  // Add a small delay before enabling buttons to prevent accidental clicks
+  useEffect(() => {
+    if (isMounted) {
+      const timer = setTimeout(() => {
+        setIsButtonsDisabled(false);
+      }, 300); // 300ms delay
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isMounted]);
 
   // 當交易類型變更時，更新類別列表
   useEffect(() => {
@@ -518,6 +546,12 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
 
   const handleConfirm = async () => {
     if (!transaction) return;
+    
+    // 如果沒有變更，直接返回，不顯示通知
+    if (!hasChanges) {
+      navigateBackToList();
+      return;
+    }
     
     // 驗證類別是否已選擇
     if (!transaction.category) {
@@ -1451,6 +1485,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
                     <span className="text-gray-800">
                       {Math.abs(transaction.amount)}
                     </span>
+                    <Edit className="h-5 w-5 mr-0.5 ml-2.5 text-gray-400" />
                   </div>
                 )}
               </div>
@@ -1557,11 +1592,10 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
               </div>
             </div>
 
-            {/* 分隔線 */}
-            <div className="border-t border-gray-100"></div>
 
-            {/* 固定支出/收入 */}
-            <div className="flex items-center justify-between">
+
+            {/* 固定支出/收入 - Hidden */}
+            <div className="hidden flex items-center justify-between">
               <span className="text-gray-600 pl-2">定期{transaction.type === "expense" ? "支出" : "收入"}</span>
               <div className="flex items-center">
                 <div
@@ -1585,13 +1619,9 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
               </div>
             </div>
             
-            {/* 定期支出/收入設定區域 */}
+            {/* 定期支出/收入設定區域 - Hidden */}
             <div 
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                isFixedExpanded 
-                  ? "max-h-96 opacity-100 mt-4"
-                  : "max-h-0 opacity-0 !mt-0"
-              }`}
+              className="hidden overflow-hidden transition-all duration-300 ease-in-out"
             >
               <div className="bg-gray-50 rounded-xl p-4">
                 <div className="space-y-4">
@@ -1820,16 +1850,31 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
             {/* 確認按鈕 */}
             <button
               onClick={handleConfirm}
-              className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
+              disabled={isButtonsDisabled}
+              className={`w-full py-3 rounded-2xl flex items-center justify-center ${
+                hasChanges
+                  ? "bg-[#22c55e] text-white active:bg-green-600"
+                  : "bg-gray-200 text-gray-600 active:bg-gray-300"
+              } transition-[background-color] duration-150 ${isButtonsDisabled ? 'pointer-events-none' : ''}`}
             >
-              <Check size={20} className="mr-2" />
-              完成
+              {hasChanges ? (
+                <>
+                  <Check size={20} className="mr-2" />
+                  更新
+                </>
+              ) : (
+                <>
+                  <ArrowLeft size={20} className="mr-2" />
+                  返回
+                </>
+              )}
             </button>
 
             {/* 刪除按鈕 */}
             <button
               onClick={handleDelete}
-              className="w-full py-3 rounded-2xl bg-red-500 text-white flex items-center justify-center transition-colors duration-150 active:bg-red-600"
+              disabled={isButtonsDisabled}
+              className={`w-full py-3 rounded-2xl bg-red-500 text-white flex items-center justify-center transition-colors duration-150 active:bg-red-600 ${isButtonsDisabled ? 'pointer-events-none' : ''}`}
             >
               <Trash2 size={20} className="mr-2" />
               刪除

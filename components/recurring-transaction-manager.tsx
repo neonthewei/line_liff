@@ -1647,8 +1647,7 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
         [createdTransaction[0], ...prevTransactions]
       );
       
-      // Show success toast
-      showToastNotification("固定收支已建立", "success");
+      // Remove success toast notification
       
       // Close editor
       setIsCreating(false);
@@ -1794,8 +1793,7 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
         )
       );
       
-      // Show success toast
-      showToastNotification("固定收支已更新", "success");
+      // Remove success toast
       
       // Close editor
       setIsEditing(false);
@@ -1836,8 +1834,7 @@ export default function RecurringTransactionManager({ userId, onClose }: Recurri
         prevTransactions.filter(tx => tx.id !== transactionId)
       );
       
-      // Show success toast
-      showToastNotification("固定收支已刪除", "success");
+      // Remove success toast
       
       // Close editor
       setIsEditing(false);

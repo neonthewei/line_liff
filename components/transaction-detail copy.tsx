@@ -89,6 +89,8 @@ export default function TransactionDetail({
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("success");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  // Add a state to temporarily disable buttons
+  const [isButtonsDisabled, setIsButtonsDisabled] = useState(true);
 
   // 檢查資料是否有變動
   const hasChanges = useMemo(() => {
@@ -105,6 +107,17 @@ export default function TransactionDetail({
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  // Add a small delay before enabling buttons to prevent accidental clicks
+  useEffect(() => {
+    if (isMounted) {
+      const timer = setTimeout(() => {
+        setIsButtonsDisabled(false);
+      }, 300); // 300ms delay
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isMounted]);
 
   useEffect(() => {
     if (!isMounted) return;
@@ -223,6 +236,9 @@ export default function TransactionDetail({
   };
 
   const handleDelete = async () => {
+    // Prevent accidental clicks 
+    if (isButtonsDisabled) return;
+    
     if (!transaction) return;
     setShowDeleteModal(true);
   };
@@ -245,6 +261,9 @@ export default function TransactionDetail({
   };
 
   const handleConfirm = async () => {
+    // Prevent accidental clicks
+    if (isButtonsDisabled) return;
+    
     if (!hasChanges) {
       onBack?.();
       return;
@@ -1197,11 +1216,12 @@ export default function TransactionDetail({
             {/* 確認按鈕 */}
             <button
               onClick={handleConfirm}
+              disabled={isButtonsDisabled}
               className={`w-full py-3 rounded-2xl flex items-center justify-center ${
                 hasChanges
                   ? "bg-[#22c55e] text-white active:bg-green-600"
                   : "bg-gray-200 text-gray-600 active:bg-gray-300"
-              } transition-[background-color] duration-150`}
+              } transition-[background-color] duration-150 ${isButtonsDisabled ? 'pointer-events-none' : ''}`}
             >
               {hasChanges ? (
                 <>
@@ -1219,7 +1239,8 @@ export default function TransactionDetail({
             {/* 刪除按鈕 */}
             <button
               onClick={handleDelete}
-              className="w-full py-3 rounded-2xl bg-red-500 text-white flex items-center justify-center transition-colors duration-150 active:bg-red-600"
+              disabled={isButtonsDisabled}
+              className={`w-full py-3 rounded-2xl bg-red-500 text-white flex items-center justify-center transition-colors duration-150 active:bg-red-600 ${isButtonsDisabled ? 'pointer-events-none' : ''}`}
             >
               <Trash2 size={20} className="mr-2" />
               刪除
