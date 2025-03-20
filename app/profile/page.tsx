@@ -4,7 +4,18 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { initializeLiff } from "@/utils/liff";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { ChevronRight, BookOpen, MessageSquare, Download, CreditCard, MessageCircle, Copy, CheckCircle, Target, Edit2 } from "lucide-react";
+import {
+  ChevronRight,
+  BookOpen,
+  MessageSquare,
+  Download,
+  CreditCard,
+  MessageCircle,
+  Copy,
+  CheckCircle,
+  Target,
+  Edit2,
+} from "lucide-react";
 import Link from "next/link";
 
 interface UserProfile {
@@ -23,55 +34,74 @@ export default function ProfilePage() {
   const [goal, setGoal] = useState<string>("");
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [newGoal, setNewGoal] = useState<string>("");
+  const [showOverlay, setShowOverlay] = useState(true);
+
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "u") {
+        setShowOverlay(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyPress);
+    return () => window.removeEventListener("keydown", handleKeyPress);
+  }, []);
 
   useEffect(() => {
     // 從 localStorage 獲取目標
-    const savedGoal = localStorage.getItem('userGoal');
+    const savedGoal = localStorage.getItem("userGoal");
     if (savedGoal) {
       setGoal(savedGoal);
     }
-    
+
     const initLiff = async () => {
       try {
         // 檢測是否在 LINE 內部瀏覽器中
-        const isInLineInternalBrowser = typeof window !== 'undefined' && 
-          window.navigator.userAgent.includes('Line') && 
-          !window.navigator.userAgent.includes('LIFF');
-        
+        const isInLineInternalBrowser =
+          typeof window !== "undefined" &&
+          window.navigator.userAgent.includes("Line") &&
+          !window.navigator.userAgent.includes("LIFF");
+
         console.log("Is in LINE internal browser:", isInLineInternalBrowser);
-        
+
         // 初始化 LIFF
         const isInitialized = await initializeLiff();
-        
+
         if (!isInitialized) {
           throw new Error("LIFF 初始化失敗");
         }
-        
+
         // 如果在 LINE 內部瀏覽器中，嘗試從 localStorage 獲取用戶資料
         if (isInLineInternalBrowser) {
-          console.log("In LINE internal browser, trying to get user data from localStorage");
-          const storedUserId = localStorage.getItem('userId');
-          const storedDisplayName = localStorage.getItem('displayName');
-          const storedPictureUrl = localStorage.getItem('pictureUrl');
-          
+          console.log(
+            "In LINE internal browser, trying to get user data from localStorage"
+          );
+          const storedUserId = localStorage.getItem("userId");
+          const storedDisplayName = localStorage.getItem("displayName");
+          const storedPictureUrl = localStorage.getItem("pictureUrl");
+
           if (storedUserId && storedDisplayName) {
-            console.log("Found stored user data:", storedUserId, storedDisplayName);
+            console.log(
+              "Found stored user data:",
+              storedUserId,
+              storedDisplayName
+            );
             setUserProfile({
               userId: storedUserId,
               displayName: storedDisplayName,
-              pictureUrl: storedPictureUrl || undefined
+              pictureUrl: storedPictureUrl || undefined,
             });
             setIsLoading(false);
             return;
           } else {
             console.log("No stored user data found in localStorage");
-            
+
             // 嘗試從 LIFF context 獲取用戶 ID
             try {
-              if (window.liff && typeof window.liff.getContext === 'function') {
+              if (window.liff && typeof window.liff.getContext === "function") {
                 const context = window.liff.getContext();
                 console.log("LIFF Context for user ID:", context);
-                
+
                 if (context && context.userId) {
                   console.log("Found user ID in LIFF context:", context.userId);
                   // 如果有 userId 但沒有完整資料，可以嘗試獲取完整資料
@@ -79,18 +109,21 @@ export default function ProfilePage() {
                     const profile = await window.liff.getProfile();
                     if (profile && profile.userId) {
                       setUserProfile(profile);
-                      
+
                       // 存儲用戶資料到 localStorage
-                      localStorage.setItem('userId', profile.userId);
-                      localStorage.setItem('displayName', profile.displayName);
+                      localStorage.setItem("userId", profile.userId);
+                      localStorage.setItem("displayName", profile.displayName);
                       if (profile.pictureUrl) {
-                        localStorage.setItem('pictureUrl', profile.pictureUrl);
+                        localStorage.setItem("pictureUrl", profile.pictureUrl);
                       }
                       setIsLoading(false);
                       return;
                     }
                   } catch (profileError) {
-                    console.error("Error getting profile from LIFF:", profileError);
+                    console.error(
+                      "Error getting profile from LIFF:",
+                      profileError
+                    );
                   }
                 }
               }
@@ -99,7 +132,7 @@ export default function ProfilePage() {
             }
           }
         }
-        
+
         // 檢查是否已登入
         if (!window.liff.isLoggedIn()) {
           // 如果未登入，則導向登入
@@ -107,7 +140,7 @@ export default function ProfilePage() {
           window.liff.login();
           return;
         }
-        
+
         // 用戶已登入，獲取用戶資料
         console.log("User logged in, getting profile");
         try {
@@ -121,28 +154,34 @@ export default function ProfilePage() {
             }
             console.log("Access token exists, continuing to get user profile");
           } catch (tokenError) {
-            console.error("Failed to get access token, may be expired", tokenError);
+            console.error(
+              "Failed to get access token, may be expired",
+              tokenError
+            );
             console.log("Attempting to login again");
             window.liff.login();
             return;
           }
-          
+
           const profile = await window.liff.getProfile();
           console.log("Successfully got user profile:", profile);
-          
+
           if (profile && profile.userId) {
             setUserProfile(profile);
-            
+
             // 存儲用戶資料到 localStorage
             try {
-              localStorage.setItem('userId', profile.userId);
-              localStorage.setItem('displayName', profile.displayName);
+              localStorage.setItem("userId", profile.userId);
+              localStorage.setItem("displayName", profile.displayName);
               if (profile.pictureUrl) {
-                localStorage.setItem('pictureUrl', profile.pictureUrl);
+                localStorage.setItem("pictureUrl", profile.pictureUrl);
               }
               console.log("Saved user profile to localStorage");
             } catch (storageError) {
-              console.error("Failed to save user profile to localStorage:", storageError);
+              console.error(
+                "Failed to save user profile to localStorage:",
+                storageError
+              );
             }
           } else {
             throw new Error("無法獲取用戶資料");
@@ -166,13 +205,14 @@ export default function ProfilePage() {
   const handleCopyUserId = (e: React.MouseEvent) => {
     e.stopPropagation(); // 阻止事件冒泡
     if (userProfile?.userId) {
-      navigator.clipboard.writeText(userProfile.userId)
+      navigator.clipboard
+        .writeText(userProfile.userId)
         .then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 2000); // 2秒後重置複製狀態
         })
-        .catch(err => {
-          console.error('無法複製到剪貼簿:', err);
+        .catch((err) => {
+          console.error("無法複製到剪貼簿:", err);
         });
     }
   };
@@ -181,7 +221,7 @@ export default function ProfilePage() {
   const handleSaveGoal = () => {
     if (newGoal.trim()) {
       setGoal(newGoal.trim());
-      localStorage.setItem('userGoal', newGoal.trim());
+      localStorage.setItem("userGoal", newGoal.trim());
     }
     setIsEditingGoal(false);
   };
@@ -246,7 +286,7 @@ export default function ProfilePage() {
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
         <div className="bg-red-50 p-4 rounded-lg max-w-md w-full">
           <p className="text-red-600 text-center">{error}</p>
-          <button 
+          <button
             onClick={() => window.location.reload()}
             className="mt-4 w-full py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
           >
@@ -258,26 +298,37 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="container mx-auto max-w-md p-5 min-h-screen bg-white">
+    <main className="container mx-auto max-w-md p-5 min-h-screen bg-white relative">
+      {showOverlay && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <h2 className="text-4xl font-bold text-white">開發中！</h2>
+        </div>
+      )}
+
       {/* 用戶資料區塊 */}
       <div className="bg-white flex flex-col items-center">
         <Avatar className="h-24 w-24 mb-4">
           {userProfile?.pictureUrl ? (
-            <AvatarImage src={userProfile.pictureUrl} alt={userProfile.displayName} />
+            <AvatarImage
+              src={userProfile.pictureUrl}
+              alt={userProfile.displayName}
+            />
           ) : (
             <AvatarFallback className="bg-gray-200 text-gray-600 text-xl">
               {userProfile?.displayName?.charAt(0) || "U"}
             </AvatarFallback>
           )}
         </Avatar>
-        <h1 className="text-xl font-semibold mb-1">{userProfile?.displayName}</h1>
-        
+        <h1 className="text-xl font-semibold mb-1">
+          {userProfile?.displayName}
+        </h1>
+
         {/* 用戶 ID 和複製按鈕 */}
         <div className="flex items-center mb-6 bg-gray-50 rounded-full px-3 py-1">
           <p className="text-xs text-gray-500 mr-2 truncate max-w-[180px]">
             {userProfile?.userId}
           </p>
-          <button 
+          <button
             onClick={handleCopyUserId}
             onMouseDown={(e) => e.stopPropagation()}
             className="text-gray-400 hover:text-green-500 transition-colors focus:outline-none"
@@ -291,11 +342,13 @@ export default function ProfilePage() {
             )}
           </button>
         </div>
-        
+
         {/* 已記帳天數 - 使用綠色設計，圓角小一點 */}
         <div className="bg-green-500 text-white px-5 py-2 rounded-xl shadow-sm flex items-center justify-center mb-4">
           <span className="text-sm font-medium">已記帳 </span>
-          <span className="text-xl font-bold mx-1">{localStorage.getItem('daysUsed') || "0"}</span>
+          <span className="text-xl font-bold mx-1">
+            {localStorage.getItem("daysUsed") || "0"}
+          </span>
           <span className="text-sm font-medium"> 天</span>
         </div>
 
@@ -304,16 +357,18 @@ export default function ProfilePage() {
           {/* 裝飾元素 */}
           <div className="absolute -top-10 -right-10 w-24 h-24 rounded-full bg-gradient-to-br from-green-200/30 to-blue-200/30"></div>
           <div className="absolute -bottom-8 -left-8 w-20 h-20 rounded-full bg-gradient-to-tr from-green-200/20 to-blue-200/20"></div>
-          
+
           <div className="flex items-center justify-between mb-3 relative z-10">
             <div className="flex items-center">
               <div className="bg-white p-2 rounded-full mr-3">
                 <Target className="h-5 w-5 text-green-500" />
               </div>
-              <h2 className="text-base font-semibold text-gray-700">我的記帳目標</h2>
+              <h2 className="text-base font-semibold text-gray-700">
+                我的記帳目標
+              </h2>
             </div>
           </div>
-          
+
           {isEditingGoal ? (
             <div className="relative z-10">
               <textarea
@@ -324,13 +379,13 @@ export default function ProfilePage() {
                 rows={3}
               />
               <div className="flex justify-end space-x-2">
-                <button 
+                <button
                   onClick={handleCancelEditGoal}
                   className="px-4 py-1.5 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   取消
                 </button>
-                <button 
+                <button
                   onClick={handleSaveGoal}
                   className="px-4 py-1.5 text-xs text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg hover:from-green-600 hover:to-green-700 transition-colors"
                 >
@@ -339,7 +394,7 @@ export default function ProfilePage() {
               </div>
             </div>
           ) : (
-            <div 
+            <div
               className="bg-white p-4 rounded-lg relative z-10 cursor-pointer hover:bg-gray-50 transition-colors"
               onClick={handleStartEditGoal}
               tabIndex={0}
@@ -347,17 +402,13 @@ export default function ProfilePage() {
               aria-label="點擊編輯目標"
             >
               {goal ? (
-                <p className="text-sm text-gray-600">
-                  {goal}
-                </p>
+                <p className="text-sm text-gray-600">{goal}</p>
               ) : (
                 <div className="flex flex-col items-center justify-center py-3">
                   <p className="text-sm text-gray-500 text-center mb-2">
                     尚未設定目標
                   </p>
-                  <button 
-                    className="px-4 py-1.5 text-xs text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg hover:from-green-600 hover:to-green-700 transition-colors"
-                  >
+                  <button className="px-4 py-1.5 text-xs text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg hover:from-green-600 hover:to-green-700 transition-colors">
                     立即設定
                   </button>
                 </div>
@@ -389,4 +440,4 @@ export default function ProfilePage() {
       </div>
     </main>
   );
-} 
+}
