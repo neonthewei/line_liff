@@ -448,7 +448,13 @@ const RecurringTransactionEditor = ({
 
   // Handle date selection
   const handleDateSelect = (date: Date) => {
-    const formattedDate = date.toISOString().split("T")[0]; // Format as YYYY-MM-DD
+    // 使用不依赖时区的方式格式化日期
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const formattedDate = `${year}-${String(month).padStart(2, "0")}-${String(
+      day
+    ).padStart(2, "0")}`;
 
     if (selectedDate === "start") {
       setEditedTransaction({
@@ -562,8 +568,13 @@ const RecurringTransactionEditor = ({
 
     // Fill in the days of the month
     for (let i = 1; i <= daysInMonth; i++) {
+      // 创建本地日期，避免时区问题
       const date = new Date(year, month, i);
-      const dateString = date.toISOString().split("T")[0]; // Format as YYYY-MM-DD
+      // 使用不依赖时区的方式格式化日期
+      const dateString = `${year}-${String(month + 1).padStart(
+        2,
+        "0"
+      )}-${String(i).padStart(2, "0")}`;
 
       const isStartDate = editedTransaction.start_date === dateString;
       const isEndDate = editedTransaction.end_date === dateString;
@@ -571,37 +582,63 @@ const RecurringTransactionEditor = ({
         (selectedDate === "start" && isStartDate) ||
         (selectedDate === "end" && isEndDate);
 
-      days.push(
-        <button
-          key={`day-${i}`}
-          className={`relative h-8 w-8 rounded-lg flex items-center justify-center ${
-            isStartDate && isEndDate
-              ? "bg-green-500 text-white"
-              : isStartDate
-              ? "bg-green-500 text-white"
-              : isEndDate
-              ? "bg-blue-500 text-white group"
-              : isSelected
-              ? "bg-gray-300"
-              : ""
-          }`}
-          onClick={() => handleDateSelect(date)}
-        >
-          {i}
-          {isEndDate && (
-            <button
+      if (isEndDate) {
+        // 对于结束日期，使用div包装而不是button
+        days.push(
+          <div
+            key={`day-${i}`}
+            className={`relative h-8 w-8 rounded-lg flex items-center justify-center ${
+              isStartDate && isEndDate
+                ? "bg-green-500 text-white"
+                : isStartDate
+                ? "bg-green-500 text-white"
+                : isEndDate
+                ? "bg-blue-500 text-white group"
+                : isSelected
+                ? "bg-gray-300"
+                : ""
+            }`}
+          >
+            <div
+              className="w-full h-full flex items-center justify-center cursor-pointer"
+              onClick={() => handleDateSelect(date)}
+            >
+              {i}
+            </div>
+            <span
               onClick={(e) => {
                 e.stopPropagation();
                 handleRemoveEndDate();
               }}
-              className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300 transition-colors duration-150 opacity-0 group-hover:opacity-100"
+              className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300 transition-colors duration-150 cursor-pointer"
               aria-label="移除結束日期"
             >
               <X size={10} className="text-gray-600" />
-            </button>
-          )}
-        </button>
-      );
+            </span>
+          </div>
+        );
+      } else {
+        // 对于普通日期，继续使用button
+        days.push(
+          <button
+            key={`day-${i}`}
+            className={`relative h-8 w-8 rounded-lg flex items-center justify-center ${
+              isStartDate && isEndDate
+                ? "bg-green-500 text-white"
+                : isStartDate
+                ? "bg-green-500 text-white"
+                : isEndDate
+                ? "bg-blue-500 text-white group"
+                : isSelected
+                ? "bg-gray-300"
+                : ""
+            }`}
+            onClick={() => handleDateSelect(date)}
+          >
+            {i}
+          </button>
+        );
+      }
     }
 
     return days;
