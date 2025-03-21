@@ -8,8 +8,8 @@ import BottomNav from "@/components/bottom-nav"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "記帳小本本",
-  description: "記帳小本本",
+  title: "旺來記帳",
+  description: "旺來記帳",
     generator: 'v0.dev'
 }
 
