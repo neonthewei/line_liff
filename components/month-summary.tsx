@@ -1,52 +1,56 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Skeleton } from "@/components/ui/skeleton"
+import { useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface MonthSummaryProps {
-  currentDate: Date
+  currentDate: Date;
   summary?: {
-    totalExpense: number
-    totalIncome: number
-    balance: number
-  }
-  isLoading?: boolean
-  onClick?: () => void
+    totalExpense: number;
+    totalIncome: number;
+    balance: number;
+  };
+  isLoading?: boolean;
+  onClick?: () => void;
 }
 
-export default function MonthSummary({ 
-  currentDate, 
+export default function MonthSummary({
+  currentDate,
   summary = { totalExpense: 0, totalIncome: 0, balance: 0 },
   isLoading = false,
-  onClick
+  onClick,
 }: MonthSummaryProps) {
-  const [isPressed, setIsPressed] = useState(false)
+  const [isPressed, setIsPressed] = useState(false);
 
   const handleClick = () => {
-    if (onClick) onClick()
-  }
+    if (onClick) onClick();
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      if (onClick) onClick()
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      if (onClick) onClick();
     }
-  }
+  };
 
   const handleMouseDown = () => {
-    setIsPressed(true)
-  }
+    setIsPressed(true);
+  };
 
   const handleMouseUp = () => {
-    setIsPressed(false)
-  }
+    setIsPressed(false);
+  };
 
   return (
-    <div 
+    <div
       className={`mb-4 bg-green-500 text-white rounded-2xl overflow-hidden shadow-sm 
         transition-all duration-100 ease-in-out
-        ${!isLoading ? 'cursor-pointer active:brightness-95 active:scale-[0.98]' : ''}
-        ${isPressed ? 'brightness-95 scale-[0.99]' : ''}
+        ${
+          !isLoading
+            ? "cursor-pointer active:brightness-95 active:scale-[0.98]"
+            : ""
+        }
+        ${isPressed ? "brightness-95 scale-[0.99]" : ""}
       `}
       onClick={!isLoading ? handleClick : undefined}
       onKeyDown={!isLoading ? handleKeyDown : undefined}
@@ -55,14 +59,21 @@ export default function MonthSummary({
       onMouseLeave={isPressed ? handleMouseUp : undefined}
       role={!isLoading ? "button" : undefined}
       tabIndex={!isLoading ? 0 : undefined}
-      aria-label={!isLoading ? `${currentDate.getFullYear()}年${(currentDate.getMonth() + 1).toString().padStart(2, '0')}月的財務摘要` : undefined}
+      aria-label={
+        !isLoading
+          ? `${currentDate.getFullYear()}年${(currentDate.getMonth() + 1)
+              .toString()
+              .padStart(2, "0")}月的財務摘要`
+          : undefined
+      }
     >
       <div className="p-5">
         <div className="flex justify-between items-start mb-2">
-          <div className="text-sm font-medium">月支出</div>
+          <div className="text-sm font-medium">月結餘</div>
           {!isLoading && (
             <div className="text-xs opacity-80">
-              {currentDate.getFullYear()}年{(currentDate.getMonth() + 1).toString().padStart(2, '0')}月
+              {currentDate.getFullYear()}年
+              {(currentDate.getMonth() + 1).toString().padStart(2, "0")}月
             </div>
           )}
         </div>
@@ -85,21 +96,21 @@ export default function MonthSummary({
           </div>
         ) : (
           <>
-            <div className="text-4xl font-bold mb-4">${summary.totalExpense}</div>
+            <div className="text-4xl font-bold mb-4">${summary.balance}</div>
 
             <div className="flex justify-between text-sm">
               <div className="flex flex-col">
-                <span className="text-xs opacity-80 mb-0.5">月收入</span>
-                <span className="font-medium">${summary.totalIncome}</span>
+                <span className="text-xs opacity-80 mb-0.5">月支出</span>
+                <span className="font-medium">${summary.totalExpense}</span>
               </div>
               <div className="flex flex-col">
-                <span className="text-xs opacity-80 mb-0.5">月結餘</span>
-                <span className="font-medium">${summary.balance}</span>
+                <span className="text-xs opacity-80 mb-0.5">月收入</span>
+                <span className="font-medium">${summary.totalIncome}</span>
               </div>
             </div>
           </>
         )}
       </div>
     </div>
-  )
-} 
+  );
+}
