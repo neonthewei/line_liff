@@ -36,7 +36,7 @@ const TransactionItem = memo(
     showDebugInfo?: boolean;
     showTimestamp?: boolean;
     onDelete?: (id: string) => void;
-    onSwipeStateChange: (isOpen: boolean) => void;
+    onSwipeStateChange: (isOpen: boolean, id: string) => void;
     shouldClose: boolean;
   }) => {
     // Add refs to track touch position for distinguishing between scrolls and taps
@@ -51,6 +51,7 @@ const TransactionItem = memo(
     const [translateX, setTranslateX] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
     const [showDeleteButton, setShowDeleteButton] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false); // 新增刪除確認彈窗狀態
     const itemRef = useRef<HTMLDivElement>(null);
     const deleteThreshold = 100; // 刪除閾值
     const [isDeleting, setIsDeleting] = useState(false);
@@ -60,25 +61,36 @@ const TransactionItem = memo(
     const isHorizontalSwipe = useRef(false); // 記錄是否為水平滑動
     const [isAnimating, setIsAnimating] = useState(false); // 控制滑動動畫狀態
 
-    // 監聽外部請求關閉的信號
+    // 優化收回動畫
     useEffect(() => {
-      if (shouldClose && showDeleteButton && !isDeleting) {
-        // 如果收到關閉信號且項目正在顯示刪除按鈕，則自動收回
+      // 如果需要關閉且顯示刪除按鈕或已經有位移
+      if (shouldClose && (showDeleteButton || translateX < 0)) {
+        // 立即中斷任何進行中的動畫
+        if (itemRef.current) {
+          // 先設置為非常短的過渡動畫，確保立即性
+          itemRef.current.style.transition =
+            "transform 0.08s cubic-bezier(0.2, 0, 0.4, 1)";
+          itemRef.current.style.transform = "translateX(0)";
+        }
+
+        // 立即更新狀態
         setTranslateX(0);
         setShowDeleteButton(false);
 
-        // 如果有引用，使用動畫
-        if (itemRef.current) {
-          itemRef.current.style.transition = "transform 0.2s ease-out";
-          itemRef.current.style.transform = "translateX(0)";
-        }
+        // 設置動畫狀態，防止在動畫期間進行其他操作
+        setIsAnimating(true);
+
+        // 動畫結束後重置動畫狀態
+        setTimeout(() => {
+          setIsAnimating(false);
+        }, 80); // 和過渡時間匹配
       }
-    }, [shouldClose, isDeleting]);
+    }, [shouldClose, showDeleteButton, translateX]);
 
     // 當刪除按鈕狀態變化時，通知父組件
     useEffect(() => {
-      onSwipeStateChange(showDeleteButton);
-    }, [showDeleteButton, onSwipeStateChange]);
+      onSwipeStateChange(showDeleteButton, transaction.id);
+    }, [showDeleteButton, onSwipeStateChange, transaction.id]);
 
     // 在滑動開始時添加禁止滾動事件
     useEffect(() => {
@@ -137,9 +149,30 @@ const TransactionItem = memo(
     // Handle mouse click
     const handleClick = (e: React.MouseEvent) => {
       // 如果是滑動狀態或者剛剛完成滑動，不觸發點擊事件
-      if (isDragging || showDeleteButton || translateX > 10) {
+      if (isDragging || translateX > 10) {
         e.preventDefault();
         e.stopPropagation();
+        return;
+      }
+
+      // 如果刪除按鈕已經顯示，則點擊會收回刪除按鈕
+      if (showDeleteButton) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // 開始收回動畫
+        setIsAnimating(true);
+        if (itemRef.current) {
+          itemRef.current.style.transition = "transform 0.2s ease-out";
+          itemRef.current.style.transform = "translateX(0)";
+
+          // 在動畫結束後更新狀態
+          setTimeout(() => {
+            setTranslateX(0);
+            setShowDeleteButton(false);
+            setIsAnimating(false);
+          }, 200);
+        }
         return;
       }
 
@@ -201,7 +234,7 @@ const TransactionItem = memo(
       // 如果垂直移動超過閾值，且水平移動不明顯，取消滑動
       if (deltaY > 20 && Math.abs(deltaX) < 10) {
         setIsDragging(false);
-        setTranslateX((prevX) => (prevX > 0 ? prevX : 0));
+        setTranslateX((prevX) => (prevX < 0 ? prevX : 0));
         // 如果不是水平滑動，恢復頁面滾動
         isHorizontalSwipe.current = false;
         return;
@@ -210,23 +243,26 @@ const TransactionItem = memo(
       // 設置滑動狀態
       setIsDragging(true);
 
-      // 如果已經顯示刪除按鈕，允許向左滑動恢復原位
+      // 如果已經顯示刪除按鈕，允許向右滑動恢復原位
       if (showDeleteButton) {
-        // 允許範圍: 0 到 deleteThreshold
-        const newX = Math.max(
+        // 允許範圍: -deleteThreshold 到 0
+        const newX = Math.min(
           0,
-          Math.min(deleteThreshold, deltaX + deleteThreshold)
+          Math.max(-deleteThreshold, deltaX - deleteThreshold)
         );
         setTranslateX(newX);
       } else {
-        // 正常的向右滑動，限制範圍 0 到 deleteThreshold
-        const newTranslateX = Math.max(0, Math.min(deleteThreshold, deltaX));
+        // 正常的向左滑動，限制範圍 -deleteThreshold 到 0
+        const newTranslateX = Math.min(0, Math.max(-deleteThreshold, deltaX));
         setTranslateX(newTranslateX);
       }
     };
 
     // Handle touch start - record starting position
     const handleTouchStart = (e: React.TouchEvent) => {
+      // 立即通知父組件開始操作此項目，確保其他項目立即收回
+      onSwipeStateChange(true, transaction.id);
+
       const touch = e.touches[0];
       touchStartRef.current = {
         x: touch.clientX,
@@ -266,14 +302,14 @@ const TransactionItem = memo(
       // 重置水平滑動標記
       isHorizontalSwipe.current = false;
 
-      // 計算最終滑動速度
+      // 計算最終滑動速度與方向
       const endTime = Date.now();
       const duration = endTime - (touchStartRef.current.time || endTime);
       const distance = translateX - (touchStartRef.current.lastX || 0);
       const velocity = (distance / Math.max(1, duration)) * 1000; // 每秒多少像素
 
       // 檢查是否進行了明顯的滑動
-      const isSignificantMovement = translateX > 10;
+      const isSignificantMovement = Math.abs(translateX) > 10;
 
       // 如果沒有明顯滑動，而且沒有移動過，可能是點擊
       if (!isSignificantMovement && !isTouchMoveRef.current) {
@@ -286,43 +322,37 @@ const TransactionItem = memo(
         // 標記開始動畫
         setIsAnimating(true);
 
-        // 修改閾值：當滑動超過 1/4 就彈出，當滑動小於 3/4 就彈回
-        const quarterThreshold = deleteThreshold / 4;
-        const threeQuarterThreshold = deleteThreshold * 0.75;
-
-        // 決定最終位置 - 使用新的閾值邏輯和速度判斷
+        // 默認目標位置 - 回到原始位置
         let targetX = 0;
 
-        // 考慮滑動速度 - 快速滑動可以更容易觸發動作
-        const isQuickSwipe = Math.abs(velocity) > 800; // 每秒800像素以上視為快速滑動
+        // 判斷方向和狀態
+        const isRightSwipe = distance > 0; // 是否向右滑動 (正值表示向右)
 
+        // 優化判斷邏輯 - 基於當前狀態和滑動方向
         if (showDeleteButton) {
-          // 已經顯示刪除按鈕的情況
-          if (isQuickSwipe && velocity < -300) {
-            // 快速向左滑動，直接關閉
-            targetX = 0;
-          } else if (isQuickSwipe && velocity > 300) {
-            // 快速向右滑動，保持開啟
-            targetX = deleteThreshold;
+          // 當刪除按鈕已顯示時
+          if (isRightSwipe || translateX > -deleteThreshold / 2) {
+            // 1. 向右滑動(嘗試收回) 或 2. 已經收回超過一半
+            targetX = 0; // 完全收回
           } else {
-            // 正常速度，依據位置判斷
-            targetX = translateX < threeQuarterThreshold ? 0 : deleteThreshold;
+            // 否則保持展開
+            targetX = -deleteThreshold;
           }
         } else {
-          // 常規狀態
-          if (isQuickSwipe && velocity > 300) {
-            // 快速向右滑動，直接打開
-            targetX = deleteThreshold;
-          } else if (isQuickSwipe && velocity < -300) {
-            // 快速向左滑動，保持關閉
-            targetX = 0;
+          // 當刪除按鈕未顯示時
+          if (
+            !isRightSwipe &&
+            (Math.abs(translateX) > deleteThreshold / 2 || velocity < -500)
+          ) {
+            // 向左滑動且已經滑動超過一半 或 速度快
+            targetX = -deleteThreshold; // 完全展開
           } else {
-            // 正常速度，依據位置判斷
-            targetX = translateX > quarterThreshold ? deleteThreshold : 0;
+            // 否則回到原位
+            targetX = 0;
           }
         }
 
-        const shouldShowDelete = targetX > 0;
+        const shouldShowDelete = targetX < 0;
 
         // 決定動畫時間 - 根據距離調整
         const distanceToTarget = Math.abs(translateX - targetX);
@@ -369,6 +399,11 @@ const TransactionItem = memo(
         touchStartRef.current = null;
         isTouchMoveRef.current = false;
         setIsPressed(false);
+
+        // 如果沒有顯示刪除按鈕，通知父組件此項目已不再活動
+        if (!showDeleteButton) {
+          onSwipeStateChange(false, transaction.id);
+        }
       }, 50);
     };
 
@@ -395,11 +430,21 @@ const TransactionItem = memo(
       }
     };
 
-    // 處理點擊刪除按鈕
-    const handleDeleteButtonClick = async (e: React.MouseEvent) => {
-      e.stopPropagation(); // 阻止事件冒泡，避免觸發項目點擊
+    // 修改處理點擊刪除按鈕的函數，只顯示確認彈窗
+    const handleDeleteButtonClick = (e: React.MouseEvent) => {
+      e.stopPropagation(); // 阻止事件冒泡，避免觸發外部點擊處理器
+      e.preventDefault(); // 阻止默認行為
 
+      // 顯示刪除確認彈窗，而不是直接刪除
+      setShowDeleteModal(true);
+    };
+
+    // 添加確認刪除函數
+    const confirmDelete = async () => {
       if (!onDelete) return;
+
+      // 關閉確認彈窗
+      setShowDeleteModal(false);
 
       // 立即給用戶視覺反饋
       setIsDeleting(true);
@@ -443,16 +488,43 @@ const TransactionItem = memo(
       }
     };
 
-    // 點擊其他地方時重置滑動狀態
+    // 添加取消刪除函數
+    const cancelDelete = () => {
+      setShowDeleteModal(false);
+    };
+
+    // 修改點擊其他地方時的處理，確保在確認對話框顯示時不會執行收回操作
     useEffect(() => {
       const handleClickOutside = (e: MouseEvent) => {
-        if (
-          showDeleteButton &&
-          itemRef.current &&
-          !itemRef.current.contains(e.target as Node)
-        ) {
-          setTranslateX(0);
-          setShowDeleteButton(false);
+        // 如果確認刪除對話框正在顯示，不處理點擊事件
+        if (showDeleteModal) return;
+
+        // 確保刪除按鈕顯示時，處理點擊事件
+        if (showDeleteButton && itemRef.current) {
+          // 檢查點擊是否在刪除按鈕上，如果是，不做任何處理（由刪除按鈕自己的處理器處理）
+          const deleteButtonElement = document.querySelector(
+            `.delete-button-${transaction.id}`
+          );
+          if (
+            deleteButtonElement &&
+            deleteButtonElement.contains(e.target as Node)
+          ) {
+            return; // 如果點擊在刪除按鈕上，不做處理
+          }
+
+          // 如果點擊不在刪除按鈕上，收回按鈕並添加動畫效果
+          setIsAnimating(true);
+          if (itemRef.current) {
+            itemRef.current.style.transition = "transform 0.2s ease-out";
+            itemRef.current.style.transform = "translateX(0)";
+
+            // 在動畫結束後更新狀態
+            setTimeout(() => {
+              setTranslateX(0);
+              setShowDeleteButton(false);
+              setIsAnimating(false);
+            }, 200);
+          }
         }
       };
 
@@ -460,7 +532,7 @@ const TransactionItem = memo(
       return () => {
         document.removeEventListener("click", handleClickOutside);
       };
-    }, [showDeleteButton]);
+    }, [showDeleteButton, transaction.id, showDeleteModal]);
 
     // 如果已刪除，則不渲染此項目
     if (isDeleted) {
@@ -485,13 +557,62 @@ const TransactionItem = memo(
           transition: "all 250ms cubic-bezier(0.4, 0, 0.2, 1)",
         };
 
+    // 在 return 中添加刪除確認彈窗
     return (
       <div className="relative overflow-hidden" style={deleteAnimationStyle}>
+        {/* 刪除確認彈窗 */}
+        {showDeleteModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 animate-fadeIn"
+            onClick={(e) => {
+              e.stopPropagation(); // 阻止點擊事件冒泡
+              cancelDelete();
+            }}
+          >
+            <div
+              className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-xl transform animate-scaleInStatic"
+              onClick={(e) => e.stopPropagation()} // 防止點擊內容區域時關閉視窗
+            >
+              <div className="text-center mb-4">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
+                  <Trash2 className="h-6 w-6 text-red-500" />
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  確定要刪除嗎？
+                </h3>
+                <p className="text-sm text-gray-500">
+                  此操作無法復原，刪除後資料將永久消失。
+                </p>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    cancelDelete();
+                  }}
+                  className="flex-1 py-2 rounded-xl bg-gray-200 text-gray-700 font-medium transition-all duration-150 active:bg-gray-300"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    confirmDelete();
+                  }}
+                  className="flex-1 py-2 rounded-xl bg-red-500 text-white font-medium transition-all duration-150 active:bg-red-600"
+                >
+                  確定刪除
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 刪除按鈕背景 */}
         <div
-          className="absolute left-0 top-0 bottom-0 w-[100px] bg-red-500 flex items-center justify-center"
+          className={`absolute right-0 top-0 bottom-0 w-[100px] bg-red-500 flex items-center justify-center delete-button-${transaction.id}`}
           style={{
-            transform: `translateX(${translateX > 0 ? 0 : -100}px)`,
+            transform: `translateX(${translateX < 0 ? 0 : 100}px)`,
             transition: isDragging ? "none" : "transform 0.2s ease-out",
           }}
           onClick={showDeleteButton ? handleDeleteButtonClick : undefined}
@@ -627,12 +748,10 @@ export default function TransactionList({
   const [showRecurringManager, setShowRecurringManager] = useState(false);
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
+  const [activeSwipeId, setActiveSwipeId] = useState<string | null>(null);
   const [deletedTransactionIds, setDeletedTransactionIds] = useState<
     Set<string>
   >(new Set()); // 記錄已刪除的交易ID
-
-  // 添加一個引用來追踪當前滑出的交易項目ID
-  const currentSwipedItemIdRef = useRef<string | null>(null);
 
   // 簡化處理交易刪除邏輯 - 改為記錄已刪除的交易ID
   const handleDeleteTransaction = async (id: string) => {
@@ -644,23 +763,29 @@ export default function TransactionList({
     });
   };
 
-  // 處理交易項目滑動狀態變化
-  const handleSwipeStateChange = (transactionId: string, isOpen: boolean) => {
+  // 處理滑動狀態變化 - 改為立即通知其他項目關閉
+  const handleSwipeStateChange = (isOpen: boolean, transactionId: string) => {
+    // 任何觸摸操作立即設置新的活動項目
     if (isOpen) {
-      // 如果有新項目滑出，設置為當前滑出項目
-      currentSwipedItemIdRef.current = transactionId;
-    } else if (currentSwipedItemIdRef.current === transactionId) {
-      // 如果當前滑出項目被收回，清除引用
-      currentSwipedItemIdRef.current = null;
+      // 如果已經有活動項目且不是當前項目，需要關閉之前的項目
+      if (activeSwipeId !== null && activeSwipeId !== transactionId) {
+        // 強制立即更新
+        requestAnimationFrame(() => {
+          setActiveSwipeId(transactionId);
+        });
+      } else {
+        setActiveSwipeId(transactionId);
+      }
+    } else if (activeSwipeId === transactionId) {
+      // 如果是當前活動項目被關閉，清除引用
+      setActiveSwipeId(null);
     }
   };
 
-  // 檢查是否應該收回指定項目（當其他項目被滑出時）
+  // 修改 shouldCloseItem 函數，更有效地關閉其他項目
   const shouldCloseItem = (transactionId: string): boolean => {
-    return (
-      currentSwipedItemIdRef.current !== null &&
-      currentSwipedItemIdRef.current !== transactionId
-    );
+    // 只要有活動項目且不是當前項目，就應該關閉
+    return activeSwipeId !== null && activeSwipeId !== transactionId;
   };
 
   // 添加全局鍵盤事件監聽器，用於切換所有時間戳顯示
@@ -999,7 +1124,7 @@ export default function TransactionList({
                         showTimestamp={showAllTimestamps}
                         onDelete={handleDeleteTransaction}
                         onSwipeStateChange={(isOpen) =>
-                          handleSwipeStateChange(transaction.id, isOpen)
+                          handleSwipeStateChange(isOpen, transaction.id)
                         }
                         shouldClose={shouldCloseItem(transaction.id)}
                       />
