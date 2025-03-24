@@ -83,6 +83,13 @@ const TransactionItem = memo(
 
     // Handle mouse click
     const handleClick = (e: React.MouseEvent) => {
+      // 如果是滑動狀態或者剛剛完成滑動，不觸發點擊事件
+      if (isDragging || showDeleteButton || translateX > 10) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
       e.preventDefault();
       e.stopPropagation();
 
@@ -104,6 +111,9 @@ const TransactionItem = memo(
     // Handle touch move - update position
     const handleTouchMove = (e: React.TouchEvent) => {
       if (!touchStartRef.current) return;
+
+      // 標記已經進行了移動
+      isTouchMoveRef.current = true;
 
       const touch = e.touches[0];
       const deltaX = touch.clientX - touchStartRef.current.x;
@@ -148,15 +158,16 @@ const TransactionItem = memo(
         return;
       }
 
-      // 如果不是滑動狀態，可能是點擊
-      if (!isDragging) {
-        if (!isTouchMoveRef.current) {
-          setIsPressed(true);
-          setTimeout(() => {
-            onTransactionClick(transaction.id, transaction.type);
-            setIsPressed(false);
-          }, 150);
-        }
+      // 檢查是否進行了明顯的滑動
+      const isSignificantMovement = translateX > 10;
+
+      // 如果沒有明顯滑動，而且沒有移動過，可能是點擊
+      if (!isSignificantMovement && !isTouchMoveRef.current) {
+        setIsPressed(true);
+        setTimeout(() => {
+          onTransactionClick(transaction.id, transaction.type);
+          setIsPressed(false);
+        }, 150);
       } else {
         // 決定最終位置 - 小於一半回彈，大於一半顯示刪除
         if (translateX < deleteThreshold / 2) {
@@ -168,12 +179,19 @@ const TransactionItem = memo(
           setTranslateX(deleteThreshold);
           setShowDeleteButton(true);
         }
+
+        // 防止觸發點擊事件
+        e.preventDefault();
+        e.stopPropagation();
       }
 
-      setIsDragging(false);
-      touchStartRef.current = null;
-      isTouchMoveRef.current = false;
-      setIsPressed(false);
+      // 添加一個小延遲再重置狀態，確保不會意外觸發點擊
+      setTimeout(() => {
+        setIsDragging(false);
+        touchStartRef.current = null;
+        isTouchMoveRef.current = false;
+        setIsPressed(false);
+      }, 50);
     };
 
     // Handle touch cancel - reset state
