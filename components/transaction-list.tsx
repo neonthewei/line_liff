@@ -48,6 +48,30 @@ const TransactionItem = memo(
     const [isDeleted, setIsDeleted] = useState(false); // 新增狀態來控制項目是否已被刪除
     const [isAnimatingOut, setIsAnimatingOut] = useState(false); // 控制刪除動畫
     const contentRef = useRef<HTMLDivElement>(null); // 內容區域參考
+    const isHorizontalSwipe = useRef(false); // 記錄是否為水平滑動
+    const [isAnimating, setIsAnimating] = useState(false); // 控制滑動動畫狀態
+
+    // 在滑動開始時添加禁止滾動事件
+    useEffect(() => {
+      // 在捕獲階段禁止滾動的處理函數
+      const preventScroll = (e: TouchEvent) => {
+        if (isHorizontalSwipe.current || showDeleteButton) {
+          e.preventDefault();
+        }
+      };
+
+      // 使用 passive: false 和 capture: true 確保能在冒泡前捕獲並阻止事件
+      document.addEventListener("touchmove", preventScroll, {
+        passive: false,
+        capture: true,
+      });
+
+      return () => {
+        document.removeEventListener("touchmove", preventScroll, {
+          capture: true,
+        });
+      };
+    }, [showDeleteButton]);
 
     // Format timestamp to a user-friendly format
     const formatTimestamp = (timestamp: string | undefined): string => {
@@ -104,6 +128,7 @@ const TransactionItem = memo(
       const touch = e.touches[0];
       touchStartRef.current = { x: touch.clientX, y: touch.clientY };
       isTouchMoveRef.current = false;
+      isHorizontalSwipe.current = false; // 重置水平滑動狀態
       setIsPressed(true);
       setIsDragging(true);
 
@@ -111,12 +136,14 @@ const TransactionItem = memo(
       if (showDeleteButton) {
         e.preventDefault();
         e.stopPropagation();
+        // 立即鎖定頁面滾動
+        document.body.style.overflow = "hidden";
       }
     };
 
     // Handle touch move - update position
     const handleTouchMove = (e: React.TouchEvent) => {
-      if (!touchStartRef.current) return;
+      if (!touchStartRef.current || isAnimating) return; // 如果正在動畫中，不處理移動
 
       // 標記已經進行了移動
       isTouchMoveRef.current = true;
@@ -129,12 +156,18 @@ const TransactionItem = memo(
       if (Math.abs(deltaX) > 5 || showDeleteButton) {
         e.preventDefault(); // 阻止默認滾動行為
         e.stopPropagation(); // 阻止事件冒泡
+
+        // 標記為水平滑動並鎖定頁面滾動
+        isHorizontalSwipe.current = true;
+        document.body.style.overflow = "hidden";
       }
 
       // 如果垂直移動超過閾值，且水平移動不明顯，取消滑動
       if (deltaY > 20 && Math.abs(deltaX) < 10) {
         setIsDragging(false);
         setTranslateX((prevX) => (prevX > 0 ? prevX : 0));
+        // 如果不是水平滑動，恢復頁面滾動
+        isHorizontalSwipe.current = false;
         return;
       }
 
@@ -149,13 +182,6 @@ const TransactionItem = memo(
           Math.min(deleteThreshold, deltaX + deleteThreshold)
         );
         setTranslateX(newX);
-
-        // 如果向左滑動超過一半，關閉刪除按鈕狀態
-        if (newX < deleteThreshold / 2) {
-          setShowDeleteButton(false);
-        } else {
-          setShowDeleteButton(true);
-        }
       } else {
         // 正常的向右滑動，限制範圍 0 到 deleteThreshold
         const newTranslateX = Math.max(0, Math.min(deleteThreshold, deltaX));
@@ -165,10 +191,16 @@ const TransactionItem = memo(
 
     // Handle touch end - stop at threshold to show delete button or return to original position
     const handleTouchEnd = (e: React.TouchEvent) => {
-      if (!touchStartRef.current) {
+      if (!touchStartRef.current || isAnimating) {
         setIsDragging(false);
         return;
       }
+
+      // 恢復頁面滾動
+      document.body.style.overflow = "";
+
+      // 重置水平滑動標記
+      isHorizontalSwipe.current = false;
 
       // 檢查是否進行了明顯的滑動
       const isSignificantMovement = translateX > 10;
@@ -181,15 +213,51 @@ const TransactionItem = memo(
           setIsPressed(false);
         }, 150);
       } else {
-        // 決定最終位置 - 小於一半回彈，大於一半顯示刪除
-        if (translateX < deleteThreshold / 2) {
-          // 回彈到原位
-          setTranslateX(0);
-          setShowDeleteButton(false);
+        // 標記開始動畫
+        setIsAnimating(true);
+
+        // 修改閾值：當滑動超過 1/4 就彈出，當滑動小於 3/4 就彈回
+        const quarterThreshold = deleteThreshold / 4;
+        const threeQuarterThreshold = deleteThreshold * 0.75;
+
+        // 決定最終位置 - 使用新的閾值邏輯
+        let targetX = 0;
+
+        if (showDeleteButton) {
+          // 已經顯示刪除按鈕的情況下，如果滑回超過 3/4，就收回
+          targetX = translateX < threeQuarterThreshold ? 0 : deleteThreshold;
         } else {
-          // 保持在刪除位置
-          setTranslateX(deleteThreshold);
-          setShowDeleteButton(true);
+          // 正常滑動情況下，超過 1/4 就完全展開
+          targetX = translateX > quarterThreshold ? deleteThreshold : 0;
+        }
+
+        const shouldShowDelete = targetX > 0;
+
+        // 如果需要回彈或者完全展開，使用動畫
+        if (translateX !== targetX) {
+          // 使用CSS過渡動畫平滑過渡到目標位置
+          if (itemRef.current) {
+            itemRef.current.style.transition = "transform 0.2s ease-out";
+            itemRef.current.style.transform = `translateX(${targetX}px)`;
+
+            // 在動畫結束後更新狀態
+            setTimeout(() => {
+              setTranslateX(targetX);
+              setShowDeleteButton(shouldShowDelete);
+              setIsAnimating(false); // 動畫完成
+
+              // 重置transition，以便下次直接滑動時不會有動畫
+              if (itemRef.current) {
+                itemRef.current.style.transition = isDragging
+                  ? "none"
+                  : "transform 0.2s ease-out";
+              }
+            }, 200); // 與CSS過渡時間相匹配
+          }
+        } else {
+          // 已經在目標位置，直接更新狀態
+          setShowDeleteButton(shouldShowDelete);
+          setIsAnimating(false);
         }
 
         // 防止觸發點擊事件
@@ -208,6 +276,9 @@ const TransactionItem = memo(
 
     // Handle touch cancel - reset state
     const handleTouchCancel = () => {
+      // 恢復頁面滾動
+      document.body.style.overflow = "";
+      isHorizontalSwipe.current = false;
       touchStartRef.current = null;
       isTouchMoveRef.current = false;
       setIsPressed(false);
@@ -232,33 +303,44 @@ const TransactionItem = memo(
 
       if (!onDelete) return;
 
+      // 立即給用戶視覺反饋
       setIsDeleting(true);
+      setTranslateX(0); // 開始收回刪除按鈕
+
       try {
-        // 調用 API 刪除交易記錄
-        const success = await deleteTransactionApi(
-          transaction.id,
-          transaction.type
-        );
+        // 顯示即時收回動畫後再呼叫 API
+        setTimeout(async () => {
+          // 調用 API 刪除交易記錄
+          const success = await deleteTransactionApi(
+            transaction.id,
+            transaction.type
+          );
 
-        if (success) {
-          // 觸發刪除動畫
-          setIsAnimatingOut(true);
+          if (success) {
+            // 觸發刪除動畫
+            setIsAnimatingOut(true);
 
-          // 等待動畫完成後才真正移除元素
-          setTimeout(() => {
-            setIsDeleted(true);
-          }, 500); // 500ms 與 CSS 過渡時間一致
-        } else {
-          // 如果失敗，重置 translateX
-          setTranslateX(0);
-          setShowDeleteButton(false);
-          console.error("刪除交易失敗");
-        }
+            // 通知父組件此交易已被刪除，這樣可以立即更新列表
+            if (onDelete) {
+              onDelete(transaction.id);
+            }
+
+            // 等待動畫完成後才真正移除元素
+            setTimeout(() => {
+              setIsDeleted(true);
+            }, 250); // 減少為 250ms 以加快動畫
+          } else {
+            // 如果失敗，重置 translateX
+            setTranslateX(0);
+            setShowDeleteButton(false);
+            console.error("刪除交易失敗");
+          }
+          setIsDeleting(false);
+        }, 50); // 輕微延遲，先讓視覺效果先行
       } catch (error) {
         console.error("刪除交易時發生錯誤:", error);
         setTranslateX(0);
         setShowDeleteButton(false);
-      } finally {
         setIsDeleting(false);
       }
     };
@@ -297,12 +379,12 @@ const TransactionItem = memo(
           paddingTop: "0px",
           paddingBottom: "0px",
           overflow: "hidden",
-          transition: "all 500ms ease",
+          transition: "all 250ms cubic-bezier(0.4, 0, 0.2, 1)", // 使用更快的動畫時間和更自然的貝塞爾曲線
         }
       : {
           opacity: 1,
           maxHeight: "200px", // 足夠大的高度
-          transition: "all 500ms ease",
+          transition: "all 250ms cubic-bezier(0.4, 0, 0.2, 1)",
         };
 
     return (
@@ -447,11 +529,18 @@ export default function TransactionList({
   const [showRecurringManager, setShowRecurringManager] = useState(false);
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
+  const [deletedTransactionIds, setDeletedTransactionIds] = useState<
+    Set<string>
+  >(new Set()); // 記錄已刪除的交易ID
 
-  // 簡化處理交易刪除邏輯 - 只做標記，不更新列表
+  // 簡化處理交易刪除邏輯 - 改為記錄已刪除的交易ID
   const handleDeleteTransaction = async (id: string) => {
-    // 實際上不做任何事情，因為刪除操作已在 TransactionItem 內部處理
-    // 如果未來需要同步刪除狀態，可以在這裡添加代碼
+    // 將已刪除的交易ID添加到集合中
+    setDeletedTransactionIds((prev) => {
+      const newSet = new Set(prev);
+      newSet.add(id);
+      return newSet;
+    });
   };
 
   // 添加全局鍵盤事件監聽器，用於切換所有時間戳顯示
@@ -520,13 +609,17 @@ export default function TransactionList({
       };
     }
 
-    // 根據選定的標籤過濾數據
-    const filteredData = transactions.filter((transaction) =>
-      activeTab === "general" ? !transaction.isFixed : transaction.isFixed
+    // 根據選定的標籤過濾數據 - 同時排除已刪除的交易
+    const filteredData = transactions.filter(
+      (transaction) =>
+        (activeTab === "general"
+          ? !transaction.isFixed
+          : transaction.isFixed) && !deletedTransactionIds.has(transaction.id) // 過濾掉已刪除的交易
     );
 
     // 所有記錄按日期分組（不論是一般還是定期）
     const groupedByDate: Record<string, Transaction[]> = {};
+
     filteredData.forEach((transaction) => {
       // 從 "YYYY年MM月DD日" 格式解析日期
       let date: string;
@@ -625,7 +718,7 @@ export default function TransactionList({
     return {
       groupedTransactions: groupedByDate,
     };
-  }, [transactions, activeTab]);
+  }, [transactions, activeTab, deletedTransactionIds]); // 添加 deletedTransactionIds 作為依賴
 
   // Debug panel component
   const DebugPanel = () => {
