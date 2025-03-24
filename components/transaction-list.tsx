@@ -6,6 +6,7 @@ import type { Transaction } from "@/types/transaction";
 import { Skeleton } from "@/components/ui/skeleton";
 import RecurringTransactionManager from "./recurring-transaction-manager";
 import TransactionDetail from "./transaction-detail copy";
+import { deleteTransactionApi, clearTransactionCache } from "@/utils/api";
 
 interface TransactionListProps {
   transactions: Transaction[];
@@ -26,16 +27,27 @@ const TransactionItem = memo(
     onTransactionClick,
     showDebugInfo = false,
     showTimestamp = false,
+    onDelete,
   }: {
     transaction: Transaction;
     onTransactionClick: (id: string, type: string) => void;
     showDebugInfo?: boolean;
     showTimestamp?: boolean;
+    onDelete?: (id: string) => void;
   }) => {
     // Add refs to track touch position for distinguishing between scrolls and taps
     const touchStartRef = useRef<{ x: number; y: number } | null>(null);
     const isTouchMoveRef = useRef(false);
     const [isPressed, setIsPressed] = useState(false);
+    const [translateX, setTranslateX] = useState(0);
+    const [isDragging, setIsDragging] = useState(false);
+    const [showDeleteButton, setShowDeleteButton] = useState(false);
+    const itemRef = useRef<HTMLDivElement>(null);
+    const deleteThreshold = 100; // 刪除閾值
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [isDeleted, setIsDeleted] = useState(false); // 新增狀態來控制項目是否已被刪除
+    const [isAnimatingOut, setIsAnimatingOut] = useState(false); // 控制刪除動畫
+    const contentRef = useRef<HTMLDivElement>(null); // 內容區域參考
 
     // Format timestamp to a user-friendly format
     const formatTimestamp = (timestamp: string | undefined): string => {
@@ -85,44 +97,83 @@ const TransactionItem = memo(
       const touch = e.touches[0];
       touchStartRef.current = { x: touch.clientX, y: touch.clientY };
       isTouchMoveRef.current = false;
-      setIsPressed(true); // Show visual feedback immediately on touch
+      setIsPressed(true);
+      setIsDragging(true);
     };
 
-    // Handle touch move - mark as scrolling if moved more than threshold
+    // Handle touch move - update position
     const handleTouchMove = (e: React.TouchEvent) => {
       if (!touchStartRef.current) return;
 
       const touch = e.touches[0];
-      const deltaX = Math.abs(touch.clientX - touchStartRef.current.x);
+      const deltaX = touch.clientX - touchStartRef.current.x;
       const deltaY = Math.abs(touch.clientY - touchStartRef.current.y);
 
-      // If moved more than 10px in any direction, consider it a scroll
-      if (deltaX > 10 || deltaY > 10) {
-        isTouchMoveRef.current = true;
-        setIsPressed(false); // Remove visual feedback when scrolling is detected
+      // 如果垂直移動超過閾值，取消滑動
+      if (deltaY > 10) {
+        setIsDragging(false);
+        setTranslateX((prevX) => (prevX > 0 ? prevX : 0)); // 保持當前位置，不要重置
+        return;
+      }
+
+      // 設置滑動狀態
+      setIsDragging(true);
+
+      // 如果已經顯示刪除按鈕，允許向左滑動恢復原位
+      if (showDeleteButton) {
+        // 允許範圍: 0 到 deleteThreshold
+        const newX = Math.max(
+          0,
+          Math.min(deleteThreshold, deltaX + deleteThreshold)
+        );
+        setTranslateX(newX);
+
+        // 如果向左滑動超過一半，關閉刪除按鈕狀態
+        if (newX < deleteThreshold / 2) {
+          setShowDeleteButton(false);
+        } else {
+          setShowDeleteButton(true);
+        }
+      } else {
+        // 正常的向右滑動，限制範圍 0 到 deleteThreshold
+        const newTranslateX = Math.max(0, Math.min(deleteThreshold, deltaX));
+        setTranslateX(newTranslateX);
       }
     };
 
-    // Handle touch end - only trigger click if not scrolling
+    // Handle touch end - stop at threshold to show delete button or return to original position
     const handleTouchEnd = (e: React.TouchEvent) => {
-      // Don't call preventDefault() here as it can interfere with scroll events
-
-      // Only trigger click if it wasn't a scroll
-      if (touchStartRef.current && !isTouchMoveRef.current) {
-        // Add visual feedback for tap
-        setIsPressed(true);
-
-        // Small delay to ensure we don't interfere with any ongoing browser actions
-        setTimeout(() => {
-          onTransactionClick(transaction.id, transaction.type);
-          setIsPressed(false); // Remove visual feedback after click is processed
-        }, 150); // Slightly longer delay to show the visual feedback
-      } else {
-        setIsPressed(false);
+      if (!touchStartRef.current) {
+        setIsDragging(false);
+        return;
       }
 
-      // Reset touch tracking
+      // 如果不是滑動狀態，可能是點擊
+      if (!isDragging) {
+        if (!isTouchMoveRef.current) {
+          setIsPressed(true);
+          setTimeout(() => {
+            onTransactionClick(transaction.id, transaction.type);
+            setIsPressed(false);
+          }, 150);
+        }
+      } else {
+        // 決定最終位置 - 小於一半回彈，大於一半顯示刪除
+        if (translateX < deleteThreshold / 2) {
+          // 回彈到原位
+          setTranslateX(0);
+          setShowDeleteButton(false);
+        } else {
+          // 保持在刪除位置
+          setTranslateX(deleteThreshold);
+          setShowDeleteButton(true);
+        }
+      }
+
+      setIsDragging(false);
       touchStartRef.current = null;
+      isTouchMoveRef.current = false;
+      setIsPressed(false);
     };
 
     // Handle touch cancel - reset state
@@ -145,62 +196,164 @@ const TransactionItem = memo(
       }
     };
 
+    // 處理點擊刪除按鈕
+    const handleDeleteButtonClick = async (e: React.MouseEvent) => {
+      e.stopPropagation(); // 阻止事件冒泡，避免觸發項目點擊
+
+      if (!onDelete) return;
+
+      setIsDeleting(true);
+      try {
+        // 調用 API 刪除交易記錄
+        const success = await deleteTransactionApi(
+          transaction.id,
+          transaction.type
+        );
+
+        if (success) {
+          // 觸發刪除動畫
+          setIsAnimatingOut(true);
+
+          // 等待動畫完成後才真正移除元素
+          setTimeout(() => {
+            setIsDeleted(true);
+          }, 500); // 500ms 與 CSS 過渡時間一致
+        } else {
+          // 如果失敗，重置 translateX
+          setTranslateX(0);
+          setShowDeleteButton(false);
+          console.error("刪除交易失敗");
+        }
+      } catch (error) {
+        console.error("刪除交易時發生錯誤:", error);
+        setTranslateX(0);
+        setShowDeleteButton(false);
+      } finally {
+        setIsDeleting(false);
+      }
+    };
+
+    // 點擊其他地方時重置滑動狀態
+    useEffect(() => {
+      const handleClickOutside = (e: MouseEvent) => {
+        if (
+          showDeleteButton &&
+          itemRef.current &&
+          !itemRef.current.contains(e.target as Node)
+        ) {
+          setTranslateX(0);
+          setShowDeleteButton(false);
+        }
+      };
+
+      document.addEventListener("click", handleClickOutside);
+      return () => {
+        document.removeEventListener("click", handleClickOutside);
+      };
+    }, [showDeleteButton]);
+
+    // 如果已刪除，則不渲染此項目
+    if (isDeleted) {
+      return null;
+    }
+
+    // 定義刪除動畫樣式
+    const deleteAnimationStyle = isAnimatingOut
+      ? {
+          opacity: 0,
+          maxHeight: "0px",
+          marginTop: "0px",
+          marginBottom: "0px",
+          paddingTop: "0px",
+          paddingBottom: "0px",
+          overflow: "hidden",
+          transition: "all 500ms ease",
+        }
+      : {
+          opacity: 1,
+          maxHeight: "200px", // 足夠大的高度
+          transition: "all 500ms ease",
+        };
+
     return (
-      <div
-        onClick={handleClick}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchCancel}
-        role="button"
-        tabIndex={0}
-        aria-label={`${transaction.category} ${transaction.amount}`}
-        onKeyDown={handleKeyDown}
-        className={`px-4 py-3 flex items-center justify-between cursor-pointer transition-colors duration-150 ${
-          isPressed ? "bg-gray-100" : ""
-        }`}
-      >
-        <div className="flex items-center">
-          <div className="pl-1">
-            <div
-              className={`font-medium ${
-                transaction.type === "expense"
-                  ? "text-green-600"
-                  : "text-blue-600"
-              }`}
-            >
-              {transaction.category}
-            </div>
-            {transaction.note && (
-              <div className="text-xs text-gray-500 mt-0.5">
-                {transaction.note}
-              </div>
-            )}
-
-            {/* Display updated_at timestamp only when showTimestamp is true */}
-            {showTimestamp && timestamp && (
-              <div className="text-xs text-gray-400 mt-0.5 animate-fadeIn">
-                {transaction.updated_at ? "更新於: " : "建立於: "}
-                {timestamp}
-              </div>
-            )}
-
-            {/* Debug information */}
-            {showDebugInfo && (
-              <div className="text-xs text-gray-400 mt-1 bg-gray-50 p-1 rounded">
-                <div>ID: {transaction.id}</div>
-                <div>Raw Date: {transaction.date}</div>
-                <div>Is Fixed: {transaction.isFixed ? "Yes" : "No"}</div>
-              </div>
-            )}
-          </div>
+      <div className="relative overflow-hidden" style={deleteAnimationStyle}>
+        {/* 刪除按鈕背景 */}
+        <div
+          className="absolute left-0 top-0 bottom-0 w-[100px] bg-red-500 flex items-center justify-center"
+          style={{
+            transform: `translateX(${translateX > 0 ? 0 : -100}px)`,
+            transition: isDragging ? "none" : "transform 0.2s ease-out",
+          }}
+          onClick={showDeleteButton ? handleDeleteButtonClick : undefined}
+        >
+          <span className="text-white text-sm">
+            {isDeleting ? "刪除中..." : "刪除"}
+          </span>
         </div>
-        <div className="flex items-center">
-          <div className="text-lg font-bold mr-2 text-gray-900">
-            {transaction.type === "expense" ? "-" : "+"}$
-            {Math.abs(transaction.amount)}
+
+        {/* 交易項目內容 */}
+        <div
+          ref={itemRef}
+          onClick={handleClick}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchCancel}
+          role="button"
+          tabIndex={0}
+          aria-label={`${transaction.category} ${transaction.amount}`}
+          onKeyDown={handleKeyDown}
+          className={`relative px-4 py-3 flex items-center justify-between cursor-pointer transition-colors duration-150 bg-white ${
+            isPressed ? "bg-gray-100" : ""
+          }`}
+          style={{
+            transform: `translateX(${translateX}px)`,
+            transition: isDragging ? "none" : "transform 0.2s ease-out",
+            zIndex: 1,
+          }}
+        >
+          <div className="flex items-center">
+            <div className="pl-1">
+              <div
+                className={`font-medium ${
+                  transaction.type === "expense"
+                    ? "text-green-600"
+                    : "text-blue-600"
+                }`}
+              >
+                {transaction.category}
+              </div>
+              {transaction.note && (
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {transaction.note}
+                </div>
+              )}
+
+              {/* Display updated_at timestamp only when showTimestamp is true */}
+              {showTimestamp && timestamp && (
+                <div className="text-xs text-gray-400 mt-0.5 animate-fadeIn">
+                  {transaction.updated_at ? "更新於: " : "建立於: "}
+                  {timestamp}
+                </div>
+              )}
+
+              {/* Debug information */}
+              {showDebugInfo && (
+                <div className="text-xs text-gray-400 mt-1 bg-gray-50 p-1 rounded">
+                  <div>ID: {transaction.id}</div>
+                  <div>Raw Date: {transaction.date}</div>
+                  <div>Is Fixed: {transaction.isFixed ? "Yes" : "No"}</div>
+                </div>
+              )}
+            </div>
           </div>
-          <ChevronRight className="h-5 w-5 text-gray-400" />
+          <div className="flex items-center">
+            <div className="text-lg font-bold mr-2 text-gray-900">
+              {transaction.type === "expense" ? "-" : "+"}$
+              {Math.abs(transaction.amount)}
+            </div>
+            <ChevronRight className="h-5 w-5 text-gray-400" />
+          </div>
         </div>
       </div>
     );
@@ -262,6 +415,12 @@ export default function TransactionList({
   const [showRecurringManager, setShowRecurringManager] = useState(false);
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
+
+  // 簡化處理交易刪除邏輯 - 只做標記，不更新列表
+  const handleDeleteTransaction = async (id: string) => {
+    // 實際上不做任何事情，因為刪除操作已在 TransactionItem 內部處理
+    // 如果未來需要同步刪除狀態，可以在這裡添加代碼
+  };
 
   // 添加全局鍵盤事件監聽器，用於切換所有時間戳顯示
   useEffect(() => {
@@ -593,6 +752,7 @@ export default function TransactionList({
                         onTransactionClick={handleTransactionClick}
                         showDebugInfo={isDebugMode}
                         showTimestamp={showAllTimestamps}
+                        onDelete={handleDeleteTransaction}
                       />
                     ))}
                   </div>
