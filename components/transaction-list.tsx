@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, memo, useRef } from "react";
-import { ChevronRight, Bug } from "lucide-react";
+import { ChevronRight, Bug, Trash2 } from "lucide-react";
 import type { Transaction } from "@/types/transaction";
 import { Skeleton } from "@/components/ui/skeleton";
 import RecurringTransactionManager from "./recurring-transaction-manager";
@@ -106,6 +106,12 @@ const TransactionItem = memo(
       isTouchMoveRef.current = false;
       setIsPressed(true);
       setIsDragging(true);
+
+      // 如果已顯示刪除按鈕，則阻止默認行為
+      if (showDeleteButton) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
     };
 
     // Handle touch move - update position
@@ -119,10 +125,16 @@ const TransactionItem = memo(
       const deltaX = touch.clientX - touchStartRef.current.x;
       const deltaY = Math.abs(touch.clientY - touchStartRef.current.y);
 
-      // 如果垂直移動超過閾值，取消滑動
-      if (deltaY > 10) {
+      // 如果水平滑動已經開始或者顯示刪除按鈕，完全阻止頁面滾動
+      if (Math.abs(deltaX) > 5 || showDeleteButton) {
+        e.preventDefault(); // 阻止默認滾動行為
+        e.stopPropagation(); // 阻止事件冒泡
+      }
+
+      // 如果垂直移動超過閾值，且水平移動不明顯，取消滑動
+      if (deltaY > 20 && Math.abs(deltaX) < 10) {
         setIsDragging(false);
-        setTranslateX((prevX) => (prevX > 0 ? prevX : 0)); // 保持當前位置，不要重置
+        setTranslateX((prevX) => (prevX > 0 ? prevX : 0));
         return;
       }
 
@@ -304,9 +316,11 @@ const TransactionItem = memo(
           }}
           onClick={showDeleteButton ? handleDeleteButtonClick : undefined}
         >
-          <span className="text-white text-sm">
-            {isDeleting ? "刪除中..." : "刪除"}
-          </span>
+          {isDeleting ? (
+            <span className="text-white text-sm">刪除中...</span>
+          ) : (
+            <Trash2 className="h-6 w-6 text-white" />
+          )}
         </div>
 
         {/* 交易項目內容 */}
