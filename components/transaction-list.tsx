@@ -59,6 +59,7 @@ const TransactionItem = memo(
     const [isAnimatingOut, setIsAnimatingOut] = useState(false); // 控制刪除動畫
     const contentRef = useRef<HTMLDivElement>(null); // 內容區域參考
     const isHorizontalSwipe = useRef(false); // 記錄是否為水平滑動
+    const isVerticalScroll = useRef(false); // 新增記錄是否為垂直滾動
     const [isAnimating, setIsAnimating] = useState(false); // 控制滑動動畫狀態
 
     // 優化收回動畫
@@ -213,7 +214,9 @@ const TransactionItem = memo(
 
       const touch = e.touches[0];
       const deltaX = touch.clientX - touchStartRef.current.x;
-      const deltaY = Math.abs(touch.clientY - touchStartRef.current.y);
+      const deltaY = touch.clientY - touchStartRef.current.y;
+      const absDeltaX = Math.abs(deltaX);
+      const absDeltaY = Math.abs(deltaY);
 
       // 計算滑動速度（為之後使用）
       const now = Date.now();
@@ -221,40 +224,49 @@ const TransactionItem = memo(
       touchStartRef.current.time = now;
       touchStartRef.current.lastX = translateX; // 記錄上一個位置
 
-      // 如果水平滑動已經開始或者顯示刪除按鈕，完全阻止頁面滾動
-      if (Math.abs(deltaX) > 5 || showDeleteButton) {
-        e.preventDefault(); // 阻止默認滾動行為
-        e.stopPropagation(); // 阻止事件冒泡
-
-        // 標記為水平滑動並鎖定頁面滾動
-        isHorizontalSwipe.current = true;
-        document.body.style.overflow = "hidden";
+      // 檢測是否為垂直滾動 - 如果垂直移動比水平移動明顯，且超過閾值
+      if (!isHorizontalSwipe.current && !isVerticalScroll.current) {
+        // 最初的移動方向判斷
+        if (absDeltaY > 10 && absDeltaY > absDeltaX * 1.5) {
+          isVerticalScroll.current = true; // 標記為垂直滾動
+          return; // 允許頁面正常滾動
+        } else if (absDeltaX > 10 && absDeltaX > absDeltaY * 1.5) {
+          isHorizontalSwipe.current = true; // 標記為水平滑動
+        }
       }
 
-      // 如果垂直移動超過閾值，且水平移動不明顯，取消滑動
-      if (deltaY > 20 && Math.abs(deltaX) < 10) {
-        setIsDragging(false);
-        setTranslateX((prevX) => (prevX < 0 ? prevX : 0));
-        // 如果不是水平滑動，恢復頁面滾動
-        isHorizontalSwipe.current = false;
+      // 如果已經標記為垂直滾動，跳過水平滑動處理
+      if (isVerticalScroll.current) {
         return;
       }
 
-      // 設置滑動狀態
-      setIsDragging(true);
+      // 如果水平滑動已經開始或者顯示刪除按鈕，完全阻止頁面滾動
+      if (isHorizontalSwipe.current || showDeleteButton) {
+        e.preventDefault(); // 阻止默認滾動行為
+        e.stopPropagation(); // 阻止事件冒泡
 
-      // 如果已經顯示刪除按鈕，允許向右滑動恢復原位
-      if (showDeleteButton) {
-        // 允許範圍: -deleteThreshold 到 0
-        const newX = Math.min(
-          0,
-          Math.max(-deleteThreshold, deltaX - deleteThreshold)
-        );
-        setTranslateX(newX);
-      } else {
-        // 正常的向左滑動，限制範圍 -deleteThreshold 到 0
-        const newTranslateX = Math.min(0, Math.max(-deleteThreshold, deltaX));
-        setTranslateX(newTranslateX);
+        // 鎖定頁面滾動
+        document.body.style.overflow = "hidden";
+      }
+
+      // 如果已經標記為水平滑動或者準備啟動滑動
+      if (isHorizontalSwipe.current || absDeltaX > 5) {
+        // 設置滑動狀態
+        setIsDragging(true);
+
+        // 如果已經顯示刪除按鈕，允許向右滑動恢復原位
+        if (showDeleteButton) {
+          // 允許範圍: -deleteThreshold 到 0
+          const newX = Math.min(
+            0,
+            Math.max(-deleteThreshold, deltaX - deleteThreshold)
+          );
+          setTranslateX(newX);
+        } else {
+          // 正常的向左滑動，限制範圍 -deleteThreshold 到 0
+          const newTranslateX = Math.min(0, Math.max(-deleteThreshold, deltaX));
+          setTranslateX(newTranslateX);
+        }
       }
     };
 
@@ -271,8 +283,9 @@ const TransactionItem = memo(
       };
       isTouchMoveRef.current = false;
       isHorizontalSwipe.current = false; // 重置水平滑動狀態
+      isVerticalScroll.current = false; // 重置垂直滾動狀態
       setIsPressed(true);
-      setIsDragging(true);
+      setIsDragging(false); // 初始設置為 false，等確認滑動方向後再設置
 
       // 如果已顯示刪除按鈕，則阻止默認行為
       if (showDeleteButton) {
@@ -299,8 +312,9 @@ const TransactionItem = memo(
       // 恢復頁面滾動
       document.body.style.overflow = "";
 
-      // 重置水平滑動標記
+      // 重置水平滑動和垂直滾動標記
       isHorizontalSwipe.current = false;
+      isVerticalScroll.current = false;
 
       // 計算最終滑動速度與方向
       const endTime = Date.now();
