@@ -301,15 +301,14 @@ export async function fetchYearlySummary(
 /**
  * 根據ID獲取交易詳情
  * @param id 交易ID
- * @param type 交易類型 ("income" | "expense")
  * @returns 交易詳情
  */
 export async function fetchTransactionById(
   id: string,
-  type: string
+  type?: string // 保留參數但設為可選，便於向後兼容
 ): Promise<Transaction | null> {
   try {
-    // 構建 API URL - 現在使用統一的 transactions 表
+    // 構建 API URL - 只使用ID查詢
     const url = `${SUPABASE_URL}/transactions?id=eq.${id}`;
 
     console.log("Making API request with:");
@@ -347,14 +346,8 @@ export async function fetchTransactionById(
 
     // 獲取第一個結果並使用標準化函數處理
     const apiTransaction = data[0];
-    // 確認類型匹配
-    if (apiTransaction.type !== type) {
-      console.log(
-        `Transaction found but type (${apiTransaction.type}) does not match requested type (${type})`
-      );
-      return null;
-    }
 
+    // 已不需要檢查類型匹配
     const result = normalizeTransaction(apiTransaction);
 
     console.log("Transformed transaction data:", result);
@@ -495,18 +488,18 @@ async function getUserIdFromLiff(): Promise<string | null> {
 /**
  * 刪除交易
  * @param id 交易 ID
- * @param type 交易類型 - 僅用於日誌記錄和通知，不再用於選擇端點
+ * @param type 交易類型 - 僅用於日誌記錄和向後兼容
  * @returns 是否成功
  */
 export async function deleteTransactionApi(
   id: string,
-  type: string
+  type?: string
 ): Promise<boolean> {
   try {
     // 先獲取交易詳情，以便在刪除後發送通知
-    const transaction = await fetchTransactionById(id, type);
+    const transaction = await fetchTransactionById(id);
     if (!transaction) {
-      throw new Error(`Transaction with id ${id} and type ${type} not found`);
+      throw new Error(`Transaction with id ${id} not found`);
     }
 
     // 構建統一的 API URL

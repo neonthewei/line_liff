@@ -365,8 +365,9 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
         const params = getLiffUrlParams();
         setDebugInfo({ url: window.location.href, params });
 
-        // 獲取交易 ID 和類型
+        // 獲取交易 ID
         let id = params.id;
+        // 雖然不再需要類型來獲取數據，但仍然保存type做為創建新交易時的默認值
         const type = params.type || "expense";
 
         // 如果沒有從 URL 參數獲取到 ID，嘗試從 URL 路徑獲取
@@ -408,10 +409,10 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
           return;
         }
 
-        console.log(`Fetching transaction with ID: ${id}, type: ${type}`);
+        console.log(`Fetching transaction with ID: ${id}`);
 
-        // 獲取交易數據
-        const data = await fetchTransactionById(id, type);
+        // 獲取交易數據，不再需要傳遞類型
+        const data = await fetchTransactionById(id);
 
         if (data) {
           console.log("Transaction data retrieved successfully:", data);
@@ -565,10 +566,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
       // 關閉確認視窗
       setShowDeleteModal(false);
 
-      const success = await deleteTransactionApi(
-        transaction.id,
-        transaction.type
-      );
+      const success = await deleteTransactionApi(transaction.id);
 
       if (success) {
         // 顯示成功通知
@@ -612,10 +610,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
         console.log("Transaction type changed, deleting old and creating new");
 
         // 先刪除原有的交易
-        const deleteSuccess = await deleteTransactionApi(
-          transaction.id,
-          originalType
-        );
+        const deleteSuccess = await deleteTransactionApi(transaction.id);
 
         if (!deleteSuccess) {
           showToastNotification("儲存失敗，請稍後再試", "error");
@@ -695,9 +690,7 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
           // 如果是在編輯頁，更新後跳回帳目細項頁
           if (isEditPage) {
             // 導航回交易詳情頁
-            router.push(
-              `/transaction/${transaction.id}?type=${transaction.type}`
-            );
+            router.push(`/transaction/${transaction.id}`);
             return;
           }
 

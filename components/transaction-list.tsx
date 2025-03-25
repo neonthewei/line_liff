@@ -14,7 +14,7 @@ interface TransactionListProps {
   activeTab: "general" | "fixed";
   isLoading?: boolean;
   isCollapsed?: boolean;
-  onTransactionClick: (id: string, type: string) => void;
+  onTransactionClick: (id: string) => void;
   showDebugInfo?: boolean;
   userId: string;
   onTransactionUpdate?: (transactions: Transaction[]) => void;
@@ -32,7 +32,7 @@ const TransactionItem = memo(
     shouldClose,
   }: {
     transaction: Transaction;
-    onTransactionClick: (id: string, type: string) => void;
+    onTransactionClick: (id: string) => void;
     showDebugInfo?: boolean;
     showTimestamp?: boolean;
     onDelete?: (id: string) => void;
@@ -182,7 +182,7 @@ const TransactionItem = memo(
 
       // Call the click handler with a small delay to prevent UI flicker
       setTimeout(() => {
-        onTransactionClick(transaction.id, transaction.type);
+        onTransactionClick(transaction.id);
       }, 10);
     };
 
@@ -329,7 +329,7 @@ const TransactionItem = memo(
       if (!isSignificantMovement && !isTouchMoveRef.current) {
         setIsPressed(true);
         setTimeout(() => {
-          onTransactionClick(transaction.id, transaction.type);
+          onTransactionClick(transaction.id);
           setIsPressed(false);
         }, 150);
       } else {
@@ -438,7 +438,7 @@ const TransactionItem = memo(
         setIsPressed(true);
 
         setTimeout(() => {
-          onTransactionClick(transaction.id, transaction.type);
+          onTransactionClick(transaction.id);
           setIsPressed(false);
         }, 150);
       }
@@ -854,7 +854,7 @@ export default function TransactionList({
   }, [activeTab]);
 
   // Handle transaction click
-  const handleTransactionClick = (id: string, type: string) => {
+  const handleTransactionClick = (id: string) => {
     const transaction = transactions.find((t) => t.id === id);
     if (transaction) {
       setSelectedTransaction(transaction);

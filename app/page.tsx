@@ -325,7 +325,7 @@ export default function Home() {
   };
 
   // 處理交易點擊，使用 LIFF 導航
-  const handleTransactionClick = (id: string, type: string) => {
+  const handleTransactionClick = (id: string) => {
     // 清除緩存，確保從詳情頁返回時能獲取最新數據
     if (userId) {
       const year = currentDate.getFullYear();
@@ -333,10 +333,10 @@ export default function Home() {
       clearTransactionCache(userId, year, month);
     }
 
-    console.log(`點擊交易: id=${id}, type=${type}`);
+    console.log(`點擊交易: id=${id}`);
 
-    // 使用 LIFF 導航而不是 Next.js 路由
-    navigateInLiff("/transaction", { id, type });
+    // 使用 LIFF 導航而不是 Next.js 路由，不再需要傳遞type
+    navigateInLiff("/transaction", { id });
   };
 
   return (
