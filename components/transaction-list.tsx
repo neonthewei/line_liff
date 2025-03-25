@@ -768,14 +768,21 @@ export default function TransactionList({
   >(new Set()); // 記錄已刪除的交易ID
 
   // 簡化處理交易刪除邏輯 - 改為記錄已刪除的交易ID
-  const handleDeleteTransaction = async (id: string) => {
-    // 將已刪除的交易ID添加到集合中
+  const handleDeleteTransaction = async (id: string) => { // 更新已刪除列表
     setDeletedTransactionIds((prev) => {
       const newSet = new Set(prev);
       newSet.add(id);
       return newSet;
     });
+  
+        if (onTransactionUpdate) { // 同步更新父層的 transactions
+      const updatedTransactions = transactions.filter(
+        (t) => t.id !== id
+      );
+      onTransactionUpdate(updatedTransactions);
+    }
   };
+
 
   // 處理滑動狀態變化 - 改為立即通知其他項目關閉
   const handleSwipeStateChange = (isOpen: boolean, transactionId: string) => {
@@ -1193,7 +1200,6 @@ export default function TransactionList({
               }
             }}
             onDelete={() => {
-              // 刪除時觸發更新
               if (onTransactionUpdate) {
                 const updatedTransactions = transactions.filter(
                   (t) => t.id !== selectedTransaction.id
