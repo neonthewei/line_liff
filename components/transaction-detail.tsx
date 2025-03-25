@@ -82,7 +82,7 @@ interface TransactionDetailProps {
   onError?: () => void;
 }
 
-// Define a consistent animation style for all content blocks
+// Define consistent animation style for all content blocks
 const fadeInAnimation = {
   opacity: 0,
   animation: "fadeIn 0.3s ease-out forwards",
