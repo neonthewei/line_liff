@@ -31,7 +31,7 @@ const fadeInAnimation = {
 interface RecurringTransaction {
   id: string | number;
   user_id: string;
-  name: string;
+  memo: string; // Changed from name to memo
   amount: number;
   type: "expense" | "income";
   start_date: string;
@@ -245,7 +245,7 @@ const RecurringTransactionEditor = ({
   useEffect(() => {
     setEditedTransaction(transaction);
     if (transaction) {
-      setEditName(transaction.name);
+      setEditName(transaction.memo);
       setEditAmount(Math.abs(transaction.amount).toString());
     }
   }, [transaction]);
@@ -254,7 +254,7 @@ const RecurringTransactionEditor = ({
   useEffect(() => {
     if (editedTransaction && transaction) {
       const hasChanged =
-        editedTransaction.name !== transaction.name ||
+        editedTransaction.memo !== transaction.memo ||
         editedTransaction.amount !== transaction.amount ||
         editedTransaction.type !== transaction.type ||
         editedTransaction.category !== transaction.category ||
@@ -277,7 +277,7 @@ const RecurringTransactionEditor = ({
   // Start editing name
   const handleStartEditName = () => {
     setIsEditingName(true);
-    setEditName(editedTransaction.name);
+    setEditName(editedTransaction.memo);
   };
 
   // Save name
@@ -285,7 +285,7 @@ const RecurringTransactionEditor = ({
     if (editName.trim()) {
       setEditedTransaction({
         ...editedTransaction,
-        name: editName.trim(),
+        memo: editName.trim(),
       });
     }
     setIsEditingName(false);
@@ -1481,12 +1481,12 @@ const RecurringTransactionEditor = ({
               <span className="text-gray-600 pl-2">備註</span>
               <div className="w-full">
                 <textarea
-                  value={editedTransaction.name}
+                  value={editedTransaction.memo}
                   onChange={(e) => {
                     if (!editedTransaction) return;
                     setEditedTransaction({
                       ...editedTransaction,
-                      name: e.target.value,
+                      memo: e.target.value,
                     });
 
                     // 自動調整高度
@@ -1678,7 +1678,7 @@ export default function RecurringTransactionManager({
     return {
       id: `temp-${Date.now()}`, // Temporary ID that will be replaced by the database
       user_id: userId,
-      name: "",
+      memo: "",
       amount: 0, // Changed from -500 to 0
       type: "expense",
       start_date: today,
@@ -1736,7 +1736,7 @@ export default function RecurringTransactionManager({
       // Log the data being sent
       console.log("Sending data to Supabase:", {
         user_id: userId,
-        name: newTransaction.name || "未命名",
+        memo: newTransaction.memo || "未命名",
         amount: newTransaction.amount,
         type: newTransaction.type,
         category: newTransaction.category, // 添加 category
@@ -1757,7 +1757,7 @@ export default function RecurringTransactionManager({
         },
         body: JSON.stringify({
           user_id: userId,
-          name: newTransaction.name || "未命名",
+          memo: newTransaction.memo || "未命名",
           amount: newTransaction.amount,
           type: newTransaction.type,
           category: newTransaction.category, // 添加 category
@@ -1896,7 +1896,7 @@ export default function RecurringTransactionManager({
       // Log the data being updated
       console.log("Updating transaction in Supabase:", {
         id: updatedTransaction.id,
-        name: updatedTransaction.name,
+        memo: updatedTransaction.memo,
         amount: updatedTransaction.amount,
         type: updatedTransaction.type,
         interval: standardizedInterval,
@@ -1917,7 +1917,7 @@ export default function RecurringTransactionManager({
             Authorization: `Bearer ${SUPABASE_KEY}`,
           },
           body: JSON.stringify({
-            name: updatedTransaction.name,
+            memo: updatedTransaction.memo,
             amount: updatedTransaction.amount,
             type: updatedTransaction.type,
             interval: standardizedInterval,
@@ -2201,7 +2201,7 @@ export default function RecurringTransactionManager({
                   className="px-4 py-3 flex items-center justify-between cursor-pointer transition-colors duration-150 hover:bg-gray-50 active:bg-gray-100"
                   role="button"
                   tabIndex={0}
-                  aria-label={`${transaction.name} ${transaction.amount}`}
+                  aria-label={`${transaction.memo} ${transaction.amount}`}
                 >
                   <div className="flex items-center">
                     <div className="pl-1">
@@ -2209,7 +2209,7 @@ export default function RecurringTransactionManager({
                         {transaction.category || "未分類"}
                       </div>
                       <div className="text-sm text-gray-600 mt-0.5">
-                        {transaction.name ? `${transaction.name} - ` : ""}
+                        {transaction.memo ? `${transaction.memo} - ` : ""}
                         {formatRecurrence(
                           transaction.interval,
                           transaction.frequency
@@ -2257,7 +2257,7 @@ export default function RecurringTransactionManager({
                   className="px-4 py-3 flex items-center justify-between cursor-pointer transition-colors duration-150 hover:bg-gray-50 active:bg-gray-100"
                   role="button"
                   tabIndex={0}
-                  aria-label={`${transaction.name} ${transaction.amount}`}
+                  aria-label={`${transaction.memo} ${transaction.amount}`}
                 >
                   <div className="flex items-center">
                     <div className="pl-1">
@@ -2265,7 +2265,7 @@ export default function RecurringTransactionManager({
                         {transaction.category || "未分類"}
                       </div>
                       <div className="text-sm text-gray-600 mt-0.5">
-                        {transaction.name ? `${transaction.name} - ` : ""}
+                        {transaction.memo ? `${transaction.memo} - ` : ""}
                         {formatRecurrence(
                           transaction.interval,
                           transaction.frequency
