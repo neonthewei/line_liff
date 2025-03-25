@@ -14,7 +14,15 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { Transaction } from "@/types/transaction";
-import { updateTransactionApi, deleteTransactionApi, clearTransactionCache, formatTimestamp, SUPABASE_URL, SUPABASE_KEY, parseDateToISOString } from "@/utils/api";
+import {
+  updateTransactionApi,
+  deleteTransactionApi,
+  clearTransactionCache,
+  formatTimestamp,
+  SUPABASE_URL,
+  SUPABASE_KEY,
+  parseDateToISOString,
+} from "@/utils/api";
 
 // 定義類別介面
 interface Category {
@@ -52,24 +60,24 @@ interface TransactionDetailProps {
 // Define a consistent animation style for all content blocks
 const fadeInAnimation = {
   opacity: 0,
-  animation: 'fadeIn 0.3s ease-out forwards'
+  animation: "fadeIn 0.3s ease-out forwards",
 };
 
-export default function TransactionDetail({ 
-  onError, 
-  transaction: initialTransaction, 
-  onUpdate, 
+export default function TransactionDetail({
+  onError,
+  transaction: initialTransaction,
+  onUpdate,
   onDelete,
-  onBack 
+  onBack,
 }: TransactionDetailProps) {
   // 確保初始交易數據包含所有必要字段
   const [transaction, setTransaction] = useState<Transaction>({
     ...initialTransaction,
-    user_id: initialTransaction.user_id || "" // 確保 user_id 存在
+    user_id: initialTransaction.user_id || "", // 確保 user_id 存在
   });
   const [originalTransaction, setOriginalTransaction] = useState<Transaction>({
     ...initialTransaction,
-    user_id: initialTransaction.user_id || "" // 確保 user_id 存在
+    user_id: initialTransaction.user_id || "", // 確保 user_id 存在
   });
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
@@ -114,14 +122,14 @@ export default function TransactionDetail({
       const timer = setTimeout(() => {
         setIsButtonsDisabled(false);
       }, 300); // 300ms delay
-      
+
       return () => clearTimeout(timer);
     }
   }, [isMounted]);
 
   useEffect(() => {
     if (!isMounted) return;
-    
+
     // 獲取類別
     fetchCategories();
   }, [isMounted]);
@@ -131,35 +139,39 @@ export default function TransactionDetail({
     try {
       // 構建 API URL
       const url = `${SUPABASE_URL}/categories`;
-      
+
       // 發送 API 請求
       const response = await fetch(url, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          "apikey": SUPABASE_KEY,
+          apikey: SUPABASE_KEY,
         },
       });
-      
+
       if (!response.ok) {
         throw new Error(`Failed to fetch categories: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       // 先找出用戶已刪除的類別名稱（包括系統預設類別）
       const userDeletedCategoryNames = data
-        .filter((cat: Category) => cat.user_id === transaction.user_id && cat.is_deleted)
+        .filter(
+          (cat: Category) =>
+            cat.user_id === transaction.user_id && cat.is_deleted
+        )
         .map((cat: Category) => cat.name);
-      
+
       // 過濾類別
-      const filteredCategories = data.filter((cat: Category) => 
-        (cat.user_id === transaction.user_id && !cat.is_deleted) ||
-        (cat.user_id === null && !userDeletedCategoryNames.includes(cat.name))
+      const filteredCategories = data.filter(
+        (cat: Category) =>
+          (cat.user_id === transaction.user_id && !cat.is_deleted) ||
+          (cat.user_id === null && !userDeletedCategoryNames.includes(cat.name))
       );
-      
+
       setDbCategories(filteredCategories);
-      
+
       // 更新類別名稱列表
       updateCategoryNamesByType(filteredCategories, transaction.type);
     } catch (error) {
@@ -167,13 +179,16 @@ export default function TransactionDetail({
       setCategories(defaultCategories);
     }
   };
-  
+
   // 根據交易類型更新類別名稱列表
-  const updateCategoryNamesByType = (cats: Category[], type: "income" | "expense") => {
+  const updateCategoryNamesByType = (
+    cats: Category[],
+    type: "income" | "expense"
+  ) => {
     const filteredNames = cats
-      .filter(cat => cat.type === type)
-      .map(cat => cat.name);
-    
+      .filter((cat) => cat.type === type)
+      .map((cat) => cat.name);
+
     // 如果沒有找到任何類別，使用預設類別
     if (filteredNames.length === 0) {
       setCategories(defaultCategories);
@@ -191,54 +206,61 @@ export default function TransactionDetail({
 
   // 更新 setTransaction 的包裝函數，確保 user_id 始終存在
   const updateTransaction = (updates: Partial<Transaction>) => {
-    setTransaction(current => ({
+    setTransaction((current) => ({
       ...current,
       ...updates,
-      user_id: current.user_id // 保留現有的 user_id
+      user_id: current.user_id, // 保留現有的 user_id
     }));
   };
 
   // 修改 handleTypeChange 使用新的 updateTransaction 函數
   const handleTypeChange = async (type: "expense" | "income") => {
     if (!transaction) return;
-    
+
     // 如果類型沒有變化，不做任何操作
     if (transaction.type === type) return;
-    
+
     // 更新本地交易對象的類型和金額
     updateTransaction({
       type,
-      amount: type === "expense" ? -Math.abs(transaction.amount) : Math.abs(transaction.amount),
-      category: "" // 重置類別，因為不同類型有不同的類別選項
+      amount:
+        type === "expense"
+          ? -Math.abs(transaction.amount)
+          : Math.abs(transaction.amount),
+      category: "", // 重置類別，因為不同類型有不同的類別選項
     });
-    
+
     // 根據新類型更新類別列表
     if (dbCategories.length > 0) {
       updateCategoryNamesByType(dbCategories, type);
     }
-    
+
     // 自動展開類型選擇區域
     setIsEditingCategory(true);
-    
+
     // 顯示提示通知
     showToastNotification("請選擇一個類型", "success", 2000);
   };
 
   // 顯示 Toast 通知的輔助函數
-  const showToastNotification = (message: string, type: "success" | "error", duration = 3000) => {
+  const showToastNotification = (
+    message: string,
+    type: "success" | "error",
+    duration = 3000
+  ) => {
     setToastMessage(message);
     setToastType(type);
     setShowToast(true);
-    
+
     setTimeout(() => {
       setShowToast(false);
     }, duration);
   };
 
   const handleDelete = async () => {
-    // Prevent accidental clicks 
+    // Prevent accidental clicks
     if (isButtonsDisabled) return;
-    
+
     if (!transaction) return;
     setShowDeleteModal(true);
   };
@@ -246,7 +268,10 @@ export default function TransactionDetail({
   const confirmDelete = async () => {
     try {
       setShowDeleteModal(false);
-      const success = await deleteTransactionApi(transaction.id, transaction.type);
+      const success = await deleteTransactionApi(
+        transaction.id,
+        transaction.type
+      );
 
       if (success) {
         onDelete?.();
@@ -263,7 +288,7 @@ export default function TransactionDetail({
   const handleConfirm = async () => {
     // Prevent accidental clicks
     if (isButtonsDisabled) return;
-    
+
     if (!hasChanges) {
       onBack?.();
       return;
@@ -280,65 +305,68 @@ export default function TransactionDetail({
       // 檢查交易類型是否與原始類型不同
       const originalType = originalTransaction.type;
       const hasTypeChanged = transaction.type !== originalType;
-      
+
       if (hasTypeChanged) {
         // 如果類型已更改，需要刪除舊交易並創建新交易
         console.log("交易類型已變更，刪除舊交易並創建新交易");
-        
+
         // 先刪除原有的交易
-        const deleteSuccess = await deleteTransactionApi(transaction.id, originalType);
-        
+        const deleteSuccess = await deleteTransactionApi(
+          transaction.id,
+          originalType
+        );
+
         if (!deleteSuccess) {
           showToastNotification("儲存失敗，請稍後再試", "error");
           return;
         }
-        
-        // 構建 API URL
-        const endpoint = transaction.type === "income" ? "incomes" : "expenses";
-        const url = `${SUPABASE_URL}/${endpoint}`;
-        
+
+        // 構建 API URL - 使用統一的 transactions 表
+        const url = `${SUPABASE_URL}/transactions`;
+
         // 準備要創建的數據
         const createData: any = {
           user_id: transaction.user_id,
           category: transaction.category,
           amount: Math.abs(transaction.amount),
+          type: transaction.type, // 明確指定類型
           datetime: parseDateToISOString(transaction.date),
           memo: transaction.note || "",
           is_fixed: transaction.isFixed || false,
         };
-        
+
         if (transaction.isFixed) {
           createData.frequency = transaction.fixedFrequency;
           createData.interval = transaction.fixedInterval;
         }
-        
+
         console.log("創建新交易:", createData);
-        
+
         // 發送 API 請求創建新交易
         const response = await fetch(url, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "apikey": SUPABASE_KEY,
-            "Prefer": "return=representation",
+            apikey: SUPABASE_KEY,
+            Prefer: "return=representation",
           },
           body: JSON.stringify(createData),
         });
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           console.error("創建交易失敗:", errorText);
           showToastNotification("儲存失敗，請稍後再試", "error");
           return;
         }
-        
+
         // 解析響應數據
         const data = await response.json();
         if (!data || data.length === 0) {
           showToastNotification("儲存失敗，請稍後再試", "error");
           return;
         }
-        
+
         // 清除快取
         const match = transaction.date.match(/(\d+)年(\d+)月(\d+)日/);
         if (match) {
@@ -346,19 +374,19 @@ export default function TransactionDetail({
           const month = parseInt(match[2]);
           clearTransactionCache(transaction.user_id, year, month);
         }
-        
+
         // 使用新創建的交易 ID 更新 transaction 對象
         const newTransaction = {
           ...transaction,
           id: data[0].id,
         };
-        
+
         // 通知父組件更新成功
         onUpdate?.(newTransaction);
         showToastNotification("儲存成功", "success");
-        
+
         // 確保在返回之前，父組件有足夠時間處理更新和清除快取
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 300));
         onBack?.();
       } else {
         // 如果類型沒有變化，使用正常的更新流程
@@ -376,9 +404,9 @@ export default function TransactionDetail({
           // 通知父組件更新成功
           onUpdate?.(transaction);
           showToastNotification("儲存成功", "success");
-          
+
           // 確保在返回之前，父組件有足夠時間處理更新和清除快取
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise((resolve) => setTimeout(resolve, 300));
           onBack?.();
         } else {
           showToastNotification("儲存失敗，請稍後再試", "error");
@@ -403,7 +431,7 @@ export default function TransactionDetail({
     const amount = Number.parseFloat(editAmount);
     if (!isNaN(amount)) {
       updateTransaction({
-        amount: transaction.type === "expense" ? -amount : amount
+        amount: transaction.type === "expense" ? -amount : amount,
       });
       setIsEditingAmount(false);
     } else {
@@ -424,11 +452,11 @@ export default function TransactionDetail({
   // 修改其他更新函數使用 updateTransaction
   const handleSaveDate = async (date: Date) => {
     if (!transaction) return;
-    
+
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
     const day = date.getDate();
-    
+
     const formattedDate = `${year}年${month.toString().padStart(2, "0")}月${day
       .toString()
       .padStart(2, "0")}日`;
@@ -478,55 +506,60 @@ export default function TransactionDetail({
 
     try {
       // 找到要刪除的類別
-      const categoryToRemove = dbCategories.find(cat => cat.name === categoryToDelete);
-      
+      const categoryToRemove = dbCategories.find(
+        (cat) => cat.name === categoryToDelete
+      );
+
       if (categoryToRemove) {
         if (categoryToRemove.user_id === null) {
           // 系統預設類別 - 創建一個用戶特定的"刪除標記"記錄
           const url = `${SUPABASE_URL}/categories`;
-          
+
           // 準備要創建的數據 - 創建一個與系統預設同名但標記為已刪除的用戶特定記錄
           const createData = {
             user_id: transaction.user_id,
             name: categoryToRemove.name,
             type: categoryToRemove.type,
-            is_deleted: true
+            is_deleted: true,
           };
-          
+
           // 發送 API 請求創建"刪除標記"記錄
           const response = await fetch(url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "apikey": SUPABASE_KEY,
-              "Prefer": "return=representation",
+              apikey: SUPABASE_KEY,
+              Prefer: "return=representation",
             },
             body: JSON.stringify(createData),
           });
-          
+
           if (!response.ok) {
             const errorText = await response.text();
-            console.error("Create delete marker error response body:", errorText);
+            console.error(
+              "Create delete marker error response body:",
+              errorText
+            );
             alert("刪除類別失敗，請稍後再試");
             return;
           }
         } else {
           // 用戶自定義類別 - 直接標記為已刪除
           const url = `${SUPABASE_URL}/categories?id=eq.${categoryToRemove.id}`;
-          
+
           // 發送 API 請求更新類別為已刪除
           const response = await fetch(url, {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
-              "apikey": SUPABASE_KEY,
-              "Prefer": "return=representation",
+              apikey: SUPABASE_KEY,
+              Prefer: "return=representation",
             },
-            body: JSON.stringify({ 
-              is_deleted: true
+            body: JSON.stringify({
+              is_deleted: true,
             }),
           });
-          
+
           if (!response.ok) {
             const errorText = await response.text();
             console.error("Delete category error response body:", errorText);
@@ -534,16 +567,18 @@ export default function TransactionDetail({
             return;
           }
         }
-        
+
         // 更新本地類別列表 - 從顯示中移除已刪除的類別
-        setDbCategories(prev => prev.filter(cat => cat.name !== categoryToDelete));
-        setCategories(prev => prev.filter(cat => cat !== categoryToDelete));
-        
+        setDbCategories((prev) =>
+          prev.filter((cat) => cat.name !== categoryToDelete)
+        );
+        setCategories((prev) => prev.filter((cat) => cat !== categoryToDelete));
+
         // 顯示成功通知
         showToastNotification("類別已刪除", "success");
       } else {
         // 如果找不到類別，只更新本地列表
-        setCategories(prev => prev.filter(cat => cat !== categoryToDelete));
+        setCategories((prev) => prev.filter((cat) => cat !== categoryToDelete));
       }
     } catch (error) {
       console.error("Error deleting category:", error);
@@ -560,21 +595,24 @@ export default function TransactionDetail({
   // 儲存新類別
   const handleSaveNewCategory = async () => {
     if (newCategory.trim() === "") return;
-    
+
     // 檢查類別是否已存在
     if (categories.includes(newCategory.trim())) {
       alert("此類別已存在");
       return;
     }
-    
+
     // 添加到資料庫
     if (transaction) {
-      const success = await addCategoryToDatabase(newCategory.trim(), transaction.type);
-      
+      const success = await addCategoryToDatabase(
+        newCategory.trim(),
+        transaction.type
+      );
+
       if (success) {
         // 更新本地類別列表
-        setCategories(prev => [...prev, newCategory.trim()]);
-        
+        setCategories((prev) => [...prev, newCategory.trim()]);
+
         // 如果不在編輯模式，自動選擇新類別
         if (!isCategoryEditMode) {
           handleSelectCategory(newCategory.trim());
@@ -583,51 +621,54 @@ export default function TransactionDetail({
         alert("新增類別失敗，請稍後再試");
       }
     }
-    
+
     setIsAddingCategory(false);
   };
 
   // 修改 addCategoryToDatabase 函數
-  const addCategoryToDatabase = async (categoryName: string, type: "income" | "expense") => {
+  const addCategoryToDatabase = async (
+    categoryName: string,
+    type: "income" | "expense"
+  ) => {
     try {
       // 構建 API URL
       const url = `${SUPABASE_URL}/categories`;
-      
+
       // 準備要創建的數據
       const createData = {
         user_id: transaction.user_id,
         name: categoryName,
         type: type,
-        is_deleted: false
+        is_deleted: false,
       };
-      
+
       // 發送 API 請求創建新類別
       const response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "apikey": SUPABASE_KEY,
-          "Prefer": "return=representation",
+          apikey: SUPABASE_KEY,
+          Prefer: "return=representation",
         },
         body: JSON.stringify(createData),
       });
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Create category error response body:", errorText);
         return false;
       }
-      
+
       // 解析響應數據
       const data = await response.json();
       if (!data || data.length === 0) {
         return false;
       }
-      
+
       // 更新本地類別列表
       const newCategory = data[0];
-      setDbCategories(prev => [...prev, newCategory]);
-      
+      setDbCategories((prev) => [...prev, newCategory]);
+
       return true;
     } catch (error) {
       console.error("Error adding category to database:", error);
@@ -725,9 +766,9 @@ export default function TransactionDetail({
   const renderCalendar = () => {
     // Don't render calendar on server-side
     if (!isMounted) {
-      return Array(42).fill(null).map((_, i) => (
-        <div key={`placeholder-${i}`} className="h-8"></div>
-      ));
+      return Array(42)
+        .fill(null)
+        .map((_, i) => <div key={`placeholder-${i}`} className="h-8"></div>);
     }
 
     const year = calendarDate.getFullYear();
@@ -790,12 +831,15 @@ export default function TransactionDetail({
     <>
       {/* Toast 通知 */}
       {showToast && (
-        <div 
+        <div
           className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg transition-all duration-300 animate-fadeInDown ${
-            toastType === "success" ? "bg-green-500 text-white" : "bg-red-500 text-white"
+            toastType === "success"
+              ? "bg-green-500 text-white"
+              : "bg-red-500 text-white"
           }`}
           style={{
-            animation: 'fadeInDown 0.3s ease-out, fadeOutUp 0.3s ease-in forwards 2.5s'
+            animation:
+              "fadeInDown 0.3s ease-out, fadeOutUp 0.3s ease-in forwards 2.5s",
           }}
         >
           <div className="flex items-center">
@@ -808,14 +852,14 @@ export default function TransactionDetail({
           </div>
         </div>
       )}
-      
+
       {/* 刪除確認視窗 */}
       {showDeleteModal && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 animate-fadeIn"
           onClick={() => setShowDeleteModal(false)}
         >
-          <div 
+          <div
             className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-xl transform animate-scaleInStatic"
             onClick={(e) => e.stopPropagation()} // 防止點擊內容區域時關閉視窗
           >
@@ -823,8 +867,12 @@ export default function TransactionDetail({
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
                 <Trash2 className="h-6 w-6 text-red-500" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">確定要刪除嗎？</h3>
-              <p className="text-sm text-gray-500">此操作無法復原，刪除後資料將永久消失。</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                確定要刪除嗎？
+              </h3>
+              <p className="text-sm text-gray-500">
+                此操作無法復原，刪除後資料將永久消失。
+              </p>
             </div>
             <div className="flex gap-3 mt-6">
               <button
@@ -843,7 +891,7 @@ export default function TransactionDetail({
           </div>
         </div>
       )}
-      
+
       <div className="fixed inset-0 z-0 bg-[#F1F2F5]" />
       <div className="w-full max-w-md mx-auto pb-6 relative z-10">
         <div className="space-y-4 px-[20px] mt-[20px]">
@@ -1136,10 +1184,10 @@ export default function TransactionDetail({
                           className="px-2 py-1 pr-4 border border-gray-200 rounded-lg bg-white focus:outline-none"
                         >
                           {generateMonthOptions().map((month) => (
-                          <option key={month} value={month}>
-                            {getMonthName(month)}
-                          </option>
-                        ))}
+                            <option key={month} value={month}>
+                              {getMonthName(month)}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
@@ -1184,9 +1232,12 @@ export default function TransactionDetail({
                 <textarea
                   value={transaction.note}
                   onChange={(e) => {
-                    const updatedTransaction = { ...transaction, note: e.target.value };
+                    const updatedTransaction = {
+                      ...transaction,
+                      note: e.target.value,
+                    };
                     setTransaction(updatedTransaction);
-                    
+
                     // 自动调整高度
                     e.target.style.height = "auto";
                     e.target.style.height = e.target.scrollHeight + "px";
@@ -1200,9 +1251,9 @@ export default function TransactionDetail({
                     // 移除自動儲存
                   }}
                   className="w-full px-3 py-2 rounded-lg focus:outline-none border border-gray-300 text-gray-800 resize-none overflow-hidden"
-                  style={{ 
+                  style={{
                     height: "38px", // 初始高度设为一行
-                    minHeight: "38px" // 最小高度为一行
+                    minHeight: "38px", // 最小高度为一行
                   }}
                   placeholder="輸入備註"
                   rows={1}
@@ -1221,7 +1272,9 @@ export default function TransactionDetail({
                 hasChanges
                   ? "bg-[#22c55e] text-white active:bg-green-600"
                   : "bg-gray-200 text-gray-600 active:bg-gray-300"
-              } transition-[background-color] duration-150 ${isButtonsDisabled ? 'pointer-events-none' : ''}`}
+              } transition-[background-color] duration-150 ${
+                isButtonsDisabled ? "pointer-events-none" : ""
+              }`}
             >
               {hasChanges ? (
                 <>
@@ -1240,7 +1293,9 @@ export default function TransactionDetail({
             <button
               onClick={handleDelete}
               disabled={isButtonsDisabled}
-              className={`w-full py-3 rounded-2xl bg-red-500 text-white flex items-center justify-center transition-colors duration-150 active:bg-red-600 ${isButtonsDisabled ? 'pointer-events-none' : ''}`}
+              className={`w-full py-3 rounded-2xl bg-red-500 text-white flex items-center justify-center transition-colors duration-150 active:bg-red-600 ${
+                isButtonsDisabled ? "pointer-events-none" : ""
+              }`}
             >
               <Trash2 size={20} className="mr-2" />
               刪除

@@ -629,15 +629,15 @@ export default function TransactionDetail({ onError }: TransactionDetailProps) {
           return;
         }
 
-        // 構建 API URL
-        const endpoint = transaction.type === "income" ? "incomes" : "expenses";
-        const url = `${SUPABASE_URL}/${endpoint}`;
+        // 構建 API URL - 使用統一的 transactions 表
+        const url = `${SUPABASE_URL}/transactions`;
 
         // 準備要創建的數據
         const createData = {
           user_id: userId,
           category: transaction.category,
           amount: Math.abs(transaction.amount),
+          type: transaction.type, // 明確指定類型
           datetime: parseDateToISOString(transaction.date),
           memo: transaction.note,
           is_fixed: transaction.isFixed,

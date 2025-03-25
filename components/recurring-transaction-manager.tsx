@@ -2096,7 +2096,7 @@ export default function RecurringTransactionManager({
         </div>
 
         {/* Bottom buttons skeleton */}
-        <div className="fixed bottom-0 left-0 right-0 pt-4 px-4 pb-6 bg-gray-100 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent">
+        <div className="fixed bottom-0 left-0 right-0 pt-4 px-4 pb-6 bg-gray-100 z-30 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent before:z-30">
           <div className="max-w-md mx-auto flex gap-3">
             <button
               onClick={onClose}
@@ -2135,7 +2135,7 @@ export default function RecurringTransactionManager({
         </div>
 
         {/* Bottom buttons - back button only */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100">
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100 z-30 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent before:z-30">
           <div className="max-w-md mx-auto">
             <button
               onClick={onClose}
@@ -2315,7 +2315,7 @@ export default function RecurringTransactionManager({
           )}
 
         {/* Bottom buttons - back and add buttons side by side */}
-        <div className="fixed bottom-0 left-0 right-0 pt-4 px-4 pb-6 bg-gray-100 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent">
+        <div className="fixed bottom-0 left-0 right-0 pt-4 px-4 pb-6 bg-gray-100 z-30 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent before:z-30">
           <div className="max-w-md mx-auto flex gap-3">
             <button
               onClick={onClose}

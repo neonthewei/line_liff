@@ -768,21 +768,20 @@ export default function TransactionList({
   >(new Set()); // 記錄已刪除的交易ID
 
   // 簡化處理交易刪除邏輯 - 改為記錄已刪除的交易ID
-  const handleDeleteTransaction = async (id: string) => { // 更新已刪除列表
+  const handleDeleteTransaction = async (id: string) => {
+    // 更新已刪除列表
     setDeletedTransactionIds((prev) => {
       const newSet = new Set(prev);
       newSet.add(id);
       return newSet;
     });
-  
-        if (onTransactionUpdate) { // 同步更新父層的 transactions
-      const updatedTransactions = transactions.filter(
-        (t) => t.id !== id
-      );
+
+    if (onTransactionUpdate) {
+      // 同步更新父層的 transactions
+      const updatedTransactions = transactions.filter((t) => t.id !== id);
       onTransactionUpdate(updatedTransactions);
     }
   };
-
 
   // 處理滑動狀態變化 - 改為立即通知其他項目關閉
   const handleSwipeStateChange = (isOpen: boolean, transactionId: string) => {
@@ -1052,7 +1051,7 @@ export default function TransactionList({
           {activeTab === "general" ? "本月尚無一般記錄" : "本月尚無定期記錄"}
         </div>
         {activeTab === "fixed" && (
-          <div className="fixed bottom-0 left-0 right-0 pt-4 px-4 pb-6 bg-gray-100 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent">
+          <div className="fixed bottom-0 left-0 right-0 pt-4 px-4 pb-6 bg-gray-100 z-30 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent before:z-30">
             <div className="max-w-md mx-auto">
               <button
                 className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
@@ -1158,7 +1157,7 @@ export default function TransactionList({
 
         {/* 管理定期收支按鈕 - 只在定期標籤顯示 */}
         {activeTab === "fixed" && (
-          <div className="fixed bottom-0 left-0 right-0 pt-4 px-4 pb-6 bg-gray-100 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent">
+          <div className="fixed bottom-0 left-0 right-0 pt-4 px-4 pb-6 bg-gray-100 z-30 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent before:z-30">
             <div className="max-w-md mx-auto">
               <button
                 className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
