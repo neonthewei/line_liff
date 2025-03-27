@@ -326,8 +326,39 @@ const TransactionItem = memo(
       // 檢查是否進行了明顯的滑動
       const isSignificantMovement = Math.abs(translateX) > 10;
 
+      // 如果没有明显滑动，而且显示删除按钮，则关闭删除按钮
+      if (
+        !isSignificantMovement &&
+        !isTouchMoveRef.current &&
+        showDeleteButton
+      ) {
+        // 阻止事件冒泡
+        e.stopPropagation();
+
+        // 開始收回動畫
+        setIsAnimating(true);
+        if (itemRef.current) {
+          itemRef.current.style.transition = "transform 0.2s ease-out";
+          itemRef.current.style.transform = "translateX(0)";
+
+          // 在動畫結束後更新狀態
+          setTimeout(() => {
+            setTranslateX(0);
+            setShowDeleteButton(false);
+            setIsAnimating(false);
+          }, 200);
+        }
+
+        // 重置状态并直接返回
+        setIsDragging(false);
+        touchStartRef.current = null;
+        isTouchMoveRef.current = false;
+        setIsPressed(false);
+        return;
+      }
+
       // 如果沒有明顯滑動，而且沒有移動過，可能是點擊
-      if (!isSignificantMovement && !isTouchMoveRef.current) {
+      else if (!isSignificantMovement && !isTouchMoveRef.current) {
         setIsPressed(true);
         setTimeout(() => {
           onTransactionClick(transaction.id);
@@ -539,11 +570,15 @@ const TransactionItem = memo(
     // 修改點擊其他地方時的處理
     useEffect(() => {
       const handleClickOutside = (e: MouseEvent) => {
-        // 防止在显示确认框的过程中处理点击事件
-        if (isShowingDeleteConfirm || showDeleteModal) {
+        // 完全禁用点击外部区域自动弹回的功能
+        // 只有在显示删除确认弹窗时才需要阻止冒泡
+        if (showDeleteModal || isShowingDeleteConfirm) {
+          e.stopPropagation();
           return;
         }
 
+        // 下面注释掉的是原来会导致弹回的代码，现在禁用了
+        /*
         // 確保刪除按鈕顯示時，處理點擊事件
         if (showDeleteButton && itemRef.current) {
           // 更明確地檢查點擊目標
@@ -575,6 +610,7 @@ const TransactionItem = memo(
             }, 200);
           }
         }
+        */
       };
 
       document.addEventListener("click", handleClickOutside);
