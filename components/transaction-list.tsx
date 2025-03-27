@@ -1,5 +1,13 @@
 "use client";
 
+// 在文件开头添加声明合并，为window对象添加新方法
+declare global {
+  interface Window {
+    lockBodyScroll?: () => void;
+    unlockBodyScroll?: () => void;
+  }
+}
+
 import { useEffect, useState, useMemo, memo, useRef } from "react";
 import { ChevronRight, Bug, Trash2 } from "lucide-react";
 import type { Transaction } from "@/types/transaction";
@@ -58,9 +66,9 @@ const TransactionItem = memo(
     const [isDeleted, setIsDeleted] = useState(false); // 新增狀態來控制項目是否已被刪除
     const [isAnimatingOut, setIsAnimatingOut] = useState(false); // 控制刪除動畫
     const contentRef = useRef<HTMLDivElement>(null); // 內容區域參考
-    const isHorizontalSwipe = useRef(false); // 記錄是否為水平滑動
-    const isVerticalScroll = useRef(false); // 新增記錄是否為垂直滾動
-    const [isAnimating, setIsAnimating] = useState(false); // 控制滑動動畫狀態
+    const isHorizontalSwipe = useRef(false);
+    const isVerticalScroll = useRef(false);
+    const [isAnimating, setIsAnimating] = useState(false);
     const [isShowingDeleteConfirm, setIsShowingDeleteConfirm] = useState(false);
 
     // 優化收回動畫
@@ -99,39 +107,76 @@ const TransactionItem = memo(
       onSwipeStateChange(showDeleteButton, transaction.id);
     }, [showDeleteButton, onSwipeStateChange, transaction.id]);
 
-    // 在滑動開始時添加禁止滾動事件
+    // 修改常见滚动管理效果
     useEffect(() => {
-      // 在捕獲階段禁止滾動的處理函數
-      const preventScroll = (e: TouchEvent) => {
+      // 简化滚动锁定/解锁函数
+      window.lockBodyScroll = () => {
+        // 只添加类来控制滚动行为，不修改滚动位置
+        document.documentElement.classList.add("no-elastic-scroll");
+        document.body.classList.add("no-elastic-scroll");
+      };
+
+      window.unlockBodyScroll = () => {
+        // 只移除类，不需要额外的滚动位置恢复
+        document.documentElement.classList.remove("no-elastic-scroll");
+        document.body.classList.remove("no-elastic-scroll");
+      };
+
+      return () => {
+        // 确保组件卸载时解锁滚动
+        if (document.body.classList.contains("no-elastic-scroll")) {
+          document.documentElement.classList.remove("no-elastic-scroll");
+          document.body.classList.remove("no-elastic-scroll");
+        }
+        // 删除全局函数
+        delete window.lockBodyScroll;
+        delete window.unlockBodyScroll;
+      };
+    }, []);
+
+    // 修改触摸处理效果，使用全局函数
+    useEffect(() => {
+      // 替代方案：不使用preventDefault，而是添加CSS类控制
+      const handleTouchStart = () => {
         if (isHorizontalSwipe.current || showDeleteButton) {
-          // 阻止滾動事件的默認行為
-          e.preventDefault();
-          // 鎖定頁面滾動 - 使用多種方式確保兼容性
-          document.body.style.overflow = "hidden";
-          document.documentElement.style.overflow = "hidden";
-          document.body.style.position = "fixed";
-          document.body.style.width = "100%";
+          // 使用全局函数锁定滚动
+          if (typeof window.lockBodyScroll === "function") {
+            window.lockBodyScroll();
+          }
         }
       };
 
-      // 使用正確的類型定義來允許 passive: false
-      document.addEventListener("touchmove", preventScroll, {
-        passive: false,
-        capture: true,
-      } as AddEventListenerOptions);
+      const handleTouchEnd = () => {
+        // 如果没有显示删除按钮，解锁滚动
+        if (!showDeleteButton) {
+          if (typeof window.unlockBodyScroll === "function") {
+            window.unlockBodyScroll();
+          }
+        }
+      };
+
+      // 使用passive: true，避免警告
+      document.addEventListener("touchstart", handleTouchStart, {
+        passive: true,
+      });
+      document.addEventListener("touchend", handleTouchEnd, { passive: true });
+      document.addEventListener("touchcancel", handleTouchEnd, {
+        passive: true,
+      });
 
       return () => {
-        document.removeEventListener("touchmove", preventScroll, {
-          passive: false,
-          capture: true,
-        } as AddEventListenerOptions);
-        // 確保在組件卸載時恢復滾動
-        document.body.style.overflow = "";
-        document.documentElement.style.overflow = "";
-        document.body.style.position = "";
-        document.body.style.width = "";
+        document.removeEventListener("touchstart", handleTouchStart);
+        document.removeEventListener("touchend", handleTouchEnd);
+        document.removeEventListener("touchcancel", handleTouchEnd);
+        // 确保清理时恢复滚动
+        if (
+          document.body.classList.contains("no-elastic-scroll") &&
+          typeof window.unlockBodyScroll === "function"
+        ) {
+          window.unlockBodyScroll();
+        }
       };
-    }, [showDeleteButton, isHorizontalSwipe]);
+    }, [showDeleteButton]);
 
     // Format timestamp to a user-friendly format
     const formatTimestamp = (timestamp: string | undefined): string => {
@@ -248,25 +293,21 @@ const TransactionItem = memo(
       touchStartRef.current.time = now;
       touchStartRef.current.lastX = translateX; // 記錄上一個位置
 
-      // 增強方向檢測邏輯 - 判斷是水平還是垂直滑動
+      // 檢測是否為垂直滾動 - 如果垂直移動比水平移動明顯，且超過閾值
       if (!isHorizontalSwipe.current && !isVerticalScroll.current) {
-        // 更早更敏感地檢測水平滑動 - 降低閾值
-        if (absDeltaX > 5 && absDeltaX > absDeltaY) {
-          isHorizontalSwipe.current = true; // 標記為水平滑動
-
-          // 立即鎖定頁面滾動
-          document.body.style.overflow = "hidden";
-          document.documentElement.style.overflow = "hidden";
-          document.body.style.position = "fixed";
-          document.body.style.width = "100%";
-
-          // 阻止默認行為和冒泡
-          e.preventDefault();
-          e.stopPropagation();
-        }
-        // 只有當明確判斷為垂直滑動時才標記
-        else if (absDeltaY > 10 && absDeltaY > absDeltaX * 2) {
+        // 最初的移動方向判斷 - 降低垂直滑动判定的阈值，使其更容易触发
+        if (absDeltaY > 8 && absDeltaY > absDeltaX * 1.3) {
           isVerticalScroll.current = true; // 標記為垂直滾動
+          // 移除任何滚动锁定类
+          document.body.classList.remove("no-elastic-scroll");
+          return; // 允許頁面正常滾動
+        } else if (absDeltaX > 8 && absDeltaX > absDeltaY * 1.3) {
+          isHorizontalSwipe.current = true; // 標記為水平滑動
+          // 添加滚动锁定类
+          document.body.classList.add("no-elastic-scroll");
+          // 这里不再调用preventDefault，因为在组件的TouchEvent处理函数中，
+          // passive标志不会导致问题
+          e.stopPropagation();
         }
       }
 
@@ -275,17 +316,10 @@ const TransactionItem = memo(
         return;
       }
 
-      // 如果水平滑動已經開始或者顯示刪除按鈕，完全阻止頁面滾動
+      // 如果水平滑動已經開始或者顯示刪除按鈕，阻止事件冒泡
       if (isHorizontalSwipe.current || showDeleteButton) {
-        // 阻止默認行為和冒泡
-        e.preventDefault();
+        // 这里不再调用preventDefault，只阻止冒泡
         e.stopPropagation();
-
-        // 鎖定頁面滾動 - 使用多種方式確保兼容性
-        document.body.style.overflow = "hidden";
-        document.documentElement.style.overflow = "hidden";
-        document.body.style.position = "fixed";
-        document.body.style.width = "100%";
       }
 
       // 如果已經標記為水平滑動或者準備啟動滑動
@@ -326,11 +360,11 @@ const TransactionItem = memo(
       setIsPressed(true);
       setIsDragging(false); // 初始設置為 false，等確認滑動方向後再設置
 
-      // 如果已顯示刪除按鈕，改用CSS控制而不是preventDefault
+      // 如果已顯示刪除按鈕，仅阻止事件传播，不使用preventDefault
       if (showDeleteButton) {
         e.stopPropagation();
-        // 立即鎖定頁面滾動
-        document.body.style.overflow = "hidden";
+        // 添加CSS类控制滚动
+        document.body.classList.add("no-elastic-scroll");
       }
 
       // 如果正在動畫，立即停止
@@ -342,33 +376,32 @@ const TransactionItem = memo(
 
     // Handle touch end - stop at threshold to show delete button or return to original position
     const handleTouchEnd = (e: React.TouchEvent) => {
-      // console.log(`[回弹功能] handleTouchEnd 被触发，交易ID: ${transaction.id}`);
-
       if (!touchStartRef.current) {
-        // console.log(`[回弹功能] handleTouchEnd - 没有touchStart参考点，退出`);
         setIsDragging(false);
         return;
       }
-
-      // 恢復頁面滾動
-      document.body.style.overflow = "";
-      document.documentElement.style.overflow = "";
-      document.body.style.position = "";
-      document.body.style.width = "";
-
-      // 重置水平滑動和垂直滾動標記
-      isHorizontalSwipe.current = false;
-      isVerticalScroll.current = false;
 
       // 計算最終滑動速度與方向
       const endTime = Date.now();
       const duration = endTime - (touchStartRef.current.time || endTime);
       const distance = translateX - (touchStartRef.current.lastX || 0);
       const velocity = (distance / Math.max(1, duration)) * 1000; // 每秒多少像素
-      // console.log(`[回弹功能] handleTouchEnd - 滑动数据: 距离=${distance.toFixed(2)}px, 速度=${velocity.toFixed(2)}px/s`);
 
       // 檢查是否進行了明顯的滑動
       const isSignificantMovement = Math.abs(translateX) > 10;
+
+      // 如果没有显示删除按钮且没有明显滑动，解锁滚动
+      if (
+        !showDeleteButton &&
+        !isSignificantMovement &&
+        typeof window.unlockBodyScroll === "function"
+      ) {
+        window.unlockBodyScroll();
+      }
+
+      // 重置水平滑動和垂直滾動標記
+      isHorizontalSwipe.current = false;
+      isVerticalScroll.current = false;
 
       // 如果没有明显滑动，而且显示删除按钮，则关闭删除按钮
       if (
@@ -376,7 +409,6 @@ const TransactionItem = memo(
         !isTouchMoveRef.current &&
         showDeleteButton
       ) {
-        // console.log(`[回弹功能] handleTouchEnd - 轻触关闭删除按钮`);
         // 阻止事件冒泡
         e.stopPropagation();
 
@@ -391,7 +423,11 @@ const TransactionItem = memo(
             setTranslateX(0);
             setShowDeleteButton(false);
             setIsAnimating(false);
-            // console.log(`[回弹功能] handleTouchEnd - 轻触关闭动画完成`);
+
+            // 关闭删除按钮后解锁滚动
+            if (typeof window.unlockBodyScroll === "function") {
+              window.unlockBodyScroll();
+            }
           }, 200);
         }
 
@@ -475,6 +511,15 @@ const TransactionItem = memo(
               setIsAnimating(false); // 動畫完成
               // console.log(`[回弹功能] handleTouchEnd - 动画完成，状态已更新，showDeleteButton=${shouldShowDelete}`);
 
+              // 根据最终状态决定是否解锁滚动
+              if (
+                !shouldShowDelete &&
+                typeof window.unlockBodyScroll === "function"
+              ) {
+                // 如果最终不显示删除按钮，解锁滚动
+                window.unlockBodyScroll();
+              }
+
               // 重置transition，以便下次直接滑動時不會有動畫
               if (itemRef.current) {
                 itemRef.current.style.transition = isDragging
@@ -511,12 +556,23 @@ const TransactionItem = memo(
 
     // Handle touch cancel - reset state
     const handleTouchCancel = () => {
-      // 恢復頁面滾動
-      document.body.style.overflow = "";
+      // 使用全局函数恢复滚动
+      if (typeof window.unlockBodyScroll === "function") {
+        window.unlockBodyScroll();
+      }
+
+      // 重置所有状态
       isHorizontalSwipe.current = false;
+      isVerticalScroll.current = false;
       touchStartRef.current = null;
       isTouchMoveRef.current = false;
       setIsPressed(false);
+
+      // 如果显示了删除按钮，保持按钮状态
+      // 如果没有显示删除按钮，通知父组件此项目已不再活动
+      if (!showDeleteButton) {
+        onSwipeStateChange(false, transaction.id);
+      }
     };
 
     // Separate handler for keyboard events
@@ -758,6 +814,39 @@ const TransactionItem = memo(
         cancelDelete();
       }
     };
+
+    // 添加滑动状态的引用，用于在组件卸载时清理滚动锁定
+    const isSwipingRef = useRef(false);
+
+    // 更新滑动状态的跟踪效果
+    useEffect(() => {
+      isSwipingRef.current = isHorizontalSwipe.current || showDeleteButton;
+
+      // 组件卸载时确保解锁滚动
+      return () => {
+        if (
+          isSwipingRef.current &&
+          typeof window.unlockBodyScroll === "function"
+        ) {
+          window.unlockBodyScroll();
+        }
+      };
+    }, [showDeleteButton]);
+
+    // 添加一个样式类，用于在滑动时禁用用户选择
+    useEffect(() => {
+      // 当水平滑动或显示删除按钮时，添加样式类以防止用户选择
+      if (isHorizontalSwipe.current || showDeleteButton) {
+        document.body.classList.add("no-select");
+      } else {
+        document.body.classList.remove("no-select");
+      }
+
+      return () => {
+        // 清理：确保移除样式类
+        document.body.classList.remove("no-select");
+      };
+    }, [showDeleteButton]);
 
     return (
       <div className="relative overflow-hidden" style={deleteAnimationStyle}>

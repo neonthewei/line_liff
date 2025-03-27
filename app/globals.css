@@ -75,6 +75,37 @@
   }
 }
 
+/* 禁用用户选择，用于滑动操作时 */
+.no-select {
+  -webkit-touch-callout: none; /* iOS Safari */
+  -webkit-user-select: none; /* Safari */
+  -khtml-user-select: none; /* Konqueror HTML */
+  -moz-user-select: none; /* Firefox */
+  -ms-user-select: none; /* Internet Explorer/Edge */
+  user-select: none; /* 标准语法 */
+  touch-action: pan-y; /* 允许垂直滚动但禁止水平滑动的传播 */
+  overscroll-behavior: none; /* 防止滚动链接和弹性滚动 */
+}
+
+/* 防止弹性滚动效果，用于左右滑动时 - 使用更简单有效的方法 */
+.no-elastic-scroll {
+  overscroll-behavior: none; /* 防止滚动链接和弹性滚动 */
+  touch-action: pan-y; /* 只允许垂直滚动 */
+  -webkit-overflow-scrolling: auto; /* 禁用iOS的弹性滚动 */
+}
+
+/* 为.no-elastic-scroll类创建一个特殊情况，只应用于body元素 */
+html.no-elastic-scroll,
+body.no-elastic-scroll {
+  overflow-x: hidden; /* 只禁用水平滚动 */
+  touch-action: pan-y; /* 只允许垂直滚动 */
+  overscroll-behavior: none; /* 防止滚动弹性效果 */
+  /* 移除可能导致视口位置变化的属性 */
+  position: relative;
+  height: auto;
+  width: auto;
+}
+
 /* Animation styles for transaction detail */
 @keyframes fadeIn {
   from {
