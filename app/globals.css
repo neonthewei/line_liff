@@ -87,25 +87,6 @@
   overscroll-behavior: none; /* 防止滚动链接和弹性滚动 */
 }
 
-/* 防止弹性滚动效果，用于左右滑动时 - 使用更简单有效的方法 */
-.no-elastic-scroll {
-  overscroll-behavior: none; /* 防止滚动链接和弹性滚动 */
-  touch-action: pan-y; /* 只允许垂直滚动 */
-  -webkit-overflow-scrolling: auto; /* 禁用iOS的弹性滚动 */
-}
-
-/* 为.no-elastic-scroll类创建一个特殊情况，只应用于body元素 */
-html.no-elastic-scroll,
-body.no-elastic-scroll {
-  overflow-x: hidden; /* 只禁用水平滚 */
-  touch-action: pan-y; /* 只允许垂直滚动 */
-  overscroll-behavior: none; /* 防止滚动弹性效果 */
-  /* 移除可能导致视口位置变化的属性 */
-  position: relative;
-  height: auto;
-  width: auto;
-}
-
 /* Animation styles for transaction detail */
 @keyframes fadeIn {
   from {
@@ -239,4 +220,19 @@ body.no-elastic-scroll {
 * {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* 滑动锁定 - 优化版，不会导致页面跳动 */
+.no-elastic-scroll {
+  overscroll-behavior: none !important; /* 防止滚动链接和弹性滚动 */
+  touch-action: pan-x !important; /* 只允许水平滑动 */
+  -webkit-overflow-scrolling: auto !important; /* 禁用iOS的弹性滚动 */
+}
+
+/* 针对html和body的特殊处理 */
+html.no-elastic-scroll,
+body.no-elastic-scroll {
+  overflow-y: hidden !important; /* 只禁用垂直滚动 */
+  overscroll-behavior: none !important; /* 防止滚动弹性效果 */
+  touch-action: pan-x !important; /* 只允许水平滑动 */
 }
