@@ -67,12 +67,16 @@ const TransactionItem = memo(
     useEffect(() => {
       // 如果需要關閉且顯示刪除按鈕或已經有位移
       if (shouldClose && (showDeleteButton || translateX < 0)) {
+        // console.log(`[回弹功能] 检测到shouldClose为true，正在收回交易项: ${transaction.id}`);
+
         // 立即中斷任何進行中的動畫
         if (itemRef.current) {
           // 先設置為非常短的過渡動畫，確保立即性
           itemRef.current.style.transition =
             "transform 0.08s cubic-bezier(0.2, 0, 0.4, 1)";
           itemRef.current.style.transform = "translateX(0)";
+
+          // console.log(`[回弹功能] 开始快速收回动画，交易ID: ${transaction.id}`);
         }
 
         // 立即更新狀態
@@ -85,9 +89,10 @@ const TransactionItem = memo(
         // 動畫結束後重置動畫狀態
         setTimeout(() => {
           setIsAnimating(false);
+          // console.log(`[回弹功能] 收回动画完成，交易ID: ${transaction.id}`);
         }, 80); // 和過渡時間匹配
       }
-    }, [shouldClose, showDeleteButton, translateX]);
+    }, [shouldClose, showDeleteButton, translateX, transaction.id]);
 
     // 當刪除按鈕狀態變化時，通知父組件
     useEffect(() => {
@@ -151,8 +156,11 @@ const TransactionItem = memo(
 
     // Handle mouse click
     const handleClick = (e: React.MouseEvent) => {
+      // console.log(`[回弹功能] handleClick 被触发，交易ID: ${transaction.id}`);
+
       // 如果是滑動狀態或者剛剛完成滑動，不觸發點擊事件
       if (isDragging || translateX > 10) {
+        // console.log(`[回弹功能] handleClick - 滑动状态中，阻止点击，isDragging: ${isDragging}, translateX: ${translateX}`);
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -160,6 +168,7 @@ const TransactionItem = memo(
 
       // 如果刪除按鈕已經顯示，則點擊會收回刪除按鈕
       if (showDeleteButton) {
+        // console.log(`[回弹功能] handleClick - 删除按钮已显示，触发收回动画`);
         e.preventDefault();
         e.stopPropagation();
 
@@ -174,11 +183,13 @@ const TransactionItem = memo(
             setTranslateX(0);
             setShowDeleteButton(false);
             setIsAnimating(false);
+            // console.log(`[回弹功能] handleClick - 收回动画完成`);
           }, 200);
         }
         return;
       }
 
+      // console.log(`[回弹功能] handleClick - 正常点击，准备调用onTransactionClick`);
       e.preventDefault();
       e.stopPropagation();
 
@@ -305,7 +316,10 @@ const TransactionItem = memo(
 
     // Handle touch end - stop at threshold to show delete button or return to original position
     const handleTouchEnd = (e: React.TouchEvent) => {
+      // console.log(`[回弹功能] handleTouchEnd 被触发，交易ID: ${transaction.id}`);
+
       if (!touchStartRef.current) {
+        // console.log(`[回弹功能] handleTouchEnd - 没有touchStart参考点，退出`);
         setIsDragging(false);
         return;
       }
@@ -322,6 +336,7 @@ const TransactionItem = memo(
       const duration = endTime - (touchStartRef.current.time || endTime);
       const distance = translateX - (touchStartRef.current.lastX || 0);
       const velocity = (distance / Math.max(1, duration)) * 1000; // 每秒多少像素
+      // console.log(`[回弹功能] handleTouchEnd - 滑动数据: 距离=${distance.toFixed(2)}px, 速度=${velocity.toFixed(2)}px/s`);
 
       // 檢查是否進行了明顯的滑動
       const isSignificantMovement = Math.abs(translateX) > 10;
@@ -332,6 +347,7 @@ const TransactionItem = memo(
         !isTouchMoveRef.current &&
         showDeleteButton
       ) {
+        // console.log(`[回弹功能] handleTouchEnd - 轻触关闭删除按钮`);
         // 阻止事件冒泡
         e.stopPropagation();
 
@@ -346,6 +362,7 @@ const TransactionItem = memo(
             setTranslateX(0);
             setShowDeleteButton(false);
             setIsAnimating(false);
+            // console.log(`[回弹功能] handleTouchEnd - 轻触关闭动画完成`);
           }, 200);
         }
 
@@ -359,12 +376,14 @@ const TransactionItem = memo(
 
       // 如果沒有明顯滑動，而且沒有移動過，可能是點擊
       else if (!isSignificantMovement && !isTouchMoveRef.current) {
+        // console.log(`[回弹功能] handleTouchEnd - 检测到点击行为，调用onTransactionClick`);
         setIsPressed(true);
         setTimeout(() => {
           onTransactionClick(transaction.id);
           setIsPressed(false);
         }, 150);
       } else {
+        // console.log(`[回弹功能] handleTouchEnd - 检测到滑动结束，开始决定最终位置`);
         // 標記開始動畫
         setIsAnimating(true);
 
@@ -380,9 +399,11 @@ const TransactionItem = memo(
           if (isRightSwipe || translateX > -deleteThreshold / 2) {
             // 1. 向右滑動(嘗試收回) 或 2. 已經收回超過一半
             targetX = 0; // 完全收回
+            // console.log(`[回弹功能] handleTouchEnd - 删除按钮已显示，但检测到向右滑动或收回超过一半，将完全收回`);
           } else {
             // 否則保持展開
             targetX = -deleteThreshold;
+            // console.log(`[回弹功能] handleTouchEnd - 删除按钮已显示，保持展开状态`);
           }
         } else {
           // 當刪除按鈕未顯示時
@@ -392,13 +413,16 @@ const TransactionItem = memo(
           ) {
             // 向左滑動且已經滑動超過一半 或 速度快
             targetX = -deleteThreshold; // 完全展開
+            // console.log(`[回弹功能] handleTouchEnd - 删除按钮未显示，向左滑动超过阈值一半或速度足够，将完全展开`);
           } else {
             // 否則回到原位
             targetX = 0;
+            // console.log(`[回弹功能] handleTouchEnd - 删除按钮未显示，滑动不足，将回到原位`);
           }
         }
 
         const shouldShowDelete = targetX < 0;
+        // console.log(`[回弹功能] handleTouchEnd - 最终决定: targetX=${targetX}, shouldShowDelete=${shouldShowDelete}`);
 
         // 決定動畫時間 - 根據距離調整
         const distanceToTarget = Math.abs(translateX - targetX);
@@ -406,6 +430,7 @@ const TransactionItem = memo(
           0.3,
           Math.max(0.15, distanceToTarget / 500)
         );
+        // console.log(`[回弹功能] handleTouchEnd - 动画参数: 距离=${distanceToTarget.toFixed(2)}px, 持续=${animationDuration.toFixed(2)}秒`);
 
         // 如果需要回彈或者完全展開，使用動畫
         if (translateX !== targetX) {
@@ -419,6 +444,7 @@ const TransactionItem = memo(
               setTranslateX(targetX);
               setShowDeleteButton(shouldShowDelete);
               setIsAnimating(false); // 動畫完成
+              // console.log(`[回弹功能] handleTouchEnd - 动画完成，状态已更新，showDeleteButton=${shouldShowDelete}`);
 
               // 重置transition，以便下次直接滑動時不會有動畫
               if (itemRef.current) {
@@ -432,6 +458,7 @@ const TransactionItem = memo(
           // 已經在目標位置，直接更新狀態
           setShowDeleteButton(shouldShowDelete);
           setIsAnimating(false);
+          // console.log(`[回弹功能] handleTouchEnd - 已在目标位置，直接更新状态`);
         }
 
         // 阻止事件冒泡，但不阻止默认行为，避免passive监听器错误
@@ -447,6 +474,7 @@ const TransactionItem = memo(
 
         // 如果沒有顯示刪除按鈕，通知父組件此項目已不再活動
         if (!showDeleteButton) {
+          // console.log(`[回弹功能] handleTouchEnd - 通知父组件此项目不再活动`);
           onSwipeStateChange(false, transaction.id);
         }
       }, 50);
@@ -479,88 +507,109 @@ const TransactionItem = memo(
     const handleDeleteButtonClick = (
       e: React.MouseEvent | React.TouchEvent
     ) => {
-      e.stopPropagation(); // 阻止事件冒泡
+      // 阻止事件冒泡并阻止默认行为
+      e.stopPropagation();
+      e.preventDefault();
+
+      // 保留关键日志
+      console.log(`[删除确认] 点击删除按钮，准备显示确认弹窗`);
 
       // 防止显示后立即被关闭
       setIsShowingDeleteConfirm(true);
 
+      // 设置一个遮挡层，防止任何点击事件穿透
+      const blocker = document.createElement("div");
+      blocker.style.position = "fixed";
+      blocker.style.top = "0";
+      blocker.style.left = "0";
+      blocker.style.width = "100vw";
+      blocker.style.height = "100vh";
+      blocker.style.zIndex = "999";
+      blocker.style.background = "transparent";
+      document.body.appendChild(blocker);
+
       // 设置一个更长的超时确保弹窗不会被立即关闭
       setTimeout(() => {
         setShowDeleteModal(true);
-      }, 10);
+        console.log(`[删除确认] 确认弹窗已显示`);
 
-      // 在下一帧添加全局防止点击事件
-      requestAnimationFrame(() => {
-        // 创建一个防止点击的遮罩层，在50ms后移除
-        const blocker = document.createElement("div");
-        blocker.style.position = "fixed";
-        blocker.style.top = "0";
-        blocker.style.left = "0";
-        blocker.style.width = "100vw";
-        blocker.style.height = "100vh";
-        blocker.style.zIndex = "1000";
-        blocker.style.background = "transparent";
-        document.body.appendChild(blocker);
-
-        // 短时间后移除遮罩层
+        // 移除遮挡层
         setTimeout(() => {
-          document.body.removeChild(blocker);
+          if (document.body.contains(blocker)) {
+            document.body.removeChild(blocker);
+          }
+
           // 确保100ms后我们已经处理完了所有事件
           setTimeout(() => {
             setIsShowingDeleteConfirm(false);
+            console.log(`[删除确认] 点击保护已移除`);
           }, 100);
-        }, 50);
-      });
+        }, 300); // 延长保护时间到300ms
+      }, 50); // 延长到50ms以确保UI完全准备好
     };
 
     // 修改取消删除函数，确保知道是手动关闭弹窗
     const cancelDelete = () => {
-      setShowDeleteModal(false);
+      console.log(`[删除确认] 取消删除，关闭弹窗`);
+      // 添加50ms延迟，确保其他事件处理已完成
+      setTimeout(() => {
+        setShowDeleteModal(false);
+      }, 50);
     };
 
-    // 修改确认删除函数，保持不变
+    // 修改确认删除函数，增强调试和错误处理
     const confirmDelete = async () => {
-      if (!onDelete) return;
+      if (!onDelete) {
+        console.error("onDelete callback is not defined");
+        return;
+      }
 
       // 關閉確認彈窗
       setShowDeleteModal(false);
+      console.log(`[删除确认] 确认删除，关闭弹窗，准备调用API`);
 
       // 立即給用戶視覺反饋
       setIsDeleting(true);
       setTranslateX(0); // 開始收回刪除按鈕
 
       try {
-        // 顯示即時收回動畫後再呼叫 API
-        setTimeout(async () => {
-          // 調用 API 刪除交易記錄
-          const success = await deleteTransactionApi(
-            transaction.id,
-            transaction.type
-          );
+        console.log(
+          `[删除] 调用API删除交易，ID: ${transaction.id}, 类型: ${
+            transaction.type || "未指定"
+          }`
+        );
 
-          if (success) {
-            // 觸發刪除動畫
-            setIsAnimatingOut(true);
+        // 立即调用API删除交易记录
+        const success = await deleteTransactionApi(
+          transaction.id,
+          transaction.type
+        );
 
-            // 通知父組件此交易已被刪除，這樣可以立即更新列表
-            if (onDelete) {
-              onDelete(transaction.id);
-            }
+        console.log(`[删除] API删除结果: ${success ? "成功" : "失败"}`);
 
-            // 等待動畫完成後才真正移除元素
-            setTimeout(() => {
-              setIsDeleted(true);
-            }, 250); // 減少為 250ms 以加快動畫
-          } else {
-            // 如果失敗，重置 translateX
-            setTranslateX(0);
-            setShowDeleteButton(false);
-            console.error("刪除交易失敗");
-          }
+        if (success) {
+          // 觸發刪除動畫
+          setIsAnimatingOut(true);
+          console.log("[删除] 删除动画已触发");
+
+          // 立即通知父组件此交易已被删除，这样可以立即更新列表
+          onDelete(transaction.id);
+          console.log("[删除] 父组件已通知删除");
+
+          // 等待動畫完成後才真正移除元素
+          setTimeout(() => {
+            setIsDeleted(true);
+            console.log("[删除] 元素已从DOM中移除");
+          }, 250); // 減少為 250ms 以加快動畫
+        } else {
+          // 如果失敗，重置 translateX
+          console.error("[删除] 删除交易失败 - API返回失败");
+          setTranslateX(0);
+          setShowDeleteButton(false);
           setIsDeleting(false);
-        }, 50); // 輕微延遲，先讓視覺效果先行
+        }
       } catch (error) {
-        console.error("刪除交易時發生錯誤:", error);
+        console.error("[删除] 刪除交易時發生錯誤:", error);
         setTranslateX(0);
         setShowDeleteButton(false);
         setIsDeleting(false);
@@ -570,12 +619,18 @@ const TransactionItem = memo(
     // 修改點擊其他地方時的處理
     useEffect(() => {
       const handleClickOutside = (e: MouseEvent) => {
+        // console.log(`[回弹功能] handleClickOutside 被调用，交易ID: ${transaction.id}`);
+
         // 完全禁用点击外部区域自动弹回的功能
         // 只有在显示删除确认弹窗时才需要阻止冒泡
         if (showDeleteModal || isShowingDeleteConfirm) {
+          // 保留关键日志
+          console.log(`[删除确认] 弹窗显示中，阻止外部点击`);
           e.stopPropagation();
           return;
         }
+
+        // console.log(`[回弹功能] handleClickOutside - 禁用了自动弹回功能，不执行任何操作`);
 
         // 下面注释掉的是原来会导致弹回的代码，现在禁用了
         /*
@@ -663,9 +718,16 @@ const TransactionItem = memo(
 
     // 修改弹窗按钮处理
     const handleModalBackdropClick = (e: React.MouseEvent) => {
+      // 阻止事件冒泡，防止触发其他点击事件
       e.stopPropagation();
+      // 阻止默认行为
       e.preventDefault();
-      cancelDelete();
+
+      // 添加判断，只有当点击的是背景元素时才关闭弹窗
+      if (e.target === e.currentTarget) {
+        console.log(`[删除确认] 点击了弹窗背景，关闭弹窗`);
+        cancelDelete();
+      }
     };
 
     return (
@@ -678,7 +740,12 @@ const TransactionItem = memo(
           >
             <div
               className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-xl transform animate-scaleInStatic"
-              onClick={(e) => e.stopPropagation()} // 防止點擊內容區域時關閉視窗
+              onClick={(e) => {
+                // 防止事件冒泡到backdrop
+                e.stopPropagation();
+                // 阻止默认行为
+                e.preventDefault();
+              }} // 阻止點擊內容區域時關閉視窗
             >
               <div className="text-center mb-4">
                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
@@ -899,19 +966,24 @@ export default function TransactionList({
 
   // 處理滑動狀態變化 - 改為立即通知其他項目關閉
   const handleSwipeStateChange = (isOpen: boolean, transactionId: string) => {
+    // console.log(`[回弹功能] handleSwipeStateChange - 状态: ${isOpen ? '打开' : '关闭'}, 交易ID: ${transactionId}`);
+
     // 任何觸摸操作立即設置新的活動項目
     if (isOpen) {
       // 如果已經有活動項目且不是當前項目，需要關閉之前的項目
       if (activeSwipeId !== null && activeSwipeId !== transactionId) {
+        // console.log(`[回弹功能] handleSwipeStateChange - 发现已有活动项目(${activeSwipeId})，将关闭并切换到新项目(${transactionId})`);
         // 強制立即更新
         requestAnimationFrame(() => {
           setActiveSwipeId(transactionId);
         });
       } else {
+        // console.log(`[回弹功能] handleSwipeStateChange - 设置新的活动项目: ${transactionId}`);
         setActiveSwipeId(transactionId);
       }
     } else if (activeSwipeId === transactionId) {
       // 如果是當前活動項目被關閉，清除引用
+      // console.log(`[回弹功能] handleSwipeStateChange - 当前活动项目(${transactionId})被关闭，清除活动项目引用`);
       setActiveSwipeId(null);
     }
   };
@@ -919,7 +991,12 @@ export default function TransactionList({
   // 修改 shouldCloseItem 函數，更有效地關閉其他項目
   const shouldCloseItem = (transactionId: string): boolean => {
     // 只要有活動項目且不是當前項目，就應該關閉
-    return activeSwipeId !== null && activeSwipeId !== transactionId;
+    const shouldClose =
+      activeSwipeId !== null && activeSwipeId !== transactionId;
+    // if (shouldClose) {
+    //   console.log(`[回弹功能] shouldCloseItem - 检测到需要关闭项目，当前活动ID: ${activeSwipeId}, 项目ID: ${transactionId}`);
+    // }
+    return shouldClose;
   };
 
   // 添加全局鍵盤事件監聽器，用於切換所有時間戳顯示
