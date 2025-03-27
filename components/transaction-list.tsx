@@ -101,43 +101,35 @@ const TransactionItem = memo(
 
     // 在滑動開始時添加禁止滾動事件
     useEffect(() => {
-      // 記錄頁面初始位置，用於固定時避免跳動
-      const scrollY = window.scrollY;
-
-      // 創建一個更強力的阻止滾動處理函數
+      // 在捕獲階段禁止滾動的處理函數
       const preventScroll = (e: TouchEvent) => {
         if (isHorizontalSwipe.current || showDeleteButton) {
-          // 不使用 preventDefault (避免 passive listener 問題)
-          // 但強化其他禁止滾動的方法
+          // 阻止滾動事件的默認行為
+          e.preventDefault();
+          // 鎖定頁面滾動 - 使用多種方式確保兼容性
           document.body.style.overflow = "hidden";
           document.documentElement.style.overflow = "hidden";
-
-          // 使用 position:fixed 技巧，同時保持頁面在當前位置
           document.body.style.position = "fixed";
-          document.body.style.top = `-${scrollY}px`;
           document.body.style.width = "100%";
         }
       };
 
-      // 使用標準的事件監聽器設置
+      // 使用正確的類型定義來允許 passive: false
       document.addEventListener("touchmove", preventScroll, {
-        capture: true, // 捕獲階段處理，提前攔截事件
-      });
+        passive: false,
+        capture: true,
+      } as AddEventListenerOptions);
 
       return () => {
         document.removeEventListener("touchmove", preventScroll, {
+          passive: false,
           capture: true,
-        });
-
-        // 確保清理所有樣式
+        } as AddEventListenerOptions);
+        // 確保在組件卸載時恢復滾動
         document.body.style.overflow = "";
         document.documentElement.style.overflow = "";
         document.body.style.position = "";
-        document.body.style.top = "";
         document.body.style.width = "";
-
-        // 恢復滾動位置
-        window.scrollTo(0, scrollY);
       };
     }, [showDeleteButton, isHorizontalSwipe]);
 
@@ -256,28 +248,25 @@ const TransactionItem = memo(
       touchStartRef.current.time = now;
       touchStartRef.current.lastX = translateX; // 記錄上一個位置
 
-      // 更快速地確定滑動方向
+      // 增強方向檢測邏輯 - 判斷是水平還是垂直滑動
       if (!isHorizontalSwipe.current && !isVerticalScroll.current) {
-        // 降低水平滑動的判定閾值，讓水平滑動更容易被檢測到
-        if (absDeltaY > 10 && absDeltaY > absDeltaX * 2) {
-          isVerticalScroll.current = true; // 標記為垂直滾動
-          return; // 允許頁面正常滾動
-        } else if (absDeltaX > 5 && absDeltaX > absDeltaY) {
-          // 降低閾值並減少比例判斷
+        // 更早更敏感地檢測水平滑動 - 降低閾值
+        if (absDeltaX > 5 && absDeltaX > absDeltaY) {
           isHorizontalSwipe.current = true; // 標記為水平滑動
 
-          // 一旦確定為水平滑動，立即鎖定頁面滾動
-          e.stopPropagation(); // 阻止冒泡，防止其他處理器接收事件
-
-          // 獲取當前滾動位置
-          const scrollY = window.scrollY;
-
-          // 鎖定頁面滾動
+          // 立即鎖定頁面滾動
           document.body.style.overflow = "hidden";
           document.documentElement.style.overflow = "hidden";
           document.body.style.position = "fixed";
-          document.body.style.top = `-${scrollY}px`;
           document.body.style.width = "100%";
+
+          // 阻止默認行為和冒泡
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        // 只有當明確判斷為垂直滑動時才標記
+        else if (absDeltaY > 10 && absDeltaY > absDeltaX * 2) {
+          isVerticalScroll.current = true; // 標記為垂直滾動
         }
       }
 
@@ -288,17 +277,14 @@ const TransactionItem = memo(
 
       // 如果水平滑動已經開始或者顯示刪除按鈕，完全阻止頁面滾動
       if (isHorizontalSwipe.current || showDeleteButton) {
-        // 只阻止事件冒泡
+        // 阻止默認行為和冒泡
+        e.preventDefault();
         e.stopPropagation();
 
-        // 獲取當前滾動位置
-        const scrollY = window.scrollY;
-
-        // 鎖定頁面滾動 - 使用固定位置技巧
+        // 鎖定頁面滾動 - 使用多種方式確保兼容性
         document.body.style.overflow = "hidden";
         document.documentElement.style.overflow = "hidden";
         document.body.style.position = "fixed";
-        document.body.style.top = `-${scrollY}px`;
         document.body.style.width = "100%";
       }
 
@@ -340,19 +326,11 @@ const TransactionItem = memo(
       setIsPressed(true);
       setIsDragging(false); // 初始設置為 false，等確認滑動方向後再設置
 
-      // 如果已顯示刪除按鈕，立即鎖定滾動
+      // 如果已顯示刪除按鈕，改用CSS控制而不是preventDefault
       if (showDeleteButton) {
         e.stopPropagation();
-
-        // 獲取當前滾動位置
-        const scrollY = window.scrollY;
-
         // 立即鎖定頁面滾動
         document.body.style.overflow = "hidden";
-        document.documentElement.style.overflow = "hidden";
-        document.body.style.position = "fixed";
-        document.body.style.top = `-${scrollY}px`;
-        document.body.style.width = "100%";
       }
 
       // 如果正在動畫，立即停止
@@ -372,19 +350,11 @@ const TransactionItem = memo(
         return;
       }
 
-      // 獲取當前 top 值，用於恢復滾動位置
-      const scrollY =
-        parseInt((document.body.style.top || "0").replace("px", "")) * -1;
-
       // 恢復頁面滾動
       document.body.style.overflow = "";
       document.documentElement.style.overflow = "";
       document.body.style.position = "";
-      document.body.style.top = "";
       document.body.style.width = "";
-
-      // 恢復滾動位置
-      window.scrollTo(0, scrollY);
 
       // 重置水平滑動和垂直滾動標記
       isHorizontalSwipe.current = false;
@@ -541,27 +511,12 @@ const TransactionItem = memo(
 
     // Handle touch cancel - reset state
     const handleTouchCancel = () => {
-      // 獲取當前 top 值，用於恢復滾動位置
-      const scrollY =
-        parseInt((document.body.style.top || "0").replace("px", "")) * -1;
-
       // 恢復頁面滾動
       document.body.style.overflow = "";
-      document.documentElement.style.overflow = "";
-      document.body.style.position = "";
-      document.body.style.top = "";
-      document.body.style.width = "";
-
-      // 恢復滾動位置
-      window.scrollTo(0, scrollY);
-
-      // 重置所有標記
       isHorizontalSwipe.current = false;
-      isVerticalScroll.current = false;
       touchStartRef.current = null;
       isTouchMoveRef.current = false;
       setIsPressed(false);
-      setIsDragging(false);
     };
 
     // Separate handler for keyboard events
