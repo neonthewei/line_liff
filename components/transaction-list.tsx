@@ -847,7 +847,13 @@ const TransactionItem = memo(
       console.log("[删除] 删除动画已触发");
 
       try {
-        // 不等待动画完成，立即调用API删除数据
+        // 立即通知父组件处理日期组动画（在API调用前）
+        if (onDelete) {
+          onDelete(transaction.id);
+          console.log("[删除] 本地状态已立即更新，触发日期组动画");
+        }
+
+        // 调用API删除数据（不阻塞UI动画）
         console.log(
           `[删除] 调用API删除交易，ID: ${transaction.id}, 类型: ${
             transaction.type || "未指定"
@@ -893,10 +899,6 @@ const TransactionItem = memo(
           } catch (error) {
             console.error("[月度摘要] 事件发送失败:", error);
           }
-
-          // 立即通知父组件删除已成功
-          onDelete(transaction.id);
-          console.log("[删除] 本地状态已更新");
 
           // 等待动画结束后标记为已删除（使组件从DOM移除）
           setTimeout(() => {
@@ -1157,6 +1159,7 @@ const TransactionItem = memo(
             transform: `translateX(${translateX}px)`,
             transition: isDragging ? "none" : "transform 0.2s ease-out",
             zIndex: 1,
+            height: transaction.note ? "auto" : "70px", // 設置沒有備注的交易項目高度為70px
           }}
         >
           <div className="flex items-center">
@@ -1266,10 +1269,14 @@ export default function TransactionList({
   const [deletedTransactionIds, setDeletedTransactionIds] = useState<
     Set<string>
   >(new Set()); // 記錄已刪除的交易ID
+  // Add state for tracking date groups being deleted
+  const [dateGroupsAnimatingOut, setDateGroupsAnimatingOut] = useState<
+    Set<string>
+  >(new Set());
 
   // 簡化處理交易刪除邏輯 - 完全本地化处理
   const handleDeleteTransaction = async (id: string) => {
-    console.log(`[月度摘要] 准备发送删除事件，交易ID: ${id}`);
+    console.log(`[月度摘要] 准备处理删除事件，交易ID: ${id}`);
 
     // 找到被删除的交易
     const deletedTransaction = transactions.find((t) => t.id === id);
@@ -1279,12 +1286,107 @@ export default function TransactionList({
       return;
     }
 
-    // 更新已刪除列表
+    // 解析交易的日期
+    let dateKey: string | null = null;
+    try {
+      if (deletedTransaction.date) {
+        const match = deletedTransaction.date.match(/(\d+)年(\d+)月(\d+)日/);
+        if (match) {
+          const year = parseInt(match[1]);
+          const month = parseInt(match[2]) - 1;
+          const day = parseInt(match[3]);
+          const txDate = new Date(Date.UTC(year, month, day, 12, 0, 0));
+          dateKey = txDate.toISOString().split("T")[0];
+        } else if (
+          deletedTransaction.date.includes("-") &&
+          deletedTransaction.date.length >= 10
+        ) {
+          const parts = deletedTransaction.date.substring(0, 10).split("-");
+          if (parts.length === 3) {
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const day = parseInt(parts[2]);
+            const txDate = new Date(Date.UTC(year, month, day, 12, 0, 0));
+            dateKey = txDate.toISOString().split("T")[0];
+          }
+        }
+      }
+    } catch (error) {
+      console.error("解析日期失敗:", error);
+    }
+
+    // 立即更新已刪除列表，确保立即将交易项标记为已删除
     setDeletedTransactionIds((prev) => {
       const newSet = new Set(prev);
       newSet.add(id);
       return newSet;
     });
+
+    if (dateKey) {
+      // 過濾出同一天的交易（不包含当前删除的和已删除的）
+      const sameDay = transactions.filter((t) => {
+        // 排除当前正在删除的交易
+        if (t.id === id) return false;
+
+        // 排除已经标记为删除的交易
+        if (deletedTransactionIds.has(t.id)) return false;
+
+        // 检查是否符合当前活动标签筛选条件
+        if (activeTab === "general" ? t.isFixed : !t.isFixed) return false;
+
+        // 轉換交易日期為相同格式 (YYYY-MM-DD)
+        let txDateKey: string | null = null;
+        try {
+          if (t.date) {
+            const match = t.date.match(/(\d+)年(\d+)月(\d+)日/);
+            if (match) {
+              const year = parseInt(match[1]);
+              const month = parseInt(match[2]) - 1;
+              const day = parseInt(match[3]);
+              const date = new Date(Date.UTC(year, month, day, 12, 0, 0));
+              txDateKey = date.toISOString().split("T")[0];
+            } else if (t.date.includes("-") && t.date.length >= 10) {
+              const parts = t.date.substring(0, 10).split("-");
+              if (parts.length === 3) {
+                const year = parseInt(parts[0]);
+                const month = parseInt(parts[1]) - 1;
+                const day = parseInt(parts[2]);
+                const date = new Date(Date.UTC(year, month, day, 12, 0, 0));
+                txDateKey = date.toISOString().split("T")[0];
+              }
+            }
+          }
+        } catch (error) {
+          console.error("處理同日期交易時出錯:", error);
+          return false;
+        }
+
+        return txDateKey === dateKey;
+      });
+
+      // 如果這是該日期的最後一筆交易，立即設置整個日期區塊動畫
+      if (sameDay.length === 0) {
+        console.log(
+          `[日期動畫] 日期 ${dateKey} 的最後一筆交易被刪除，整個區塊將同步消失`
+        );
+
+        // 立即设置日期组为动画状态，与交易项同步消失
+        setDateGroupsAnimatingOut((prev) => {
+          const newSet = new Set(prev);
+          newSet.add(dateKey);
+          return newSet;
+        });
+
+        // 设置动画持续时间与交易项相同
+        setTimeout(() => {
+          setDateGroupsAnimatingOut((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(dateKey!);
+            return newSet;
+          });
+        }, 250); // 与交易项动画完全同步
+      }
+    }
 
     // 直接发送当前删除的交易信息，而不是所有已删除的交易
     try {
@@ -1641,12 +1743,34 @@ export default function TransactionList({
               weekday: "short",
             });
 
+            // 檢查此日期組是否正在動畫中
+            const isAnimatingOut = dateGroupsAnimatingOut.has(date);
+
+            // 添加動畫樣式，使用與交易項目相同的動畫時間和曲線
+            const dateGroupAnimationStyle = isAnimatingOut
+              ? {
+                  opacity: 0,
+                  maxHeight: "0px",
+                  marginTop: "0px",
+                  marginBottom: "0px",
+                  paddingTop: "0px", // 添加与交易项相同的padding动画
+                  paddingBottom: "0px", // 添加与交易项相同的padding动画
+                  overflow: "hidden",
+                  transition: "all 250ms cubic-bezier(0.4, 0, 0.2, 1)", // 确保与交易项完全一致的动画曲线
+                }
+              : {
+                  opacity: 1,
+                  maxHeight: "1000px", // 确保足够大以容纳所有内容
+                  transition: "all 250ms cubic-bezier(0.4, 0, 0.2, 1)",
+                };
+
             return (
               <div
                 key={`date-${date}`}
                 className="bg-white rounded-2xl shadow-sm overflow-hidden"
                 style={{
                   ...fadeInAnimation,
+                  ...dateGroupAnimationStyle, // 应用到整个日期组
                   animationDelay: "0ms",
                 }}
               >
@@ -1668,11 +1792,6 @@ export default function TransactionList({
                   className={`${
                     isCollapsed ? "hidden" : "block"
                   } overflow-hidden`}
-                  style={
-                    {
-                      // 移除過渡效果
-                    }
-                  }
                 >
                   <div className="divide-y divide-gray-100">
                     {dayTransactions.map((transaction, index) => (
@@ -1683,7 +1802,7 @@ export default function TransactionList({
                         showDebugInfo={isDebugMode}
                         showTimestamp={showAllTimestamps}
                         onDelete={(id) => {
-                          // 在删除动画开始后的250ms，更新月度摘要
+                          // 直接触发删除处理，不再设置延迟
                           handleDeleteTransaction(id);
                         }}
                         onSwipeStateChange={(isOpen) =>
