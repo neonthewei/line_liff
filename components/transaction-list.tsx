@@ -836,21 +836,25 @@ const TransactionItem = memo(
         return;
       }
 
-      // 設置刪除中狀態
-      setIsDeleting(true);
-
       // 關閉確認彈窗
       setShowDeleteModal(false);
-      console.log(`[删除确认] 确认删除，关闭弹窗，准备删除交易`);
+      console.log(`[删除确认] 确认删除，关闭弹窗，准备开始删除动画`);
+
+      // 立即給用戶視覺反饋 - 先开始动画
+      setIsDeleting(true);
+      setTranslateX(0); // 開始收回刪除按鈕
+      setIsAnimatingOut(true); // 触发删除动画
+      console.log("[删除] 删除动画已触发");
 
       try {
+        // 不等待动画完成，立即调用API删除数据
         console.log(
           `[删除] 调用API删除交易，ID: ${transaction.id}, 类型: ${
             transaction.type || "未指定"
           }`
         );
 
-        // 先执行API删除，确保数据操作优先
+        // 删除交易记录
         const success = await deleteTransactionApi(
           transaction.id,
           transaction.type
@@ -859,11 +863,6 @@ const TransactionItem = memo(
         console.log(`[删除] API删除结果: ${success ? "成功" : "失败"}`);
 
         if (success) {
-          // 删除成功后，开始视觉动画
-          console.log("[删除] API删除成功，开始视觉反馈动画");
-          setTranslateX(0); // 收回刪除按鈕
-          setIsAnimatingOut(true); // 触发删除动画
-
           // 触发自定义事件
           try {
             console.log(`[月度摘要] TransactionItem直接发送删除事件:`, {
