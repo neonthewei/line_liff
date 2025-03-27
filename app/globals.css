@@ -236,3 +236,37 @@ body.no-elastic-scroll {
   overscroll-behavior: none !important; /* 防止滚动弹性效果 */
   touch-action: pan-x !important; /* 只允许水平滑动 */
 }
+
+/* LIFF环境专用的滚动锁定处理 - 更强力版本 */
+.no-elastic-scroll {
+  overscroll-behavior: none !important; /* 防止滚动链接和弹性滚动 */
+  touch-action: pan-x !important; /* 只允许水平滑动 */
+  -webkit-overflow-scrolling: auto !important; /* 禁用iOS的弹性滚动 */
+  pointer-events: auto !important; /* 确保事件处理 */
+  user-select: none !important; /* 防止文本选择 */
+}
+
+/* 更广泛地应用于所有可能的滚动容器 */
+html.no-elastic-scroll,
+body.no-elastic-scroll,
+#__next.no-elastic-scroll,
+.liff-wrapper.no-elastic-scroll,
+.liff-container.no-elastic-scroll,
+[id^="liff"].no-elastic-scroll,
+[class^="liff"].no-elastic-scroll,
+.line-container.no-elastic-scroll,
+.line-wrapper.no-elastic-scroll,
+#root.no-elastic-scroll {
+  overflow-y: hidden !important; /* 禁用垂直滚动 */
+  overflow-x: auto !important; /* 允许水平滚动 */
+  overscroll-behavior: none !important; /* 防止滚动弹性效果 */
+  touch-action: pan-x !important; /* 只允许水平滑动 */
+  height: auto !important; /* 防止高度计算错误 */
+}
+
+/* 覆盖可能的LIFF容器样式 */
+body > div,
+body > div > div {
+  overscroll-behavior: inherit !important;
+  touch-action: inherit !important;
+}

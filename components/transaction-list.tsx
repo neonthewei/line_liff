@@ -114,12 +114,84 @@ const TransactionItem = memo(
         // 不再保存滚动位置，只添加类来控制滚动行为
         document.documentElement.classList.add("no-elastic-scroll");
         document.body.classList.add("no-elastic-scroll");
+
+        // 添加针对LIFF环境的处理
+        // 查找并锁定所有可能的LIFF容器元素
+        const possibleContainers = [
+          document.getElementById("__next"),
+          document.getElementById("root"),
+          document.querySelector(".liff-wrapper"),
+          document.querySelector(".liff-container"),
+          document.querySelector(".line-container"),
+          ...Array.from(document.querySelectorAll('[id^="liff"]')),
+          ...Array.from(document.querySelectorAll('[class^="liff"]')),
+          ...Array.from(document.querySelectorAll("body > div")), // 常见的外层容器
+          ...Array.from(document.querySelectorAll("body > div > div")), // 嵌套容器
+        ].filter(Boolean); // 过滤null值
+
+        // 为所有找到的容器添加类
+        possibleContainers.forEach((container) => {
+          if (container) {
+            container.classList.add("no-elastic-scroll");
+          }
+        });
+
+        // 直接设置body的touch-action和overflow属性
+        document.body.style.setProperty("touch-action", "pan-x", "important");
+        document.body.style.setProperty("overflow-y", "hidden", "important");
+        document.body.style.setProperty(
+          "overscroll-behavior",
+          "none",
+          "important"
+        );
+
+        // 添加阻止触摸移动事件的处理函数
+        document.addEventListener("touchmove", preventVerticalScroll, {
+          passive: false,
+        });
       };
 
       window.unlockBodyScroll = () => {
-        // 只移除类，不处理滚动位置
+        // 移除类，恢复滚动功能
         document.documentElement.classList.remove("no-elastic-scroll");
         document.body.classList.remove("no-elastic-scroll");
+
+        // 移除针对LIFF环境的处理
+        const possibleContainers = [
+          document.getElementById("__next"),
+          document.getElementById("root"),
+          document.querySelector(".liff-wrapper"),
+          document.querySelector(".liff-container"),
+          document.querySelector(".line-container"),
+          ...Array.from(document.querySelectorAll('[id^="liff"]')),
+          ...Array.from(document.querySelectorAll('[class^="liff"]')),
+          ...Array.from(document.querySelectorAll("body > div")),
+          ...Array.from(document.querySelectorAll("body > div > div")),
+        ].filter(Boolean);
+
+        possibleContainers.forEach((container) => {
+          if (container) {
+            container.classList.remove("no-elastic-scroll");
+          }
+        });
+
+        // 移除直接设置的样式
+        document.body.style.removeProperty("touch-action");
+        document.body.style.removeProperty("overflow-y");
+        document.body.style.removeProperty("overscroll-behavior");
+
+        // 移除阻止触摸移动事件的处理函数
+        document.removeEventListener("touchmove", preventVerticalScroll, {
+          passive: false,
+        } as EventListenerOptions);
+      };
+
+      // 阻止垂直滚动的函数 - 修复版本
+      const preventVerticalScroll = (e: TouchEvent) => {
+        // 在滑动状态下阻止所有垂直滚动
+        if (e.cancelable) {
+          e.preventDefault();
+        }
       };
 
       return () => {
@@ -127,7 +199,37 @@ const TransactionItem = memo(
         if (document.body.classList.contains("no-elastic-scroll")) {
           document.documentElement.classList.remove("no-elastic-scroll");
           document.body.classList.remove("no-elastic-scroll");
+
+          // 移除针对LIFF环境的处理
+          const possibleContainers = [
+            document.getElementById("__next"),
+            document.getElementById("root"),
+            document.querySelector(".liff-wrapper"),
+            document.querySelector(".liff-container"),
+            document.querySelector(".line-container"),
+            ...Array.from(document.querySelectorAll('[id^="liff"]')),
+            ...Array.from(document.querySelectorAll('[class^="liff"]')),
+            ...Array.from(document.querySelectorAll("body > div")),
+            ...Array.from(document.querySelectorAll("body > div > div")),
+          ].filter(Boolean);
+
+          possibleContainers.forEach((container) => {
+            if (container) {
+              container.classList.remove("no-elastic-scroll");
+            }
+          });
+
+          // 移除直接设置的样式
+          document.body.style.removeProperty("touch-action");
+          document.body.style.removeProperty("overflow-y");
+          document.body.style.removeProperty("overscroll-behavior");
+
+          // 移除阻止触摸移动事件的处理函数
+          document.removeEventListener("touchmove", preventVerticalScroll, {
+            passive: false,
+          } as EventListenerOptions);
         }
+
         // 删除全局函数
         delete window.lockBodyScroll;
         delete window.unlockBodyScroll;
