@@ -518,37 +518,43 @@ const TransactionItem = memo(
         // 如果確認刪除對話框正在顯示，不處理點擊事件
         if (showDeleteModal) return;
 
-        // 確保刪除按鈕顯示時，處理點擊事件
-        if (showDeleteButton && itemRef.current) {
-          // 更明確地檢查點擊目標
-          const target = e.target as Node;
-          const deleteButtonElement = document.querySelector(
-            `.delete-button-${transaction.id}`
-          );
+        // 延迟一点执行，确保不会与触摸结束后的点击事件冲突
+        setTimeout(() => {
+          // 如果此时对话框已显示，不继续处理
+          if (showDeleteModal) return;
 
-          // 確保更精確的檢查：目標是否為刪除按鈕或其子元素
-          if (
-            deleteButtonElement &&
-            (deleteButtonElement === target ||
-              deleteButtonElement.contains(target))
-          ) {
-            return; // 如果點擊在刪除按鈕上，不做處理
+          // 確保刪除按鈕顯示時，處理點擊事件
+          if (showDeleteButton && itemRef.current) {
+            // 更明確地檢查點擊目標
+            const target = e.target as Node;
+            const deleteButtonElement = document.querySelector(
+              `.delete-button-${transaction.id}`
+            );
+
+            // 確保更精確的檢查：目標是否為刪除按鈕或其子元素
+            if (
+              deleteButtonElement &&
+              (deleteButtonElement === target ||
+                deleteButtonElement.contains(target))
+            ) {
+              return; // 如果點擊在刪除按鈕上，不做處理
+            }
+
+            // 如果點擊不在刪除按鈕上，收回按鈕並添加動畫效果
+            setIsAnimating(true);
+            if (itemRef.current) {
+              itemRef.current.style.transition = "transform 0.2s ease-out";
+              itemRef.current.style.transform = "translateX(0)";
+
+              // 在動畫結束後更新狀態
+              setTimeout(() => {
+                setTranslateX(0);
+                setShowDeleteButton(false);
+                setIsAnimating(false);
+              }, 200);
+            }
           }
-
-          // 如果點擊不在刪除按鈕上，收回按鈕並添加動畫效果
-          setIsAnimating(true);
-          if (itemRef.current) {
-            itemRef.current.style.transition = "transform 0.2s ease-out";
-            itemRef.current.style.transform = "translateX(0)";
-
-            // 在動畫結束後更新狀態
-            setTimeout(() => {
-              setTranslateX(0);
-              setShowDeleteButton(false);
-              setIsAnimating(false);
-            }, 200);
-          }
-        }
+        }, 10);
       };
 
       document.addEventListener("click", handleClickOutside);
@@ -580,6 +586,44 @@ const TransactionItem = memo(
           transition: "all 250ms cubic-bezier(0.4, 0, 0.2, 1)",
         };
 
+    // 修改刪除按钮的触摸结束处理
+    const handleDeleteButtonTouchEnd = (e: React.TouchEvent) => {
+      e.stopPropagation();
+
+      // 不再使用preventDefault()，改用检查是否为点击
+      // 如果没有移动或移动很小，则视为点击
+      if (!isTouchMoveRef.current) {
+        // 先阻止随后的点击事件处理
+        const clickBlocker = (clickEvent: MouseEvent) => {
+          clickEvent.stopPropagation();
+          clickEvent.preventDefault();
+          document.removeEventListener("click", clickBlocker, true);
+        };
+
+        // 捕获阶段添加一次性点击拦截器(必须在调用handleDeleteButtonClick前)
+        document.addEventListener("click", clickBlocker, {
+          once: true,
+          capture: true,
+        });
+
+        // 安排在微任务中执行，确保在DOM事件处理后才显示弹窗
+        setTimeout(() => {
+          handleDeleteButtonClick(e as any);
+        }, 50);
+      }
+
+      // 重置状态
+      touchStartRef.current = null;
+      isTouchMoveRef.current = false;
+    };
+
+    // 修改彈窗點擊事件處理
+    const handleModalBackdropClick = (e: React.MouseEvent) => {
+      e.stopPropagation(); // 阻止點擊事件冒泡
+      e.preventDefault(); // 阻止默認行為
+      cancelDelete();
+    };
+
     // 在 return 中添加刪除確認彈窗
     return (
       <div className="relative overflow-hidden" style={deleteAnimationStyle}>
@@ -587,10 +631,7 @@ const TransactionItem = memo(
         {showDeleteModal && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 animate-fadeIn"
-            onClick={(e) => {
-              e.stopPropagation(); // 阻止點擊事件冒泡
-              cancelDelete();
-            }}
+            onClick={handleModalBackdropClick}
           >
             <div
               className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-xl transform animate-scaleInStatic"
@@ -611,6 +652,7 @@ const TransactionItem = memo(
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
+                    e.preventDefault();
                     cancelDelete();
                   }}
                   className="flex-1 py-2 rounded-xl bg-gray-200 text-gray-700 font-medium transition-all duration-150 active:bg-gray-300"
@@ -620,6 +662,7 @@ const TransactionItem = memo(
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
+                    e.preventDefault();
                     confirmDelete();
                   }}
                   className="flex-1 py-2 rounded-xl bg-red-500 text-white font-medium transition-all duration-150 active:bg-red-600"
@@ -657,32 +700,7 @@ const TransactionItem = memo(
               isTouchMoveRef.current = true;
             }
           }}
-          onTouchEnd={(e) => {
-            if (showDeleteButton) {
-              e.stopPropagation();
-              // 不再使用preventDefault()，改用检查是否为点击
-              // 如果没有移动或移动很小，则视为点击
-              if (!isTouchMoveRef.current) {
-                handleDeleteButtonClick(e as any);
-
-                // 阻止随后可能发生的点击事件
-                const clickBlocker = (clickEvent: MouseEvent) => {
-                  clickEvent.stopPropagation();
-                  document.removeEventListener("click", clickBlocker, true);
-                };
-
-                // 捕获阶段添加一次性点击拦截器
-                document.addEventListener("click", clickBlocker, {
-                  once: true,
-                  capture: true,
-                });
-              }
-
-              // 重置状态
-              touchStartRef.current = null;
-              isTouchMoveRef.current = false;
-            }
-          }}
+          onTouchEnd={showDeleteButton ? handleDeleteButtonTouchEnd : undefined}
         >
           {isDeleting ? (
             <span className="text-white text-sm">刪除中...</span>
