@@ -109,24 +109,64 @@ const TransactionItem = memo(
 
     // 修改常见滚动管理效果
     useEffect(() => {
-      // 简化滚动锁定/解锁函数
+      // 保存当前滚动位置和原始样式的变量
+      let scrollPosition = 0;
+      // 定义一个有正确类型的对象
+      let originalStyle: {
+        overflow?: string;
+        touchAction?: string;
+        position?: string;
+        top?: string;
+        width?: string;
+        height?: string;
+      } = {};
+
+      // 重新定义滚动锁定/解锁函数
       window.lockBodyScroll = () => {
-        // 只添加类来控制滚动行为，不修改滚动位置
-        document.documentElement.classList.add("no-elastic-scroll");
-        document.body.classList.add("no-elastic-scroll");
+        // 保存当前滚动位置
+        scrollPosition =
+          window.pageYOffset || document.documentElement.scrollTop;
+
+        // 保存body的原始样式
+        originalStyle = {
+          overflow: document.body.style.overflow,
+          touchAction: document.body.style.touchAction,
+          position: document.body.style.position,
+          top: document.body.style.top,
+          width: document.body.style.width,
+          height: document.body.style.height,
+        };
+
+        // 使用内联样式而不是类来防止滚动，同时保留位置
+        document.body.style.overflow = "hidden";
+        document.body.style.touchAction = "none";
+        document.body.style.position = "relative";
+
+        // 使用 touch-action 阻止触摸滚动
+        document.documentElement.classList.add("no-scroll");
       };
 
       window.unlockBodyScroll = () => {
-        // 只移除类，不需要额外的滚动位置恢复
-        document.documentElement.classList.remove("no-elastic-scroll");
-        document.body.classList.remove("no-elastic-scroll");
+        // 移除禁止滚动的类
+        document.documentElement.classList.remove("no-scroll");
+
+        // 恢复原始样式
+        document.body.style.overflow = originalStyle.overflow || "";
+        document.body.style.touchAction = originalStyle.touchAction || "";
+        document.body.style.position = originalStyle.position || "";
+        document.body.style.top = originalStyle.top || "";
+        document.body.style.width = originalStyle.width || "";
+        document.body.style.height = originalStyle.height || "";
       };
 
       return () => {
         // 确保组件卸载时解锁滚动
-        if (document.body.classList.contains("no-elastic-scroll")) {
-          document.documentElement.classList.remove("no-elastic-scroll");
-          document.body.classList.remove("no-elastic-scroll");
+        if (document.documentElement.classList.contains("no-scroll")) {
+          document.documentElement.classList.remove("no-scroll");
+          // 恢复原始样式
+          document.body.style.overflow = originalStyle.overflow || "";
+          document.body.style.touchAction = originalStyle.touchAction || "";
+          document.body.style.position = originalStyle.position || "";
         }
         // 删除全局函数
         delete window.lockBodyScroll;
@@ -136,7 +176,7 @@ const TransactionItem = memo(
 
     // 修改触摸处理效果，使用全局函数
     useEffect(() => {
-      // 替代方案：不使用preventDefault，而是添加CSS类控制
+      // 使用新的滚动锁定类控制
       const handleTouchStart = () => {
         if (isHorizontalSwipe.current || showDeleteButton) {
           // 使用全局函数锁定滚动
@@ -170,7 +210,7 @@ const TransactionItem = memo(
         document.removeEventListener("touchcancel", handleTouchEnd);
         // 确保清理时恢复滚动
         if (
-          document.body.classList.contains("no-elastic-scroll") &&
+          document.body.classList.contains("no-scroll") &&
           typeof window.unlockBodyScroll === "function"
         ) {
           window.unlockBodyScroll();
@@ -298,13 +338,17 @@ const TransactionItem = memo(
         // 最初的移動方向判斷 - 降低垂直滑动判定的阈值，使其更容易触发
         if (absDeltaY > 8 && absDeltaY > absDeltaX * 1.3) {
           isVerticalScroll.current = true; // 標記為垂直滾動
-          // 移除任何滚动锁定类
-          document.body.classList.remove("no-elastic-scroll");
+          // 使用函数解锁滚动，而不是直接操作类
+          if (typeof window.unlockBodyScroll === "function") {
+            window.unlockBodyScroll();
+          }
           return; // 允許頁面正常滾動
         } else if (absDeltaX > 8 && absDeltaX > absDeltaY * 1.3) {
           isHorizontalSwipe.current = true; // 標記為水平滑動
-          // 添加滚动锁定类
-          document.body.classList.add("no-elastic-scroll");
+          // 使用函数锁定滚动，而不是直接操作类
+          if (typeof window.lockBodyScroll === "function") {
+            window.lockBodyScroll();
+          }
           // 这里不再调用preventDefault，因为在组件的TouchEvent处理函数中，
           // passive标志不会导致问题
           e.stopPropagation();
@@ -363,8 +407,10 @@ const TransactionItem = memo(
       // 如果已顯示刪除按鈕，仅阻止事件传播，不使用preventDefault
       if (showDeleteButton) {
         e.stopPropagation();
-        // 添加CSS类控制滚动
-        document.body.classList.add("no-elastic-scroll");
+        // 使用全局函数锁定滚动
+        if (typeof window.lockBodyScroll === "function") {
+          window.lockBodyScroll();
+        }
       }
 
       // 如果正在動畫，立即停止

@@ -94,6 +94,14 @@
   -webkit-overflow-scrolling: auto; /* 禁用iOS的弹性滚动 */
 }
 
+/* 當拉出刪除按鈕時，完全禁止所有滾動方向 */
+.no-scroll {
+  overscroll-behavior: none;
+  touch-action: none; /* 禁止所有滚动方向 */
+  -webkit-overflow-scrolling: auto;
+  pointer-events: auto; /* 确保仍然可以点击元素 */
+}
+
 /* 为.no-elastic-scroll类创建一个特殊情况，只应用于body元素 */
 html.no-elastic-scroll,
 body.no-elastic-scroll {
@@ -104,6 +112,12 @@ body.no-elastic-scroll {
   position: relative;
   height: auto;
   width: auto;
+}
+
+/* 当需要完全禁止滚动时应用于body和html，但保留滚动位置 */
+html.no-scroll,
+body.no-scroll {
+  /* 不再使用这些样式，我们现在通过 JavaScript 直接设置内联样式 */
 }
 
 /* Animation styles for transaction detail */
