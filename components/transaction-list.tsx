@@ -98,13 +98,14 @@ const TransactionItem = memo(
       // 在捕獲階段禁止滾動的處理函數
       const preventScroll = (e: TouchEvent) => {
         if (isHorizontalSwipe.current || showDeleteButton) {
-          e.preventDefault();
+          // 注意：这里不使用preventDefault，因为在passive监听器中会报错
+          // 改用其他方式控制滚动
+          document.body.style.overflow = "hidden";
         }
       };
 
-      // 使用 passive: false 和 capture: true 確保能在冒泡前捕獲並阻止事件
+      // 移除passive: false，让浏览器处理它作为被动监听器
       document.addEventListener("touchmove", preventScroll, {
-        passive: false,
         capture: true,
       });
 
@@ -242,7 +243,7 @@ const TransactionItem = memo(
 
       // 如果水平滑動已經開始或者顯示刪除按鈕，完全阻止頁面滾動
       if (isHorizontalSwipe.current || showDeleteButton) {
-        e.preventDefault(); // 阻止默認滾動行為
+        // 不使用preventDefault，而是使用CSS来禁止滚动
         e.stopPropagation(); // 阻止事件冒泡
 
         // 鎖定頁面滾動
@@ -287,9 +288,8 @@ const TransactionItem = memo(
       setIsPressed(true);
       setIsDragging(false); // 初始設置為 false，等確認滑動方向後再設置
 
-      // 如果已顯示刪除按鈕，則阻止默認行為
+      // 如果已顯示刪除按鈕，改用CSS控制而不是preventDefault
       if (showDeleteButton) {
-        e.preventDefault();
         e.stopPropagation();
         // 立即鎖定頁面滾動
         document.body.style.overflow = "hidden";
@@ -402,8 +402,7 @@ const TransactionItem = memo(
           setIsAnimating(false);
         }
 
-        // 防止觸發點擊事件
-        e.preventDefault();
+        // 阻止事件冒泡，但不阻止默认行为，避免passive监听器错误
         e.stopPropagation();
       }
 
@@ -445,9 +444,15 @@ const TransactionItem = memo(
     };
 
     // 修改處理點擊刪除按鈕的函數，只顯示確認彈窗
-    const handleDeleteButtonClick = (e: React.MouseEvent) => {
+    const handleDeleteButtonClick = (
+      e: React.MouseEvent | React.TouchEvent
+    ) => {
       e.stopPropagation(); // 阻止事件冒泡，避免觸發外部點擊處理器
-      e.preventDefault(); // 阻止默認行為
+
+      // 只对鼠标事件调用preventDefault，触摸事件不调用
+      if ("button" in e) {
+        e.preventDefault(); // 阻止默认行为，仅针对鼠标事件
+      }
 
       // 顯示刪除確認彈窗，而不是直接刪除
       setShowDeleteModal(true);
@@ -515,13 +520,17 @@ const TransactionItem = memo(
 
         // 確保刪除按鈕顯示時，處理點擊事件
         if (showDeleteButton && itemRef.current) {
-          // 檢查點擊是否在刪除按鈕上，如果是，不做任何處理（由刪除按鈕自己的處理器處理）
+          // 更明確地檢查點擊目標
+          const target = e.target as Node;
           const deleteButtonElement = document.querySelector(
             `.delete-button-${transaction.id}`
           );
+
+          // 確保更精確的檢查：目標是否為刪除按鈕或其子元素
           if (
             deleteButtonElement &&
-            deleteButtonElement.contains(e.target as Node)
+            (deleteButtonElement === target ||
+              deleteButtonElement.contains(target))
           ) {
             return; // 如果點擊在刪除按鈕上，不做處理
           }
@@ -630,6 +639,50 @@ const TransactionItem = memo(
             transition: isDragging ? "none" : "transform 0.2s ease-out",
           }}
           onClick={showDeleteButton ? handleDeleteButtonClick : undefined}
+          onTouchStart={(e) => {
+            if (showDeleteButton) {
+              e.stopPropagation();
+              // 记录触摸开始状态，用于后续判断是否点击
+              touchStartRef.current = {
+                x: e.touches[0].clientX,
+                y: e.touches[0].clientY,
+                time: Date.now(),
+              };
+            }
+          }}
+          onTouchMove={(e) => {
+            if (showDeleteButton && touchStartRef.current) {
+              e.stopPropagation();
+              // 标记已经移动
+              isTouchMoveRef.current = true;
+            }
+          }}
+          onTouchEnd={(e) => {
+            if (showDeleteButton) {
+              e.stopPropagation();
+              // 不再使用preventDefault()，改用检查是否为点击
+              // 如果没有移动或移动很小，则视为点击
+              if (!isTouchMoveRef.current) {
+                handleDeleteButtonClick(e as any);
+
+                // 阻止随后可能发生的点击事件
+                const clickBlocker = (clickEvent: MouseEvent) => {
+                  clickEvent.stopPropagation();
+                  document.removeEventListener("click", clickBlocker, true);
+                };
+
+                // 捕获阶段添加一次性点击拦截器
+                document.addEventListener("click", clickBlocker, {
+                  once: true,
+                  capture: true,
+                });
+              }
+
+              // 重置状态
+              touchStartRef.current = null;
+              isTouchMoveRef.current = false;
+            }
+          }}
         >
           {isDeleting ? (
             <span className="text-white text-sm">刪除中...</span>
