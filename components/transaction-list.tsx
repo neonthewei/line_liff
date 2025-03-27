@@ -61,6 +61,7 @@ const TransactionItem = memo(
     const isHorizontalSwipe = useRef(false); // 記錄是否為水平滑動
     const isVerticalScroll = useRef(false); // 新增記錄是否為垂直滾動
     const [isAnimating, setIsAnimating] = useState(false); // 控制滑動動畫狀態
+    const [isShowingDeleteConfirm, setIsShowingDeleteConfirm] = useState(false);
 
     // 優化收回動畫
     useEffect(() => {
@@ -447,18 +448,46 @@ const TransactionItem = memo(
     const handleDeleteButtonClick = (
       e: React.MouseEvent | React.TouchEvent
     ) => {
-      e.stopPropagation(); // 阻止事件冒泡，避免觸發外部點擊處理器
+      e.stopPropagation(); // 阻止事件冒泡
 
-      // 只对鼠标事件调用preventDefault，触摸事件不调用
-      if ("button" in e) {
-        e.preventDefault(); // 阻止默认行为，仅针对鼠标事件
-      }
+      // 防止显示后立即被关闭
+      setIsShowingDeleteConfirm(true);
 
-      // 顯示刪除確認彈窗，而不是直接刪除
-      setShowDeleteModal(true);
+      // 设置一个更长的超时确保弹窗不会被立即关闭
+      setTimeout(() => {
+        setShowDeleteModal(true);
+      }, 10);
+
+      // 在下一帧添加全局防止点击事件
+      requestAnimationFrame(() => {
+        // 创建一个防止点击的遮罩层，在50ms后移除
+        const blocker = document.createElement("div");
+        blocker.style.position = "fixed";
+        blocker.style.top = "0";
+        blocker.style.left = "0";
+        blocker.style.width = "100vw";
+        blocker.style.height = "100vh";
+        blocker.style.zIndex = "1000";
+        blocker.style.background = "transparent";
+        document.body.appendChild(blocker);
+
+        // 短时间后移除遮罩层
+        setTimeout(() => {
+          document.body.removeChild(blocker);
+          // 确保100ms后我们已经处理完了所有事件
+          setTimeout(() => {
+            setIsShowingDeleteConfirm(false);
+          }, 100);
+        }, 50);
+      });
     };
 
-    // 添加確認刪除函數
+    // 修改取消删除函数，确保知道是手动关闭弹窗
+    const cancelDelete = () => {
+      setShowDeleteModal(false);
+    };
+
+    // 修改确认删除函数，保持不变
     const confirmDelete = async () => {
       if (!onDelete) return;
 
@@ -507,61 +536,57 @@ const TransactionItem = memo(
       }
     };
 
-    // 添加取消刪除函數
-    const cancelDelete = () => {
-      setShowDeleteModal(false);
-    };
-
-    // 修改點擊其他地方時的處理，確保在確認對話框顯示時不會執行收回操作
+    // 修改點擊其他地方時的處理
     useEffect(() => {
       const handleClickOutside = (e: MouseEvent) => {
-        // 如果確認刪除對話框正在顯示，不處理點擊事件
-        if (showDeleteModal) return;
+        // 防止在显示确认框的过程中处理点击事件
+        if (isShowingDeleteConfirm || showDeleteModal) {
+          return;
+        }
 
-        // 延迟一点执行，确保不会与触摸结束后的点击事件冲突
-        setTimeout(() => {
-          // 如果此时对话框已显示，不继续处理
-          if (showDeleteModal) return;
+        // 確保刪除按鈕顯示時，處理點擊事件
+        if (showDeleteButton && itemRef.current) {
+          // 更明確地檢查點擊目標
+          const target = e.target as Node;
+          const deleteButtonElement = document.querySelector(
+            `.delete-button-${transaction.id}`
+          );
 
-          // 確保刪除按鈕顯示時，處理點擊事件
-          if (showDeleteButton && itemRef.current) {
-            // 更明確地檢查點擊目標
-            const target = e.target as Node;
-            const deleteButtonElement = document.querySelector(
-              `.delete-button-${transaction.id}`
-            );
-
-            // 確保更精確的檢查：目標是否為刪除按鈕或其子元素
-            if (
-              deleteButtonElement &&
-              (deleteButtonElement === target ||
-                deleteButtonElement.contains(target))
-            ) {
-              return; // 如果點擊在刪除按鈕上，不做處理
-            }
-
-            // 如果點擊不在刪除按鈕上，收回按鈕並添加動畫效果
-            setIsAnimating(true);
-            if (itemRef.current) {
-              itemRef.current.style.transition = "transform 0.2s ease-out";
-              itemRef.current.style.transform = "translateX(0)";
-
-              // 在動畫結束後更新狀態
-              setTimeout(() => {
-                setTranslateX(0);
-                setShowDeleteButton(false);
-                setIsAnimating(false);
-              }, 200);
-            }
+          // 確保更精確的檢查：目標是否為刪除按鈕或其子元素
+          if (
+            deleteButtonElement &&
+            (deleteButtonElement === target ||
+              deleteButtonElement.contains(target))
+          ) {
+            return; // 如果點擊在刪除按鈕上，不做處理
           }
-        }, 10);
+
+          // 如果點擊不在刪除按鈕上，收回按鈕並添加動畫效果
+          setIsAnimating(true);
+          if (itemRef.current) {
+            itemRef.current.style.transition = "transform 0.2s ease-out";
+            itemRef.current.style.transform = "translateX(0)";
+
+            // 在動畫結束後更新狀態
+            setTimeout(() => {
+              setTranslateX(0);
+              setShowDeleteButton(false);
+              setIsAnimating(false);
+            }, 200);
+          }
+        }
       };
 
       document.addEventListener("click", handleClickOutside);
       return () => {
         document.removeEventListener("click", handleClickOutside);
       };
-    }, [showDeleteButton, transaction.id, showDeleteModal]);
+    }, [
+      showDeleteButton,
+      transaction.id,
+      showDeleteModal,
+      isShowingDeleteConfirm,
+    ]);
 
     // 如果已刪除，則不渲染此項目
     if (isDeleted) {
@@ -586,30 +611,13 @@ const TransactionItem = memo(
           transition: "all 250ms cubic-bezier(0.4, 0, 0.2, 1)",
         };
 
-    // 修改刪除按钮的触摸结束处理
+    // 简化的删除按钮触摸事件处理
     const handleDeleteButtonTouchEnd = (e: React.TouchEvent) => {
       e.stopPropagation();
 
-      // 不再使用preventDefault()，改用检查是否为点击
-      // 如果没有移动或移动很小，则视为点击
+      // 如果没有滑动，视为点击
       if (!isTouchMoveRef.current) {
-        // 先阻止随后的点击事件处理
-        const clickBlocker = (clickEvent: MouseEvent) => {
-          clickEvent.stopPropagation();
-          clickEvent.preventDefault();
-          document.removeEventListener("click", clickBlocker, true);
-        };
-
-        // 捕获阶段添加一次性点击拦截器(必须在调用handleDeleteButtonClick前)
-        document.addEventListener("click", clickBlocker, {
-          once: true,
-          capture: true,
-        });
-
-        // 安排在微任务中执行，确保在DOM事件处理后才显示弹窗
-        setTimeout(() => {
-          handleDeleteButtonClick(e as any);
-        }, 50);
+        handleDeleteButtonClick(e);
       }
 
       // 重置状态
@@ -617,14 +625,13 @@ const TransactionItem = memo(
       isTouchMoveRef.current = false;
     };
 
-    // 修改彈窗點擊事件處理
+    // 修改弹窗按钮处理
     const handleModalBackdropClick = (e: React.MouseEvent) => {
-      e.stopPropagation(); // 阻止點擊事件冒泡
-      e.preventDefault(); // 阻止默認行為
+      e.stopPropagation();
+      e.preventDefault();
       cancelDelete();
     };
 
-    // 在 return 中添加刪除確認彈窗
     return (
       <div className="relative overflow-hidden" style={deleteAnimationStyle}>
         {/* 刪除確認彈窗 */}
