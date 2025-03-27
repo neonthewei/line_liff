@@ -832,54 +832,86 @@ const TransactionItem = memo(
 
       // 關閉確認彈窗
       setShowDeleteModal(false);
-      console.log(`[删除确认] 确认删除，关闭弹窗，准备调用API`);
+      console.log(`[删除确认] 确认删除，关闭弹窗，准备开始删除动画`);
 
-      // 立即給用戶視覺反饋
+      // 立即給用戶視覺反饋 - 先开始动画
       setIsDeleting(true);
       setTranslateX(0); // 開始收回刪除按鈕
+      setIsAnimatingOut(true); // 触发删除动画
+      console.log("[删除] 删除动画已触发");
 
-      try {
-        console.log(
-          `[删除] 调用API删除交易，ID: ${transaction.id}, 类型: ${
-            transaction.type || "未指定"
-          }`
-        );
+      // 等待動畫完成後再调用API删除数据
+      setTimeout(async () => {
+        try {
+          console.log(
+            `[删除] 动画结束，调用API删除交易，ID: ${transaction.id}, 类型: ${
+              transaction.type || "未指定"
+            }`
+          );
 
-        // 立即调用API删除交易记录
-        const success = await deleteTransactionApi(
-          transaction.id,
-          transaction.type
-        );
+          // 动画结束后再调用API删除交易记录
+          const success = await deleteTransactionApi(
+            transaction.id,
+            transaction.type
+          );
 
-        console.log(`[删除] API删除结果: ${success ? "成功" : "失败"}`);
+          console.log(`[删除] API删除结果: ${success ? "成功" : "失败"}`);
 
-        if (success) {
-          // 觸發刪除動畫
-          setIsAnimatingOut(true);
-          console.log("[删除] 删除动画已触发");
-
-          // 立即通知父组件此交易已被删除，这样可以立即更新列表
-          onDelete(transaction.id);
-          console.log("[删除] 父组件已通知删除");
-
-          // 等待動畫完成後才真正移除元素
-          setTimeout(() => {
+          if (success) {
+            // 删除成功后，立即标记为已删除
             setIsDeleted(true);
             console.log("[删除] 元素已从DOM中移除");
-          }, 250); // 減少為 250ms 以加快動畫
-        } else {
-          // 如果失敗，重置 translateX
-          console.error("[删除] 删除交易失败 - API返回失败");
+
+            // 触发自定义事件
+            try {
+              console.log(`[月度摘要] TransactionItem直接发送删除事件:`, {
+                id: transaction.id,
+                type: transaction.type,
+                amount: transaction.amount,
+              });
+
+              // 创建自定义事件
+              const event = new CustomEvent("transaction-deleted", {
+                detail: {
+                  deletedTransaction: {
+                    id: transaction.id,
+                    type: transaction.type,
+                    amount: transaction.amount,
+                    // 其他必要的信息
+                    date: transaction.date,
+                    category: transaction.category,
+                  },
+                  timestamp: new Date().toISOString(),
+                },
+                bubbles: true,
+              });
+
+              // 分发事件到文档
+              document.dispatchEvent(event);
+              console.log("[月度摘要] TransactionItem已发送删除事件");
+            } catch (error) {
+              console.error("[月度摘要] 事件发送失败:", error);
+            }
+
+            // 只通知本地状态更新，不触发父组件的完整重新渲染
+            onDelete(transaction.id);
+            console.log("[删除] 本地状态已更新");
+          } else {
+            // 如果失敗，重置状态
+            console.error("[删除] 删除交易失败 - API返回失败");
+            setTranslateX(0);
+            setShowDeleteButton(false);
+            setIsDeleting(false);
+            setIsAnimatingOut(false); // 恢复动画状态
+          }
+        } catch (error) {
+          console.error("[删除] 刪除交易時發生錯誤:", error);
           setTranslateX(0);
           setShowDeleteButton(false);
           setIsDeleting(false);
+          setIsAnimatingOut(false); // 恢复动画状态
         }
-      } catch (error) {
-        console.error("[删除] 刪除交易時發生錯誤:", error);
-        setTranslateX(0);
-        setShowDeleteButton(false);
-        setIsDeleting(false);
-      }
+      }, 250); // 与CSS动画时间匹配
     };
 
     // 修改點擊其他地方時的處理
@@ -1229,8 +1261,18 @@ export default function TransactionList({
     Set<string>
   >(new Set()); // 記錄已刪除的交易ID
 
-  // 簡化處理交易刪除邏輯 - 改為記錄已刪除的交易ID
+  // 簡化處理交易刪除邏輯 - 完全本地化处理
   const handleDeleteTransaction = async (id: string) => {
+    console.log(`[月度摘要] 准备发送删除事件，交易ID: ${id}`);
+
+    // 找到被删除的交易
+    const deletedTransaction = transactions.find((t) => t.id === id);
+
+    if (!deletedTransaction) {
+      console.error(`[月度摘要] 无法找到要删除的交易，ID: ${id}`);
+      return;
+    }
+
     // 更新已刪除列表
     setDeletedTransactionIds((prev) => {
       const newSet = new Set(prev);
@@ -1238,10 +1280,30 @@ export default function TransactionList({
       return newSet;
     });
 
-    if (onTransactionUpdate) {
-      // 同步更新父層的 transactions
-      const updatedTransactions = transactions.filter((t) => t.id !== id);
-      onTransactionUpdate(updatedTransactions);
+    // 直接发送当前删除的交易信息，而不是所有已删除的交易
+    try {
+      console.log(
+        `[月度摘要] 发送交易删除事件: ${JSON.stringify({
+          id: deletedTransaction.id,
+          type: deletedTransaction.type,
+          amount: deletedTransaction.amount,
+        })}`
+      );
+
+      // 创建自定义事件
+      const event = new CustomEvent("transaction-deleted", {
+        detail: {
+          deletedTransaction: deletedTransaction,
+          timestamp: new Date().toISOString(),
+        },
+        bubbles: true,
+      });
+
+      // 分发事件到文档，让月度摘要组件捕获并处理
+      document.dispatchEvent(event);
+      console.log("[月度摘要] 通过事件静默更新摘要 - 无需刷新UI");
+    } catch (error) {
+      console.error("[月度摘要] 事件更新失败:", error);
     }
   };
 
@@ -1614,7 +1676,10 @@ export default function TransactionList({
                         onTransactionClick={handleTransactionClick}
                         showDebugInfo={isDebugMode}
                         showTimestamp={showAllTimestamps}
-                        onDelete={handleDeleteTransaction}
+                        onDelete={(id) => {
+                          // 在删除动画开始后的250ms，更新月度摘要
+                          handleDeleteTransaction(id);
+                        }}
                         onSwipeStateChange={(isOpen) =>
                           handleSwipeStateChange(isOpen, transaction.id)
                         }

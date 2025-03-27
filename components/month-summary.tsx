@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { Transaction } from "@/types/transaction";
 
 interface MonthSummaryProps {
   currentDate: Date;
@@ -21,6 +22,103 @@ export default function MonthSummary({
   onClick,
 }: MonthSummaryProps) {
   const [isPressed, setIsPressed] = useState(false);
+  const [localSummary, setLocalSummary] = useState(summary);
+  const processedTransactionsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    setLocalSummary(summary);
+    processedTransactionsRef.current.clear();
+  }, [summary]);
+
+  useEffect(() => {
+    const handleTransactionDeleted = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log("[月度摘要] 收到事件:", customEvent.type);
+
+      if (!customEvent.detail) {
+        console.error("[月度摘要] 事件没有detail属性");
+        return;
+      }
+
+      const { deletedTransaction } = customEvent.detail;
+      console.log("[月度摘要] 收到交易删除事件:", deletedTransaction);
+
+      if (!deletedTransaction) {
+        console.error("[月度摘要] 删除事件中没有交易数据");
+        return;
+      }
+
+      if (processedTransactionsRef.current.has(deletedTransaction.id)) {
+        console.log(
+          `[月度摘要] 交易 ${deletedTransaction.id} 已经处理过，跳过重复更新`
+        );
+        return;
+      }
+
+      try {
+        const type = deletedTransaction.type;
+        const amount = Number(deletedTransaction.amount);
+
+        console.log(`[月度摘要] 交易类型:${type}, 金额:${amount}`);
+
+        if (isNaN(amount)) {
+          console.error("[月度摘要] 交易金额无效:", deletedTransaction.amount);
+          return;
+        }
+
+        processedTransactionsRef.current.add(deletedTransaction.id);
+
+        setLocalSummary((prev) => {
+          let newSummary;
+
+          if (type === "expense") {
+            newSummary = {
+              ...prev,
+              totalExpense: prev.totalExpense - Math.abs(amount),
+              balance: prev.balance + Math.abs(amount),
+            };
+          } else if (type === "income") {
+            newSummary = {
+              ...prev,
+              totalIncome: prev.totalIncome - Math.abs(amount),
+              balance: prev.balance - Math.abs(amount),
+            };
+          } else {
+            console.error("[月度摘要] 未知交易类型:", type);
+            return prev;
+          }
+
+          console.log("[月度摘要] 更新前:", prev);
+          console.log("[月度摘要] 更新后:", newSummary);
+
+          return newSummary;
+        });
+
+        console.log("[月度摘要] 已更新摘要数据");
+      } catch (error) {
+        console.error("[月度摘要] 处理删除事件时出错:", error);
+      }
+    };
+
+    document.removeEventListener(
+      "transaction-deleted",
+      handleTransactionDeleted as EventListener
+    );
+    document.addEventListener(
+      "transaction-deleted",
+      handleTransactionDeleted as EventListener
+    );
+
+    console.log("[月度摘要] 已添加交易删除事件监听器");
+
+    return () => {
+      document.removeEventListener(
+        "transaction-deleted",
+        handleTransactionDeleted as EventListener
+      );
+      console.log("[月度摘要] 已移除交易删除事件监听器");
+    };
+  }, []);
 
   const handleClick = () => {
     if (onClick) onClick();
@@ -96,16 +194,20 @@ export default function MonthSummary({
           </div>
         ) : (
           <>
-            <div className="text-4xl font-bold mb-4">${summary.balance}</div>
+            <div className="text-4xl font-bold mb-4">
+              ${localSummary.balance}
+            </div>
 
             <div className="flex justify-between text-sm">
               <div className="flex flex-col">
                 <span className="text-xs opacity-80 mb-0.5">月支出</span>
-                <span className="font-medium">${summary.totalExpense}</span>
+                <span className="font-medium">
+                  ${localSummary.totalExpense}
+                </span>
               </div>
               <div className="flex flex-col">
                 <span className="text-xs opacity-80 mb-0.5">月收入</span>
-                <span className="font-medium">${summary.totalIncome}</span>
+                <span className="font-medium">${localSummary.totalIncome}</span>
               </div>
             </div>
           </>
