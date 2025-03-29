@@ -1818,71 +1818,126 @@ export default function RecurringTransactionManager({
   const generateRecurringTransactionsForUser = async (userId: string) => {
     try {
       console.log("🔄 準備為用戶生成固定收支交易:", userId);
+      let retryCount = 0;
+      const maxRetries = 3;
 
-      // 調用我們的 API 端點
-      console.log("📡 發送請求到本地 API 端點");
-
-      // 使用 POST 請求
-      const response = await fetch("/api/generate-recurring-transactions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ userId }),
-      });
-
-      // 記錄響應狀態
-      console.log(`🔍 API 響應狀態: ${response.status} ${response.statusText}`);
-
-      if (!response.ok) {
-        // 獲取錯誤響應體
-        let errorBody = "";
+      // 重試函數
+      const tryGenerateTransactions = async (
+        method: "POST" | "GET"
+      ): Promise<boolean> => {
         try {
-          const errorResponse = await response.json();
-          errorBody = JSON.stringify(errorResponse);
-          console.error("❌ 錯誤響應體:", errorResponse);
-        } catch (e) {
-          errorBody = "Could not read error response body";
-          console.error("❌ 無法讀取錯誤響應體");
-        }
+          console.log(`📡 嘗試使用 ${method} 請求生成固定收支交易`);
 
-        console.error("❌ 生成固定收支交易失敗:", {
-          status: response.status,
-          statusText: response.statusText,
-          errorBody,
-        });
+          let response;
+          if (method === "POST") {
+            // 使用 POST 請求
+            response = await fetch("/api/generate-recurring-transactions", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ userId }),
+              // 添加緩存控制頭，防止緩存
+              cache: "no-store",
+            });
+          } else {
+            // 使用 GET 請求
+            response = await fetch(
+              `/api/generate-recurring-transactions?userId=${encodeURIComponent(
+                userId
+              )}`,
+              {
+                // 添加緩存控制頭，防止緩存
+                cache: "no-store",
+              }
+            );
+          }
 
-        // 嘗試使用 GET 請求
-        console.log("⚠️ 嘗試使用 GET 請求...");
-        const getResponse = await fetch(
-          `/api/generate-recurring-transactions?userId=${encodeURIComponent(
-            userId
-          )}`
-        );
+          // 記錄響應狀態
+          console.log(
+            `🔍 ${method} API 響應狀態: ${response.status} ${response.statusText}`
+          );
 
-        if (!getResponse.ok) {
-          console.error("❌ GET 請求也失敗");
+          if (!response.ok) {
+            // 獲取錯誤響應體
+            let errorBody = "";
+            try {
+              const errorResponse = await response.json();
+              errorBody = JSON.stringify(errorResponse);
+              console.error(`❌ ${method} 錯誤響應體:`, errorResponse);
+            } catch (e) {
+              errorBody = "Could not read error response body";
+              console.error(`❌ ${method} 無法讀取錯誤響應體`);
+            }
+
+            console.error(`❌ ${method} 生成固定收支交易失敗:`, {
+              status: response.status,
+              statusText: response.statusText,
+              errorBody,
+            });
+
+            // 返回失敗
+            return false;
+          }
+
+          // 嘗試獲取並記錄響應數據
+          try {
+            const responseData = await response.json();
+            console.log(
+              `✅ ${method} 成功生成固定收支交易，響應數據:`,
+              responseData
+            );
+          } catch (e) {
+            // 如果沒有 JSON 響應或為空，只記錄成功消息
+            console.log(`✅ ${method} 成功生成固定收支交易，無響應數據`);
+          }
+
+          console.log(`✅ ${method} 已完成用戶的固定收支交易更新:`, userId);
+          return true;
+        } catch (error) {
+          console.error(`❌ ${method} 生成固定收支交易時發生錯誤:`, error);
           return false;
         }
+      };
 
-        const getData = await getResponse.json();
-        console.log("✅ GET 請求成功:", getData);
-        return true;
+      // 首先嘗試 POST 請求
+      let success = await tryGenerateTransactions("POST");
+
+      // 如果 POST 失敗，嘗試 GET 請求
+      if (!success) {
+        console.log("⚠️ POST 請求失敗，嘗試 GET 請求...");
+        success = await tryGenerateTransactions("GET");
       }
 
-      // 嘗試獲取並記錄響應數據
-      try {
-        const responseData = await response.json();
-        console.log("✅ 成功生成固定收支交易，響應數據:", responseData);
-      } catch (e) {
-        // 如果沒有 JSON 響應或為空，只記錄成功消息
-        console.log("✅ 成功生成固定收支交易，無響應數據");
+      // 如果兩種方法都失敗，進行重試
+      while (!success && retryCount < maxRetries) {
+        retryCount++;
+        console.log(
+          `⚠️ 兩種請求都失敗，進行第 ${retryCount} 次重試 (最多 ${maxRetries} 次)...`
+        );
+
+        // 等待一段時間後重試
+        await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
+
+        // 輪流嘗試 POST 和 GET
+        if (retryCount % 2 === 1) {
+          success = await tryGenerateTransactions("POST");
+        } else {
+          success = await tryGenerateTransactions("GET");
+        }
       }
 
-      console.log("✅ 已完成用戶的固定收支交易更新:", userId);
+      if (!success) {
+        console.error(`❌ 經過 ${maxRetries} 次重試後仍然無法生成固定收支交易`);
+        showToastNotification("無法自動更新定期帳目，請稍後再試", "error");
+        return false;
+      }
+
+      showToastNotification("定期帳目已成功更新", "success");
       return true;
     } catch (error) {
-      console.error("❌ 生成固定收支交易時發生錯誤:", error);
+      console.error("❌ 生成固定收支交易過程中發生未捕獲錯誤:", error);
+      showToastNotification("更新定期帳目時發生錯誤", "error");
       return false;
     }
   };
@@ -1900,7 +1955,7 @@ export default function RecurringTransactionManager({
     if (onDataChanged) {
       onDataChanged();
     }
-    
+
     // 調用原始的 onClose 函數
     onClose();
   };
