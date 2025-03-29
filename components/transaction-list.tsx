@@ -1472,7 +1472,7 @@ const TransactionItem = memo(
             transform: `translateX(${translateX}px)`,
             transition: isDragging ? "none" : "transform 0.2s ease-out",
             zIndex: 1,
-            height: transaction.note ? "auto" : "70px", // 設置沒有備注的交易項目高度為70px
+            height: transaction.note ? "auto" : "66px", // 設置沒有備注的交易項目高度為60px
           }}
         >
           <div className="flex items-center">
