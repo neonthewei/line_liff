@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-// 獲取環境變量
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_KEY!;
+// 動態導入 Supabase 客戶端，避免在服務器端構建時出錯
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // 處理 POST 請求
 export async function POST(request: NextRequest) {
@@ -22,6 +17,15 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`開始為用戶 ${userId} 生成固定收支交易`);
+
+    // 動態導入 Supabase 客戶端
+    const { createClient } = await import("@supabase/supabase-js");
+
+    // 獲取環境變量
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseServiceKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_KEY!;
 
     // 使用 service role key 創建 Supabase 客戶端
     // 這比常規 API key 有更高權限
@@ -90,6 +94,15 @@ export async function GET(request: NextRequest) {
   // 使用與 POST 相同的邏輯處理
   try {
     console.log(`開始為用戶 ${userId} 生成固定收支交易 (GET 請求)`);
+
+    // 動態導入 Supabase 客戶端
+    const { createClient } = await import("@supabase/supabase-js");
+
+    // 獲取環境變量
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseServiceKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_KEY!;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
