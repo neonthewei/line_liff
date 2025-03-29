@@ -1077,30 +1077,71 @@ const TransactionItem = memo(
       // 立即标记为已处理，防止重复触发
       buttonClickHandledRef.current = true;
 
-      // 立即给用户视觉反馈
+      // 立即给用户视觉反馈，关闭弹窗
       setIsDeleting(true);
       setShowDeleteModal(false);
+
+      // 模拟网络延迟，确保LIFF环境有足够时间处理状态变化
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      console.log(`[LIFF删除] 开始视觉反馈，交易ID: ${transactionId}`);
+
+      // 开始动画效果
       setTranslateX(0);
       setIsAnimatingOut(true);
-      console.log(`[LIFF删除] 视觉反馈已设置，交易ID: ${transactionId}`);
 
       try {
-        // 调用onDelete回调
-        if (onDelete) {
-          console.log(`[LIFF删除] 调用onDelete回调，ID: ${transactionId}`);
-          onDelete(transactionId);
+        // 添加API删除重试机制
+        let success = false;
+        let retryCount = 0;
+        const maxRetries = 3;
+
+        while (!success && retryCount < maxRetries) {
+          try {
+            console.log(
+              `[LIFF删除] 尝试删除交易 (尝试 ${
+                retryCount + 1
+              }/${maxRetries})，ID: ${transactionId}`
+            );
+
+            // 调用API删除数据
+            success = await deleteTransactionApi(
+              transactionId,
+              transactionType
+            );
+
+            if (success) {
+              console.log(`[LIFF删除] API删除成功，ID: ${transactionId}`);
+              break;
+            } else {
+              console.error(`[LIFF删除] API删除失败，重试中...`);
+              // 短暂延迟后重试
+              await new Promise((resolve) => setTimeout(resolve, 300));
+              retryCount++;
+            }
+          } catch (retryError) {
+            console.error(`[LIFF删除] 重试过程中出错:`, retryError);
+            retryCount++;
+            // 短暂延迟后继续重试
+            await new Promise((resolve) => setTimeout(resolve, 300));
+          }
         }
 
-        // 调用API删除数据
-        console.log(`[LIFF删除] 调用API删除交易，ID: ${transactionId}`);
-        const success = await deleteTransactionApi(
-          transactionId,
-          transactionType
-        );
-        console.log(`[LIFF删除] API删除结果: ${success ? "成功" : "失败"}`);
-
+        // 只有API真正删除成功才进行后续操作
         if (success) {
-          // 发送自定义事件
+          // 1. 调用onDelete回调，更新本地状态
+          if (onDelete) {
+            console.log(`[LIFF删除] 调用onDelete回调，ID: ${transactionId}`);
+            try {
+              onDelete(transactionId);
+              console.log(`[LIFF删除] 本地状态已更新，ID: ${transactionId}`);
+            } catch (callbackError) {
+              console.error(`[LIFF删除] onDelete回调出错:`, callbackError);
+              // 不阻止继续流程
+            }
+          }
+
+          // 2. 发送自定义事件
           try {
             const event = new CustomEvent("transaction-deleted", {
               detail: {
@@ -1117,11 +1158,12 @@ const TransactionItem = memo(
             });
             document.dispatchEvent(event);
             console.log(`[LIFF删除] 删除事件已发送: ${transactionId}`);
-          } catch (error) {
-            console.error("[LIFF删除] 事件发送失败:", error);
+          } catch (eventError) {
+            console.error("[LIFF删除] 事件发送失败:", eventError);
+            // 不阻止继续流程
           }
 
-          // 等待动画结束后移除元素
+          // 3. 等待动画结束后移除元素
           setTimeout(() => {
             setIsDeleted(true);
             console.log(
@@ -1129,21 +1171,76 @@ const TransactionItem = memo(
             );
           }, 250);
         } else {
-          // 删除失败，恢复状态
-          console.error(`[LIFF删除] API返回失败，交易ID: ${transactionId}`);
+          // 删除API调用失败，恢复UI状态
+          console.error(
+            `[LIFF删除] 多次尝试后API删除仍然失败，ID: ${transactionId}`
+          );
+
+          // 立即恢复UI状态
           setTranslateX(0);
           setShowDeleteButton(false);
           setIsDeleting(false);
           setIsAnimatingOut(false);
-          buttonClickHandledRef.current = false; // 重置处理标记
+
+          // 显示网络错误信息
+          const errorMessage = document.createElement("div");
+          errorMessage.textContent = "删除失败，请检查网络连接";
+          errorMessage.style.position = "fixed";
+          errorMessage.style.bottom = "20%";
+          errorMessage.style.left = "50%";
+          errorMessage.style.transform = "translateX(-50%)";
+          errorMessage.style.padding = "10px 20px";
+          errorMessage.style.backgroundColor = "rgba(0,0,0,0.7)";
+          errorMessage.style.color = "white";
+          errorMessage.style.borderRadius = "20px";
+          errorMessage.style.zIndex = "9999";
+          document.body.appendChild(errorMessage);
+
+          // 3秒后移除错误信息
+          setTimeout(() => {
+            if (document.body.contains(errorMessage)) {
+              document.body.removeChild(errorMessage);
+            }
+          }, 3000);
+
+          // 重置处理标记
+          buttonClickHandledRef.current = false;
         }
       } catch (error) {
-        console.error(`[LIFF删除] 发生错误，交易ID: ${transactionId}`, error);
+        console.error(
+          `[LIFF删除] 执行删除过程中发生错误，ID: ${transactionId}`,
+          error
+        );
+
+        // 恢复UI状态
         setTranslateX(0);
         setShowDeleteButton(false);
         setIsDeleting(false);
         setIsAnimatingOut(false);
-        buttonClickHandledRef.current = false; // 重置处理标记
+
+        // 显示错误信息
+        const errorMessage = document.createElement("div");
+        errorMessage.textContent = "删除时发生错误，请重试";
+        errorMessage.style.position = "fixed";
+        errorMessage.style.bottom = "20%";
+        errorMessage.style.left = "50%";
+        errorMessage.style.transform = "translateX(-50%)";
+        errorMessage.style.padding = "10px 20px";
+        errorMessage.style.backgroundColor = "rgba(0,0,0,0.7)";
+        errorMessage.style.color = "white";
+        errorMessage.style.borderRadius = "20px";
+        errorMessage.style.zIndex = "9999";
+        document.body.appendChild(errorMessage);
+
+        // 3秒后移除错误信息
+        setTimeout(() => {
+          if (document.body.contains(errorMessage)) {
+            document.body.removeChild(errorMessage);
+          }
+        }, 3000);
+
+        // 重置处理标记
+        buttonClickHandledRef.current = false;
       }
     };
 
