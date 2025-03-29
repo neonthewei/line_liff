@@ -2295,22 +2295,13 @@ export default function RecurringTransactionManager({
         {groupedTransactions.expenses.length === 0 &&
           groupedTransactions.incomes.length === 0 && (
             <div
-              className="flex flex-col items-center justify-center py-12 px-4 text-center"
+              className="flex flex-col items-center justify-center h-[50vh] px-4 text-center"
               style={{ ...fadeInAnimation, animationDelay: "0ms" }}
             >
               <div className="text-gray-400 mb-2 text-5xl">💸</div>
-              <h3 className="text-lg font-medium text-gray-700 mb-2">
+              <h3 className="text-lg font-medium text-gray-700">
                 尚無固定收支
               </h3>
-              <p className="text-gray-500 mb-6">
-                您可以添加固定收支項目來自動記錄定期交易
-              </p>
-              <button
-                className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
-                onClick={handleCreateTransaction}
-              >
-                新增固定收支
-              </button>
             </div>
           )}
 
