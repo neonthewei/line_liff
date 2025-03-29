@@ -495,96 +495,235 @@ export async function deleteTransactionApi(
   id: string,
   type?: string
 ): Promise<boolean> {
+  // 记录开始时间，用于性能分析
+  const startTime = Date.now();
+
+  // 添加唯一请求标识，便于跟踪
+  const requestId = `del_${id}_${Date.now().toString(36)}`;
+
+  console.log(
+    `[${requestId}] 开始删除交易, ID: ${id}, 类型: ${type || "未指定"}`
+  );
+
+  // 检查网络连接状态
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    console.error(`[${requestId}] 网络连接不可用，无法删除交易`);
+    return false;
+  }
+
   try {
-    console.log(`开始删除交易, ID: ${id}, 类型: ${type || "未指定"}`);
+    // 设置超时处理 - 避免请求无限期挂起
+    const timeoutPromise = new Promise<Response>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`[${requestId}] 删除请求超时 (10秒)`));
+      }, 10000); // 10秒超时
+    });
 
     // 先獲取交易詳情，以便在刪除後發送通知
-    const transaction = await fetchTransactionById(id);
+    let transaction: Transaction | null = null;
+    try {
+      transaction = await Promise.race([
+        fetchTransactionById(id),
+        new Promise<Transaction | null>((_, reject) =>
+          setTimeout(() => reject(new Error("获取交易详情超时")), 5000)
+        ),
+      ]);
 
-    if (!transaction) {
-      console.error(`Transaction with id ${id} not found before deletion`);
-      // 如果找不到交易记录，尝试直接删除
-      console.log("尝试直接删除交易，不进行预查询...");
-    } else {
-      console.log("成功获取待删除交易详情:", JSON.stringify(transaction));
+      if (transaction) {
+        console.log(
+          `[${requestId}] 成功获取待删除交易详情:`,
+          JSON.stringify(transaction)
+        );
+      } else {
+        console.warn(
+          `[${requestId}] 交易记录未找到，ID: ${id}, 将尝试直接删除`
+        );
+      }
+    } catch (fetchError) {
+      console.warn(
+        `[${requestId}] 获取交易详情失败，将尝试直接删除:`,
+        fetchError
+      );
     }
 
     // 構建統一的 API URL
     const url = `${SUPABASE_URL}/transactions?id=eq.${id}`;
 
-    console.log("Making delete API request with:");
-    console.log("URL:", url);
-    console.log("Headers:", JSON.stringify(headers, null, 2));
+    console.log(`[${requestId}] 发送删除请求: ${url}`);
 
-    // 發送 API 請求
-    const response = await fetch(url, {
-      method: "DELETE",
-      headers,
-    });
+    // 添加重试逻辑
+    const maxRetries = 2;
+    let retryCount = 0;
+    let lastError: Error | null = null;
 
-    console.log("Delete response status:", response.status);
-    console.log("Delete response status text:", response.statusText);
-
-    // 任何2xx状态码都视为成功
-    const isSuccess = response.status >= 200 && response.status < 300;
-
-    if (!isSuccess) {
-      const errorText = await response.text();
-      console.error("Delete error response body:", errorText);
-      throw new Error(
-        `Delete API request failed with status ${response.status}: ${errorText}`
-      );
-    }
-
-    console.log("Transaction deleted successfully");
-
-    // 發送 LINE 通知和清除缓存，如果有交易详情
-    if (transaction) {
-      // 發送 LINE 通知
+    while (retryCount <= maxRetries) {
       try {
-        await sendDeleteNotification(transaction);
-      } catch (notificationError) {
-        console.error("Failed to send LINE notification:", notificationError);
-        // 即使通知發送失敗，我們仍然認為刪除成功
-      }
+        // 发起删除请求，添加超时处理
+        const deletePromise = fetch(url, {
+          method: "DELETE",
+          headers,
+          // 添加信号以支持中止请求
+          signal: AbortSignal.timeout(10000),
+        });
 
-      // 清除該用戶的緩存，確保下次獲取數據時能獲取最新數據
-      try {
-        // 從日期中提取年月
-        const match = transaction.date.match(/(\d+)年(\d+)月(\d+)日/);
-        if (match) {
-          const year = parseInt(match[1]);
-          const month = parseInt(match[2]);
+        const response = await Promise.race([deletePromise, timeoutPromise]);
 
-          // 獲取用戶ID
-          const userId = await getUserIdFromLiff();
-          if (userId) {
-            clearTransactionCache(userId, year, month);
+        // 记录响应状态
+        console.log(
+          `[${requestId}] 删除响应状态: ${response.status} ${
+            response.statusText
+          } (尝试 ${retryCount + 1}/${maxRetries + 1})`
+        );
+
+        // 任何2xx状态码都视为成功
+        const isSuccess = response.status >= 200 && response.status < 300;
+
+        if (isSuccess) {
+          // 删除成功，执行清理操作
+
+          // 发送LINE通知（如果有交易详情）
+          if (transaction) {
+            try {
+              await sendDeleteNotification(transaction).catch((err) => {
+                console.error(`[${requestId}] 发送LINE通知失败:`, err);
+              });
+            } catch (notificationError) {
+              console.error(
+                `[${requestId}] 发送LINE通知异常:`,
+                notificationError
+              );
+              // 通知失败不影响删除结果
+            }
+
+            // 清除用户缓存
+            try {
+              // 从日期中提取年月
+              const match = transaction.date.match(/(\d+)年(\d+)月(\d+)日/);
+              if (match) {
+                const year = parseInt(match[1]);
+                const month = parseInt(match[2]);
+
+                // 获取用户ID
+                const userId = await getUserIdFromLiff();
+                if (userId) {
+                  clearTransactionCache(userId, year, month);
+                  console.log(
+                    `[${requestId}] 已清除用户 ${userId} 在 ${year}年${month}月 的缓存`
+                  );
+                } else {
+                  console.log(
+                    `[${requestId}] 无法获取用户ID，清除所有会话缓存`
+                  );
+                  sessionStorage.clear();
+                }
+              } else {
+                console.log(
+                  `[${requestId}] 无法解析日期格式 "${transaction.date}"，清除所有会话缓存`
+                );
+                sessionStorage.clear();
+              }
+            } catch (cacheError) {
+              console.error(`[${requestId}] 清除缓存时发生错误:`, cacheError);
+              // 缓存清除失败不影响删除结果
+              sessionStorage.clear();
+            }
           } else {
-            // 如果無法獲取用戶ID，清除所有緩存
-            console.log("Could not determine user ID, clearing all caches");
+            // 如果没有交易详情，清除所有会话缓存
+            console.log(`[${requestId}] 无交易详情，清除所有会话缓存`);
             sessionStorage.clear();
           }
+
+          // 计算并记录总执行时间
+          const executionTime = Date.now() - startTime;
+          console.log(
+            `[${requestId}] 删除交易成功，总耗时: ${executionTime}ms`
+          );
+
+          return true;
         } else {
-          // 如果無法解析日期，清除所有緩存
-          console.log("Could not parse date, clearing all caches");
-          sessionStorage.clear();
+          // 删除请求失败，尝试解析错误信息
+          let errorBody = "";
+          try {
+            errorBody = await response.text();
+          } catch (textError) {
+            errorBody = "无法读取错误响应内容";
+          }
+
+          lastError = new Error(
+            `删除请求失败，状态码: ${response.status}，响应: ${errorBody}`
+          );
+          console.error(
+            `[${requestId}] 删除失败 (尝试 ${retryCount + 1}/${
+              maxRetries + 1
+            }):`,
+            lastError
+          );
+
+          // 判断是否需要重试
+          const shouldRetry = response.status >= 500 || response.status === 429;
+          if (shouldRetry && retryCount < maxRetries) {
+            retryCount++;
+            // 指数退避重试，避免过快发送请求
+            const retryDelay = Math.min(1000 * 2 ** retryCount, 5000);
+            console.log(
+              `[${requestId}] 将在 ${retryDelay}ms 后重试 (${retryCount}/${maxRetries})`
+            );
+            await new Promise((resolve) => setTimeout(resolve, retryDelay));
+          } else {
+            // 重试次数已用尽或不需要重试，抛出错误由外层捕获
+            throw lastError;
+          }
         }
-      } catch (cacheError) {
-        console.error("Error clearing cache:", cacheError);
-        // 缓存清除失败也不影响删除成功状态
+      } catch (fetchError) {
+        lastError =
+          fetchError instanceof Error
+            ? fetchError
+            : new Error(String(fetchError));
+        console.error(
+          `[${requestId}] 删除请求异常 (尝试 ${retryCount + 1}/${
+            maxRetries + 1
+          }):`,
+          lastError
+        );
+
+        // 判断是否为网络错误
+        const isNetworkError =
+          fetchError instanceof TypeError ||
+          String(fetchError).includes("network") ||
+          String(fetchError).includes("fetch");
+
+        if (isNetworkError && retryCount < maxRetries) {
+          retryCount++;
+          // 网络错误使用较短的重试延迟
+          const retryDelay = Math.min(1000 * retryCount, 3000);
+          console.log(
+            `[${requestId}] 网络错误，将在 ${retryDelay}ms 后重试 (${retryCount}/${maxRetries})`
+          );
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        } else {
+          // 重试次数已用尽或非网络错误，抛出错误由外层捕获
+          throw lastError;
+        }
       }
-    } else {
-      // 如果没有获取到交易详情，直接清除所有会话缓存
-      console.log(
-        "No transaction details available, clearing all session cache"
-      );
-      sessionStorage.clear();
     }
 
-    return true;
+    // 如果循环正常退出但未返回，则是所有重试都失败了
+    throw lastError || new Error(`[${requestId}] 所有删除尝试均失败`);
   } catch (error) {
-    console.error("Error deleting transaction:", error);
+    // 记录最终错误
+    const executionTime = Date.now() - startTime;
+    console.error(
+      `[${requestId}] 删除交易最终失败，总耗时: ${executionTime}ms，错误:`,
+      error
+    );
+
+    // 尝试最后一次清除缓存
+    try {
+      sessionStorage.clear();
+    } catch (clearError) {
+      console.error(`[${requestId}] 最终清除缓存失败:`, clearError);
+    }
+
     return false;
   }
 }
