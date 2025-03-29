@@ -51,7 +51,6 @@ export default function Home() {
   const [logs, setLogs] = useState<string[]>([]);
   const [errorLogs, setErrorLogs] = useState<string[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [lastUpdateTime, setLastUpdateTime] = useState<number | null>(null);
 
   // 初始化控制台捕獲
   useEffect(() => {
@@ -81,95 +80,6 @@ export default function Home() {
     }, 1000);
     return () => clearInterval(interval);
   }, []);
-
-  // 處理固定交易更新
-  const updateRecurringTransactions = useCallback(async () => {
-    try {
-      if (!userId) {
-        console.log("無法更新固定收支交易：沒有用戶 ID");
-        return;
-      }
-
-      // 檢查最後更新時間，避免頻繁更新
-      const currentTime = Date.now();
-      const updateInterval = 60 * 60 * 1000; // 1小時
-
-      if (lastUpdateTime && currentTime - lastUpdateTime < updateInterval) {
-        console.log("固定收支交易已經在最近更新過，跳過本次更新");
-        return;
-      }
-
-      console.log("🔄 正在為用戶更新固定收支交易...");
-
-      // 調用 API 更新固定交易
-      const response = await fetch("/api/generate-recurring-transactions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ userId }),
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        console.error(
-          "固定收支交易更新失敗：",
-          response.status,
-          response.statusText
-        );
-
-        // 嘗試使用 GET 請求作為備用方案
-        const getResponse = await fetch(
-          `/api/generate-recurring-transactions?userId=${encodeURIComponent(
-            userId
-          )}`,
-          { cache: "no-store" }
-        );
-
-        if (!getResponse.ok) {
-          console.error("GET 備用方案也失敗");
-          return;
-        }
-
-        console.log("透過 GET 備用方案成功更新固定收支交易");
-      } else {
-        console.log("✅ 固定收支交易更新成功");
-      }
-
-      // 更新最後更新時間
-      setLastUpdateTime(currentTime);
-
-      // 重新獲取交易數據以顯示新生成的交易
-      fetchData();
-    } catch (error) {
-      console.error("更新固定收支交易時發生錯誤:", error);
-    }
-  }, [userId, lastUpdateTime]);
-
-  // 每次頁面加載或獲得焦點時自動更新固定交易
-  useEffect(() => {
-    if (userId) {
-      // 頁面加載時更新固定交易
-      updateRecurringTransactions();
-
-      // 設置每日自動更新時間檢查
-      const dailyCheckInterval = setInterval(() => {
-        // 檢查今天是否已經更新過
-        const now = new Date();
-        const today = now.toDateString();
-        const lastUpdateDay = lastUpdateTime
-          ? new Date(lastUpdateTime).toDateString()
-          : null;
-
-        if (today !== lastUpdateDay) {
-          console.log("今天尚未更新固定收支交易，執行自動更新");
-          updateRecurringTransactions();
-        }
-      }, 30 * 60 * 1000); // 每30分鐘檢查一次
-
-      return () => clearInterval(dailyCheckInterval);
-    }
-  }, [userId, updateRecurringTransactions, lastUpdateTime]);
 
   // 初始化 LIFF 和获取用戶ID
   useEffect(() => {
@@ -368,9 +278,6 @@ export default function Home() {
       if (document.visibilityState === "visible" && userId) {
         console.log("頁面重新獲得焦點，刷新數據");
         fetchData();
-
-        // 在頁面重新獲得焦點時也檢查固定交易更新
-        updateRecurringTransactions();
       }
     };
 
@@ -379,9 +286,6 @@ export default function Home() {
       if (userId) {
         console.log("頁面重新獲得焦點，刷新數據");
         fetchData();
-
-        // 在頁面重新獲得焦點時也檢查固定交易更新
-        updateRecurringTransactions();
       }
     };
 
@@ -392,7 +296,7 @@ export default function Home() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [userId, fetchData, updateRecurringTransactions]);
+  }, [userId, fetchData, currentDate]);
 
   // 當月份變化時重新獲取數據
   useEffect(() => {
