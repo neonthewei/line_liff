@@ -1059,129 +1059,211 @@ const TransactionItem = memo(
 
     // 进一步修改确认删除按钮的点击处理，针对LIFF环境优化
     const deleteButtonRef = useRef<HTMLButtonElement>(null);
+    const buttonClickHandledRef = useRef(false); // 新增引用，用于防止重复处理
 
-    // 在组件挂载时添加原生事件监听器
+    // 独立的删除处理函数，完全与React事件系统分离
+    const performDelete = async (
+      transactionId: string,
+      transactionType: string | undefined
+    ) => {
+      console.log(`[LIFF删除] 开始执行删除操作，交易ID: ${transactionId}`);
+
+      // 已经处理过，直接返回
+      if (buttonClickHandledRef.current) {
+        console.log(`[LIFF删除] 已经处理过，忽略此次调用`);
+        return;
+      }
+
+      // 立即标记为已处理，防止重复触发
+      buttonClickHandledRef.current = true;
+
+      // 立即给用户视觉反馈
+      setIsDeleting(true);
+      setShowDeleteModal(false);
+      setTranslateX(0);
+      setIsAnimatingOut(true);
+      console.log(`[LIFF删除] 视觉反馈已设置，交易ID: ${transactionId}`);
+
+      try {
+        // 调用onDelete回调
+        if (onDelete) {
+          console.log(`[LIFF删除] 调用onDelete回调，ID: ${transactionId}`);
+          onDelete(transactionId);
+        }
+
+        // 调用API删除数据
+        console.log(`[LIFF删除] 调用API删除交易，ID: ${transactionId}`);
+        const success = await deleteTransactionApi(
+          transactionId,
+          transactionType
+        );
+        console.log(`[LIFF删除] API删除结果: ${success ? "成功" : "失败"}`);
+
+        if (success) {
+          // 发送自定义事件
+          try {
+            const event = new CustomEvent("transaction-deleted", {
+              detail: {
+                deletedTransaction: {
+                  id: transactionId,
+                  type: transactionType,
+                  amount: transaction.amount,
+                  date: transaction.date,
+                  category: transaction.category,
+                },
+                timestamp: new Date().toISOString(),
+              },
+              bubbles: true,
+            });
+            document.dispatchEvent(event);
+            console.log(`[LIFF删除] 删除事件已发送: ${transactionId}`);
+          } catch (error) {
+            console.error("[LIFF删除] 事件发送失败:", error);
+          }
+
+          // 等待动画结束后移除元素
+          setTimeout(() => {
+            setIsDeleted(true);
+            console.log(
+              `[LIFF删除] 元素已从DOM中移除，交易ID: ${transactionId}`
+            );
+          }, 250);
+        } else {
+          // 删除失败，恢复状态
+          console.error(`[LIFF删除] API返回失败，交易ID: ${transactionId}`);
+          setTranslateX(0);
+          setShowDeleteButton(false);
+          setIsDeleting(false);
+          setIsAnimatingOut(false);
+          buttonClickHandledRef.current = false; // 重置处理标记
+        }
+      } catch (error) {
+        console.error(`[LIFF删除] 发生错误，交易ID: ${transactionId}`, error);
+        setTranslateX(0);
+        setShowDeleteButton(false);
+        setIsDeleting(false);
+        setIsAnimatingOut(false);
+        buttonClickHandledRef.current = false; // 重置处理标记
+      }
+    };
+
+    // 在组件挂载时设置全局事件委托处理器
     useEffect(() => {
-      // 如果删除按钮引用存在
-      if (deleteButtonRef.current) {
-        const button = deleteButtonRef.current;
+      // 重置处理标记
+      buttonClickHandledRef.current = false;
 
-        // 使用原生DOM事件代替React合成事件
-        const handleRawClick = async (e: Event) => {
-          // 立即阻止事件冒泡和默认行为
+      // 添加全局事件委托处理器，捕获所有点击事件
+      const handleGlobalClick = (e: MouseEvent | TouchEvent) => {
+        // 确保是我们的删除按钮被点击
+        const target = e.target as HTMLElement;
+
+        // 查找匹配当前交易ID的确认删除按钮
+        if (
+          target &&
+          (target.id === `delete-confirm-btn-${transaction.id}` ||
+            target.closest(`#delete-confirm-btn-${transaction.id}`))
+        ) {
+          // 阻止事件默认行为和冒泡
+          e.preventDefault();
           e.stopPropagation();
-          if (e.preventDefault) e.preventDefault();
 
           console.log(
-            `[LIFF删除] 原生事件处理器触发，交易ID: ${transaction.id}`
+            `[LIFF删除] 捕获到确认删除按钮点击，交易ID: ${transaction.id}`
           );
 
-          // 防止重复点击
-          if (isDeleting) {
-            console.log("[LIFF删除] 操作进行中，忽略点击");
-            return;
+          // 如果已显示弹窗但未处于删除中，执行删除
+          if (
+            showDeleteModal &&
+            !isDeleting &&
+            !buttonClickHandledRef.current
+          ) {
+            // 立即执行删除
+            performDelete(transaction.id, transaction.type);
           }
+        }
+      };
 
-          // 立即设置状态为删除中
-          setIsDeleting(true);
+      // 同时监听点击和触摸结束事件，确保在各种设备上都能正常工作
+      document.addEventListener("click", handleGlobalClick, { capture: true });
+      document.addEventListener("touchend", handleGlobalClick, {
+        capture: true,
+      });
 
-          // 立即关闭弹窗
-          setShowDeleteModal(false);
-          console.log(`[LIFF删除] 已关闭弹窗，交易ID: ${transaction.id}`);
-
-          // 立即开始删除动画
-          setTranslateX(0);
-          setIsAnimatingOut(true);
-          console.log("[LIFF删除] 删除动画已触发");
-
-          // 执行删除操作
-          try {
-            // 1. 立即通知父组件
-            if (onDelete) {
-              console.log(`[LIFF删除] 调用onDelete回调，ID: ${transaction.id}`);
-              onDelete(transaction.id);
-              console.log("[LIFF删除] 本地状态已更新");
-            } else {
-              console.error("[LIFF删除] onDelete回调未定义");
-            }
-
-            // 2. 调用API删除数据
-            console.log(`[LIFF删除] 调用API删除交易，ID: ${transaction.id}`);
-            const success = await deleteTransactionApi(
-              transaction.id,
-              transaction.type
+      // 添加一个变更观察器，确保在DOM变更时重新检查和绑定事件
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.type === "childList" && showDeleteModal) {
+            const confirmButton = document.getElementById(
+              `delete-confirm-btn-${transaction.id}`
             );
-            console.log(`[LIFF删除] API删除结果: ${success ? "成功" : "失败"}`);
-
-            if (success) {
-              // 3. 发送删除事件
-              try {
-                console.log(`[LIFF删除] 发送删除事件: ${transaction.id}`);
-                const event = new CustomEvent("transaction-deleted", {
-                  detail: {
-                    deletedTransaction: {
-                      id: transaction.id,
-                      type: transaction.type,
-                      amount: transaction.amount,
-                      date: transaction.date,
-                      category: transaction.category,
-                    },
-                    timestamp: new Date().toISOString(),
-                  },
-                  bubbles: true,
-                });
-                document.dispatchEvent(event);
-              } catch (error) {
-                console.error("[LIFF删除] 事件发送失败:", error);
-              }
-
-              // 4. 等待动画结束后移除元素
-              setTimeout(() => {
-                setIsDeleted(true);
-                console.log("[LIFF删除] 元素已从DOM中移除");
-              }, 250);
-            } else {
-              // 删除失败，重置状态
-              console.error("[LIFF删除] API返回失败");
-              setTranslateX(0);
-              setShowDeleteButton(false);
-              setIsDeleting(false);
-              setIsAnimatingOut(false);
+            if (confirmButton) {
+              console.log(
+                `[LIFF删除] 检测到删除确认按钮已加入DOM，确保事件绑定`
+              );
+              // 为安全起见，直接添加点击事件处理器
+              confirmButton.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!isDeleting && !buttonClickHandledRef.current) {
+                  console.log(
+                    `[LIFF删除] 确认按钮直接点击处理器触发，交易ID: ${transaction.id}`
+                  );
+                  performDelete(transaction.id, transaction.type);
+                }
+              };
             }
-          } catch (error) {
-            console.error("[LIFF删除] 发生错误:", error);
-            setTranslateX(0);
-            setShowDeleteButton(false);
-            setIsDeleting(false);
-            setIsAnimatingOut(false);
           }
-        };
+        }
+      });
 
-        // 添加多种事件监听，确保能捕获到事件
-        button.addEventListener("click", handleRawClick, { capture: true });
-        button.addEventListener("touchend", handleRawClick, { capture: true });
+      // 观察整个文档，以确保捕获到弹窗的渲染
+      observer.observe(document.body, { childList: true, subtree: true });
 
-        // 清理函数
-        return () => {
-          button.removeEventListener("click", handleRawClick, {
-            capture: true,
-          });
-          button.removeEventListener("touchend", handleRawClick, {
-            capture: true,
-          });
-        };
-      }
+      // 清理函数
+      return () => {
+        document.removeEventListener("click", handleGlobalClick, {
+          capture: true,
+        });
+        document.removeEventListener("touchend", handleGlobalClick, {
+          capture: true,
+        });
+        observer.disconnect();
+        buttonClickHandledRef.current = false;
+      };
     }, [
       transaction.id,
+      transaction.type,
+      showDeleteModal,
       isDeleting,
       onDelete,
-      setIsDeleting,
-      setShowDeleteModal,
-      setTranslateX,
-      setIsAnimatingOut,
-      setIsDeleted,
-      setShowDeleteButton,
     ]);
+
+    // 当弹窗显示时直接绑定事件到确认按钮
+    useEffect(() => {
+      if (showDeleteModal && !isDeleting) {
+        // 使用setTimeout确保DOM已经更新
+        setTimeout(() => {
+          const confirmButton = document.getElementById(
+            `delete-confirm-btn-${transaction.id}`
+          );
+          if (confirmButton) {
+            console.log(
+              `[LIFF删除] 弹窗显示时直接绑定事件，交易ID: ${transaction.id}`
+            );
+            confirmButton.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!isDeleting && !buttonClickHandledRef.current) {
+                console.log(
+                  `[LIFF删除] 直接绑定的点击处理器触发，交易ID: ${transaction.id}`
+                );
+                performDelete(transaction.id, transaction.type);
+              }
+            };
+          }
+        }, 100); // 给DOM更新一点时间
+      }
+    }, [showDeleteModal, isDeleting, transaction.id, transaction.type]);
 
     return (
       <div className="relative overflow-hidden" style={deleteAnimationStyle}>
@@ -1198,7 +1280,7 @@ const TransactionItem = memo(
                 e.stopPropagation();
                 // 阻止默认行为
                 e.preventDefault();
-              }} // 阻止點擊內容區域時關閉視窗
+              }}
             >
               <div className="text-center mb-4">
                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
@@ -1229,6 +1311,7 @@ const TransactionItem = memo(
                   disabled={isDeleting}
                   data-transaction-id={transaction.id}
                   data-action="delete-confirm"
+                  type="button" // 明确指定类型
                 >
                   {isDeleting ? "删除中..." : "確定刪除"}
                 </button>
