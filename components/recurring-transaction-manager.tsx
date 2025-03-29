@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SUPABASE_URL, SUPABASE_KEY } from "@/utils/api";
+import { createClient } from "@supabase/supabase-js";
 
 // Helper function to check if a transaction is temporary
 const isTemporaryTransaction = (id: string | number): boolean => {
@@ -70,6 +71,7 @@ interface Category {
 interface RecurringTransactionManagerProps {
   userId: string;
   onClose: () => void;
+  onDataChanged?: () => void; // 添加新的可選回調函數
 }
 
 // Skeleton loader for recurring transaction items
@@ -1588,6 +1590,7 @@ const RecurringTransactionEditor = ({
 export default function RecurringTransactionManager({
   userId,
   onClose,
+  onDataChanged,
 }: RecurringTransactionManagerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [recurringTransactions, setRecurringTransactions] = useState<
@@ -1799,7 +1802,8 @@ export default function RecurringTransactionManager({
         ...prevTransactions,
       ]);
 
-      // Remove success toast notification
+      // Generate recurring transactions for this user
+      await generateRecurringTransactionsForUser(userId);
 
       // Close editor
       setIsCreating(false);
@@ -1810,11 +1814,95 @@ export default function RecurringTransactionManager({
     }
   };
 
+  // Generate recurring transactions for a specific user
+  const generateRecurringTransactionsForUser = async (userId: string) => {
+    try {
+      console.log("🔄 準備為用戶生成固定收支交易:", userId);
+
+      // 調用我們的 API 端點
+      console.log("📡 發送請求到本地 API 端點");
+
+      // 使用 POST 請求
+      const response = await fetch("/api/generate-recurring-transactions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId }),
+      });
+
+      // 記錄響應狀態
+      console.log(`🔍 API 響應狀態: ${response.status} ${response.statusText}`);
+
+      if (!response.ok) {
+        // 獲取錯誤響應體
+        let errorBody = "";
+        try {
+          const errorResponse = await response.json();
+          errorBody = JSON.stringify(errorResponse);
+          console.error("❌ 錯誤響應體:", errorResponse);
+        } catch (e) {
+          errorBody = "Could not read error response body";
+          console.error("❌ 無法讀取錯誤響應體");
+        }
+
+        console.error("❌ 生成固定收支交易失敗:", {
+          status: response.status,
+          statusText: response.statusText,
+          errorBody,
+        });
+
+        // 嘗試使用 GET 請求
+        console.log("⚠️ 嘗試使用 GET 請求...");
+        const getResponse = await fetch(
+          `/api/generate-recurring-transactions?userId=${encodeURIComponent(
+            userId
+          )}`
+        );
+
+        if (!getResponse.ok) {
+          console.error("❌ GET 請求也失敗");
+          return false;
+        }
+
+        const getData = await getResponse.json();
+        console.log("✅ GET 請求成功:", getData);
+        return true;
+      }
+
+      // 嘗試獲取並記錄響應數據
+      try {
+        const responseData = await response.json();
+        console.log("✅ 成功生成固定收支交易，響應數據:", responseData);
+      } catch (e) {
+        // 如果沒有 JSON 響應或為空，只記錄成功消息
+        console.log("✅ 成功生成固定收支交易，無響應數據");
+      }
+
+      console.log("✅ 已完成用戶的固定收支交易更新:", userId);
+      return true;
+    } catch (error) {
+      console.error("❌ 生成固定收支交易時發生錯誤:", error);
+      return false;
+    }
+  };
+
   // Handle close editor
   const handleCloseEditor = () => {
     setIsEditing(false);
     setIsCreating(false);
     setSelectedTransaction(null);
+  };
+
+  // 處理關閉管理器並通知數據變更
+  const handleClose = () => {
+    // 如果提供了 onDataChanged 回調，則調用它通知父組件數據已更改
+    if (onDataChanged) {
+      onDataChanged();
+    }
+    
+    // 調用原始的 onClose 函數
+    onClose();
   };
 
   // Group recurring transactions by type (expense/income)
@@ -1958,7 +2046,8 @@ export default function RecurringTransactionManager({
         )
       );
 
-      // Remove success toast
+      // Generate recurring transactions for this user after update
+      await generateRecurringTransactionsForUser(userId);
 
       // Close editor
       setIsEditing(false);
@@ -2099,7 +2188,7 @@ export default function RecurringTransactionManager({
         <div className="fixed bottom-0 left-0 right-0 pt-4 px-4 pb-6 bg-gray-100 z-30 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent before:z-30">
           <div className="max-w-md mx-auto flex gap-3">
             <button
-              onClick={onClose}
+              onClick={handleClose} // 改為使用 handleClose 而不是直接使用 onClose
               className="w-[30%] py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
               aria-label="返回"
             >
@@ -2138,7 +2227,7 @@ export default function RecurringTransactionManager({
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-gray-100 z-30 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent before:z-30">
           <div className="max-w-md mx-auto">
             <button
-              onClick={onClose}
+              onClick={handleClose} // 改為使用 handleClose 而不是直接使用 onClose
               className="w-full py-3 rounded-2xl bg-gray-200 text-gray-600 font-medium flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
               aria-label="返回"
             >
@@ -2309,7 +2398,7 @@ export default function RecurringTransactionManager({
         <div className="fixed bottom-0 left-0 right-0 pt-4 px-4 pb-6 bg-gray-100 z-30 before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-20px] before:h-[20px] before:bg-gradient-to-t before:from-gray-100 before:to-transparent before:z-30">
           <div className="max-w-md mx-auto flex gap-3">
             <button
-              onClick={onClose}
+              onClick={handleClose} // 改為使用 handleClose 而不是直接使用 onClose
               className="w-[30%] py-3 rounded-2xl bg-gray-200 text-gray-600 flex items-center justify-center transition-colors duration-150 active:bg-gray-300"
               aria-label="返回"
             >

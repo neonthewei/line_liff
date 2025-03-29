@@ -1587,6 +1587,15 @@ export default function TransactionList({
     Set<string>
   >(new Set());
 
+  // 處理刷新定期交易數據
+  const handleRecurringDataChanged = () => {
+    console.log("定期交易數據已更改，通知父組件重新加載數據");
+    if (onTransactionUpdate) {
+      // 通知父組件重新獲取數據 (直接使用傳入的交易數據，保持篩選狀態)
+      onTransactionUpdate(transactions);
+    }
+  };
+
   // 簡化處理交易刪除邏輯 - 完全本地化处理
   const handleDeleteTransaction = async (id: string) => {
     console.log(`[月度摘要] 准备处理删除事件，交易ID: ${id}`);
@@ -2021,6 +2030,7 @@ export default function TransactionList({
           <RecurringTransactionManager
             userId={userId}
             onClose={() => setShowRecurringManager(false)}
+            onDataChanged={handleRecurringDataChanged}
           />
         )}
       </>
@@ -2150,6 +2160,7 @@ export default function TransactionList({
         <RecurringTransactionManager
           userId={userId}
           onClose={() => setShowRecurringManager(false)}
+          onDataChanged={handleRecurringDataChanged}
         />
       )}
 
