@@ -825,6 +825,7 @@ const TransactionItem = memo(
 
     // 修改确认删除函数，增强调试和错误处理
     const confirmDelete = async () => {
+      // 检查是否存在删除回调
       if (!onDelete) {
         console.error("onDelete callback is not defined");
         return;
@@ -836,12 +837,16 @@ const TransactionItem = memo(
         return;
       }
 
-      // 關閉確認彈窗
+      console.log(`[删除确认] 确认删除，开始处理, 交易ID: ${transaction.id}`);
+
+      // 立即设置删除状态，防止重复点击
+      setIsDeleting(true);
+
+      // 關閉確認彈窗（保留原有的setShowDeleteModal(false)，但移至此处）
       setShowDeleteModal(false);
-      console.log(`[删除确认] 确认删除，关闭弹窗，准备开始删除动画`);
+      console.log(`[删除确认] 确认删除，已关闭弹窗，准备开始删除动画`);
 
       // 立即給用戶視覺反饋 - 先开始动画
-      setIsDeleting(true);
       setTranslateX(0); // 開始收回刪除按鈕
       setIsAnimatingOut(true); // 触发删除动画
       console.log("[删除] 删除动画已触发");
@@ -849,6 +854,7 @@ const TransactionItem = memo(
       try {
         // 立即通知父组件处理日期组动画（在API调用前）
         if (onDelete) {
+          console.log(`[删除] 调用onDelete回调，ID: ${transaction.id}`);
           onDelete(transaction.id);
           console.log("[删除] 本地状态已立即更新，触发日期组动画");
         }
@@ -1092,13 +1098,28 @@ const TransactionItem = memo(
                 </button>
                 <button
                   onClick={(e) => {
+                    // 立即阻止事件冒泡和默认行为
                     e.stopPropagation();
                     e.preventDefault();
+
+                    // 添加延迟防护，避免重复点击
+                    if (isDeleting) {
+                      console.log("[删除] 正在删除中，忽略点击");
+                      return;
+                    }
+
+                    // 立即设置isDeleting状态，防止重复点击
+                    setIsDeleting(true);
+
+                    console.log(
+                      `[删除确认] 确认删除按钮被点击，交易ID: ${transaction.id}`
+                    );
                     confirmDelete();
                   }}
                   className="flex-1 py-2 rounded-xl bg-red-500 text-white font-medium transition-all duration-150 active:bg-red-600"
+                  disabled={isDeleting}
                 >
-                  確定刪除
+                  {isDeleting ? "删除中..." : "確定刪除"}
                 </button>
               </div>
             </div>
