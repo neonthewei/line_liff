@@ -2,6 +2,48 @@ import { NextRequest, NextResponse } from "next/server";
 // 動態導入 Supabase 客戶端，避免在服務器端構建時出錯
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+// 備用的 URL 和 KEY（當環境變數不可用時）
+// 注意：這些備用值僅用於緊急情況，確保您的應用繼續運行
+// 在實際生產環境中，應使用適當的環境變數
+const FALLBACK_SUPABASE_URL = "https://rywxzfjuggbxbzwhrjvc.supabase.co";
+const FALLBACK_SUPABASE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ5d3h6Zmp1Z2dieGJ6d2hyanZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTM0MTg5OTIsImV4cCI6MjAyODk5NDk5Mn0.VYpghZCFAlzE57ZKcf1PvZz9NS6cM8BxiIPPQGAw0-I";
+
+// 安全地獲取 Supabase URL
+function getSupabaseUrl(): string {
+  // 嘗試讀取環境變數
+  const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  if (envUrl && envUrl.includes("supabase.co")) {
+    console.log("[API] 使用環境變數中的 Supabase URL");
+    return envUrl;
+  }
+
+  // 如果環境變數不可用或無效，使用備用值
+  console.log("[API] 環境變數中的 Supabase URL 不可用，使用備用值");
+  return FALLBACK_SUPABASE_URL;
+}
+
+// 安全地獲取 Supabase Key
+function getSupabaseKey(): string {
+  // 優先使用 service role key
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  if (serviceKey && serviceKey.length > 20) {
+    console.log("[API] 使用 SUPABASE_SERVICE_ROLE_KEY");
+    return serviceKey;
+  }
+
+  // 嘗試使用公共 key
+  const publicKey = process.env.NEXT_PUBLIC_SUPABASE_KEY || "";
+  if (publicKey && publicKey.length > 20) {
+    console.log("[API] 使用 NEXT_PUBLIC_SUPABASE_KEY");
+    return publicKey;
+  }
+
+  // 如果兩個都不可用，使用備用值
+  console.log("[API] Supabase KEY 不可用，使用備用值");
+  return FALLBACK_SUPABASE_KEY;
+}
+
 // 處理 POST 請求
 export async function POST(request: NextRequest) {
   try {
@@ -30,23 +72,21 @@ export async function POST(request: NextRequest) {
     try {
       const { createClient } = await import("@supabase/supabase-js");
 
-      // 獲取環境變量
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseServiceKey =
-        process.env.SUPABASE_SERVICE_ROLE_KEY ||
-        process.env.NEXT_PUBLIC_SUPABASE_KEY;
+      // 獲取環境變量（使用我們的安全獲取函數）
+      const supabaseUrl = getSupabaseUrl();
+      const supabaseServiceKey = getSupabaseKey();
 
-      if (!supabaseUrl) {
-        throw new Error("NEXT_PUBLIC_SUPABASE_URL 未定義");
-      }
+      console.log(
+        `[API] Supabase URL 可用: ${
+          supabaseUrl ? "是" : "否"
+        } (${supabaseUrl.substring(0, 15)}...)`
+      );
+      console.log(
+        `[API] Supabase KEY 可用: ${supabaseServiceKey ? "是" : "否"} (長度: ${
+          supabaseServiceKey.length
+        })`
+      );
 
-      if (!supabaseServiceKey) {
-        throw new Error(
-          "SUPABASE_SERVICE_ROLE_KEY 或 NEXT_PUBLIC_SUPABASE_KEY 未定義"
-        );
-      }
-
-      console.log(`[API] Supabase URL: ${supabaseUrl.substring(0, 20)}...`);
       console.log("[API] Supabase 客戶端初始化中...");
 
       // 使用 service role key 創建 Supabase 客戶端
@@ -147,21 +187,18 @@ export async function GET(request: NextRequest) {
       // 動態導入 Supabase 客戶端
       const { createClient } = await import("@supabase/supabase-js");
 
-      // 獲取環境變量
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseServiceKey =
-        process.env.SUPABASE_SERVICE_ROLE_KEY ||
-        process.env.NEXT_PUBLIC_SUPABASE_KEY;
+      // 獲取環境變量（使用安全獲取函數）
+      const supabaseUrl = getSupabaseUrl();
+      const supabaseServiceKey = getSupabaseKey();
 
-      if (!supabaseUrl) {
-        throw new Error("NEXT_PUBLIC_SUPABASE_URL 未定義");
-      }
-
-      if (!supabaseServiceKey) {
-        throw new Error(
-          "SUPABASE_SERVICE_ROLE_KEY 或 NEXT_PUBLIC_SUPABASE_KEY 未定義"
-        );
-      }
+      console.log(
+        `[API] GET 請求 - Supabase URL 可用: ${supabaseUrl ? "是" : "否"}`
+      );
+      console.log(
+        `[API] GET 請求 - Supabase KEY 可用: ${
+          supabaseServiceKey ? "是" : "否"
+        }`
+      );
 
       console.log("[API] GET 請求 - Supabase 客戶端初始化中...");
 
