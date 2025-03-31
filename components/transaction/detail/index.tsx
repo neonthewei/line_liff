@@ -92,7 +92,9 @@ export default function TransactionDetail({
   useEffect(() => {
     if (!isMounted) return;
 
-    setIsInitializing(true);
+    // Only set initializing to true if it's not already in a loading state
+    // This prevents re-rendering the skeleton multiple times
+    let isStartingInitialization = true;
 
     async function initialize() {
       try {
@@ -111,6 +113,8 @@ export default function TransactionDetail({
             const token = liff.getAccessToken();
             if (!token) {
               console.log("No access token found, attempting to login");
+              // Don't turn off loading state when redirecting to login
+              // This prevents skeleton from disappearing and reappearing
               liff.login();
               return;
             }
@@ -122,6 +126,7 @@ export default function TransactionDetail({
             );
             console.log("Attempting to re-login");
             try {
+              // Don't turn off loading state when redirecting to login
               liff.login();
               return;
             } catch (loginError) {
@@ -190,8 +195,8 @@ export default function TransactionDetail({
         // 設置交易 ID，這會觸發 useTransaction hook
         setTransactionId(id);
 
-        // 初始化完成
-        setIsInitializing(false);
+        // 注意: 我們不在這裡將 isInitializing 設為 false
+        // 讓 useTransaction 完成加載後再關閉加載狀態
       } catch (error) {
         console.error("Error initializing:", error);
         setIsInitializing(false);
@@ -199,8 +204,21 @@ export default function TransactionDetail({
       }
     }
 
+    if (isStartingInitialization) {
+      setIsInitializing(true);
+      isStartingInitialization = false;
+    }
+
     initialize();
   }, [isMounted, onError, setTransactionId, setDebugInfo]);
+
+  // 當 transaction 加載完成時，結束初始化加載狀態
+  useEffect(() => {
+    // 只有當 transactionId 已設置且不在加載中時，才結束初始化
+    if (transactionId && !isLoading) {
+      setIsInitializing(false);
+    }
+  }, [transactionId, isLoading]);
 
   // 防止意外點擊的延遲
   useEffect(() => {
@@ -663,7 +681,7 @@ export default function TransactionDetail({
         />
         <div className="text-center">
           <div className="text-xl font-medium text-gray-700 mb-8">
-            您已編輯或刪除帳目
+            找不到該筆交易
           </div>
         </div>
 
