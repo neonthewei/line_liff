@@ -652,7 +652,7 @@ export default function TransactionDetail({
 
       if (categoryToRemove) {
         // 设置加载状态
-        showNotification(`正在處理，請稍候...`, "info");
+        showNotification(`正在處理中...`, "info");
 
         // 1. 首先删除所有相关交易
         let deleteResult = { success: true, deletedCount: 0 };

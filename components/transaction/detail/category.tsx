@@ -142,6 +142,12 @@ export function Category({
     setShowDeleteModal(false);
   };
 
+  // 新增處理類型選擇的函數
+  const handleCategorySelection = (category: string) => {
+    onSelectCategory(category);
+    setIsExpanded(false); // 選擇類型後收起選單
+  };
+
   return (
     <div className="flex flex-col">
       {/* 删除确认弹窗 */}
@@ -182,40 +188,51 @@ export function Category({
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2">
               {categories.map((category, index) => (
-                <div
-                  key={index}
-                  className={`relative py-2 rounded-xl text-center ${
-                    category === selectedCategory
-                      ? "bg-[#22c55e] text-white"
-                      : "bg-gray-200 text-gray-600"
-                  }`}
-                >
+                <div key={index} className="relative">
                   {isEditMode ? (
                     // 編輯模式下點擊刪除類別
                     <button
-                      className="w-full h-full flex items-center justify-center active:bg-gray-300 active:scale-[0.98] transition-all duration-150"
+                      className={`w-full py-2 rounded-xl text-center transition-all duration-150 ${
+                        category === selectedCategory
+                          ? "bg-[#22c55e] text-white cursor-not-allowed"
+                          : "bg-gray-200 text-gray-600 active:bg-gray-300"
+                      }`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDeleteClick(category);
+                        // 只有非选中类型才能删除
+                        if (category !== selectedCategory) {
+                          handleDeleteClick(category);
+                        }
                       }}
                       aria-label={`刪除${category}類型`}
+                      disabled={category === selectedCategory}
+                      title={category} // 添加tooltip以顯示完整類型名稱
                     >
-                      <span>{category}</span>
+                      <span className="block break-words px-1 text-sm">
+                        {category}
+                      </span>
                       {/* 不在當前選中的類別上顯示刪除圖標 */}
                       {category !== selectedCategory && (
                         <X
                           size={18}
-                          className="absolute right-2 hover:text-red-500 transition-colors duration-200"
+                          className="absolute top-1/2 -translate-y-1/2 right-2 hover:text-red-500 transition-colors duration-200"
                         />
                       )}
                     </button>
                   ) : (
                     // 非編輯模式下點擊選擇類別
                     <button
-                      className="w-full h-full active:bg-opacity-80 active:scale-[0.98] transition-all duration-150"
-                      onClick={() => onSelectCategory(category)}
+                      className={`w-full py-2 rounded-xl text-center transition-all duration-150 ${
+                        category === selectedCategory
+                          ? "bg-[#22c55e] text-white"
+                          : "bg-gray-200 text-gray-600 active:bg-gray-300"
+                      }`}
+                      onClick={() => handleCategorySelection(category)}
+                      title={category} // 添加tooltip以顯示完整類型名稱
                     >
-                      {category}
+                      <span className="block break-words px-1 text-sm">
+                        {category}
+                      </span>
                     </button>
                   )}
                 </div>

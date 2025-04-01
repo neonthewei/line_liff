@@ -261,7 +261,7 @@ export default function TransactionDetail({
     setIsEditingCategory(true);
 
     // 顯示提示通知
-    showToastNotification("請選擇一個類型", "success", 2000);
+    showNotification("請選擇一個類型", "success", 2000);
   };
 
   // 導航回列表頁的輔助函數
@@ -309,13 +309,13 @@ export default function TransactionDetail({
 
       if (success) {
         // 顯示成功通知
-        showToastNotification("刪除成功", "success", 800, navigateBackToList);
+        showNotification("刪除成功", "success", 800, navigateBackToList);
       } else {
-        showToastNotification("刪除失敗，請稍後再試", "error");
+        showNotification("刪除失敗，請稍後再試", "error");
       }
     } catch (error) {
       console.error("刪除交易失敗", error);
-      showToastNotification("刪除失敗，請稍後再試", "error");
+      showNotification("刪除失敗，請稍後再試", "error");
     }
   };
 
@@ -336,7 +336,7 @@ export default function TransactionDetail({
 
     // 驗證類別是否已選擇
     if (!transaction.category) {
-      showToastNotification("請選擇一個類型", "error", 2000);
+      showNotification("請選擇一個類型", "error", 2000);
       setIsEditingCategory(true);
       return;
     }
@@ -354,14 +354,14 @@ export default function TransactionDetail({
         const deleteSuccess = await deleteTransactionApi(transaction.id);
 
         if (!deleteSuccess) {
-          showToastNotification("儲存失敗，請稍後再試", "error");
+          showNotification("儲存失敗，請稍後再試", "error");
           return;
         }
 
         // 獲取用戶ID
         const userId = await getUserIdFromLiff();
         if (!userId) {
-          showToastNotification("無法獲取用戶ID，請重新登入", "error");
+          showNotification("無法獲取用戶ID，請重新登入", "error");
           return;
         }
 
@@ -395,14 +395,14 @@ export default function TransactionDetail({
         if (!response.ok) {
           const errorText = await response.text();
           console.error("Create error response body:", errorText);
-          showToastNotification("儲存失敗，請稍後再試", "error");
+          showNotification("儲存失敗，請稍後再試", "error");
           return;
         }
 
         // 解析響應數據
         const data = await response.json();
         if (!data || data.length === 0) {
-          showToastNotification("儲存失敗，請稍後再試", "error");
+          showNotification("儲存失敗，請稍後再試", "error");
           return;
         }
 
@@ -417,7 +417,7 @@ export default function TransactionDetail({
         }
 
         // 顯示成功通知
-        showToastNotification("儲存成功", "success", 800, navigateBackToList);
+        showNotification("儲存成功", "success", 800, navigateBackToList);
       } else {
         // 如果類型沒有變化，使用正常的更新流程
         const success = await updateTransactionApi(transaction);
@@ -436,14 +436,14 @@ export default function TransactionDetail({
           }
 
           // 顯示成功通知
-          showToastNotification("儲存成功", "success", 800, navigateBackToList);
+          showNotification("儲存成功", "success", 800, navigateBackToList);
         } else {
-          showToastNotification("儲存失敗，請稍後再試", "error");
+          showNotification("儲存失敗，請稍後再試", "error");
         }
       }
     } catch (error) {
       console.error("儲存交易失敗", error);
-      showToastNotification("儲存失敗，請稍後再試", "error");
+      showNotification("儲存失敗，請稍後再試", "error");
     }
   };
 
@@ -476,7 +476,7 @@ export default function TransactionDetail({
 
     // 檢查類別是否已存在
     if (categories.includes(categoryName.trim())) {
-      showToastNotification("此類別已存在", "error");
+      showNotification("此類別已存在", "error");
       return;
     }
 
@@ -494,9 +494,9 @@ export default function TransactionDetail({
           handleSelectCategory(categoryName.trim());
         }
 
-        showToastNotification("新增類別成功", "success");
+        showNotification("新增類別成功", "success");
       } else {
-        showToastNotification("新增類別失敗，請稍後再試", "error");
+        showNotification("新增類別失敗，請稍後再試", "error");
       }
     }
 
@@ -512,7 +512,7 @@ export default function TransactionDetail({
       // 獲取用戶ID
       const userId = await getUserIdFromLiff();
       if (!userId) {
-        showToastNotification("無法獲取用戶ID，請重新登入", "error");
+        showNotification("無法獲取用戶ID，請重新登入", "error");
         return false;
       }
 
@@ -568,7 +568,7 @@ export default function TransactionDetail({
   const handleDeleteCategory = async (categoryToDelete: string) => {
     // 不允許刪除當前選中的類別
     if (transaction && categoryToDelete === transaction.category) {
-      showToastNotification("無法刪除當前使用中的類別", "error");
+      showNotification("無法刪除當前使用中的類別", "error");
       return;
     }
 
@@ -576,7 +576,7 @@ export default function TransactionDetail({
       // 獲取用戶ID
       const userId = await getUserIdFromLiff();
       if (!userId) {
-        showToastNotification("無法獲取用戶ID，請重新登入", "error");
+        showNotification("無法獲取用戶ID，請重新登入", "error");
         return;
       }
 
@@ -613,7 +613,7 @@ export default function TransactionDetail({
 
       if (categoryToRemove) {
         // 设置加载状态
-        showToastNotification(`正在處理，請稍候...`, "info");
+        showNotification(`正在處理中...`, "info");
 
         // 1. 首先删除所有相关交易
         let deleteResult = { success: true, deletedCount: 0 };
@@ -753,34 +753,31 @@ export default function TransactionDetail({
                   ", "
                 )}`;
               }
-              showToastNotification(deletedDetailsMsg, "success");
+              showNotification(deletedDetailsMsg, "success");
             } else if (deleteResult.deletedCount > 0) {
-              showToastNotification(
+              showNotification(
                 `類型已刪除，但部分交易（${deleteResult.deletedCount}/${categoryTransactions.length}）刪除失敗`,
                 "warning"
               );
             } else {
-              showToastNotification(
-                "類型已刪除，但交易記錄刪除失敗",
-                "warning"
-              );
+              showNotification("類型已刪除，但交易記錄刪除失敗", "warning");
             }
           } else {
-            showToastNotification("類型已刪除", "success");
+            showNotification("類型已刪除", "success");
           }
         } else {
-          showToastNotification("刪除類型失敗，請稍後再試", "error");
+          showNotification("刪除類型失敗，請稍後再試", "error");
         }
       } else {
         // 如果找不到類別 (也許是本地測試數據)，只需更新本地狀態
         if (transaction) {
           updateCategoryNamesByType(dbCategories, transaction.type);
         }
-        showToastNotification("類型已刪除", "success");
+        showNotification("類型已刪除", "success");
       }
     } catch (error) {
       console.error("Error deleting category:", error);
-      showToastNotification("刪除類型失敗，請稍後再試", "error");
+      showNotification("刪除類型失敗，請稍後再試", "error");
     }
   };
 
@@ -823,6 +820,21 @@ export default function TransactionDetail({
     if (!transaction) return;
     const updatedTransaction = { ...transaction, note };
     setTransaction(updatedTransaction);
+  };
+
+  // 创建增强版的通知函数，将"info"和"warning"类型映射到支持的类型
+  const showNotification = (
+    message: string,
+    type: "success" | "error" | "warning" | "info" = "success",
+    duration = 3000,
+    callback?: () => void
+  ) => {
+    // 将类型映射到支持的类型
+    const mappedType: "success" | "error" =
+      type === "warning" || type === "info" ? "error" : type;
+
+    // 调用原始函数
+    showToastNotification(message, mappedType, duration, callback);
   };
 
   // 渲染加載狀態

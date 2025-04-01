@@ -117,9 +117,9 @@ export function DatePicker({ date, onChange }: DatePickerProps) {
 
     // 填充日期
     for (let i = 1; i <= daysInMonth; i++) {
-      const date = new Date(year, month, i);
-      const dateString = formatDateToChineseString(date);
-      const isSelected = date === dateString;
+      const currentDate = new Date(year, month, i);
+      const dateString = formatDateToChineseString(currentDate);
+      const isSelected = dateString === date;
 
       days.push(
         <button
@@ -127,7 +127,7 @@ export function DatePicker({ date, onChange }: DatePickerProps) {
           className={`h-8 w-8 rounded-lg flex items-center justify-center ${
             isSelected ? "bg-green-500 text-white" : ""
           }`}
-          onClick={() => handleDateSelect(date)}
+          onClick={() => handleDateSelect(currentDate)}
         >
           {i}
         </button>
