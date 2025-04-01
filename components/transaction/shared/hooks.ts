@@ -165,15 +165,38 @@ export function useCategories(
     cats: Category[],
     type: "income" | "expense"
   ) => {
-    const filteredNames = cats
-      .filter((cat) => cat.type === type)
-      .map((cat) => cat.name);
+    // 先過濾出符合交易類型的類別
+    const filteredCategories = cats.filter((cat) => cat.type === type);
+
+    // 分離系統預設類別和用戶自訂類別
+    const defaultCats = filteredCategories.filter(
+      (cat) => cat.user_id === null
+    );
+    const userCats = filteredCategories.filter((cat) => cat.user_id === userId);
+
+    // 對用戶自訂類別按照創建時間排序（從舊到新，最新的在最後）
+    userCats.sort((a, b) => {
+      // 如果 created_at 不存在，將其視為最早的類別
+      if (!a.created_at) return -1;
+      if (!b.created_at) return 1;
+
+      // 從舊到新排序（最新的在最後）
+      return (
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+    });
+
+    // 合併類別名稱列表：先顯示系統預設類別，再顯示按時間排序的用戶自訂類別
+    const categoryNames = [
+      ...defaultCats.map((cat) => cat.name),
+      ...userCats.map((cat) => cat.name),
+    ];
 
     // 如果沒有找到任何類別，使用預設類別
-    if (filteredNames.length === 0) {
+    if (categoryNames.length === 0) {
       setCategories(defaultCategories);
     } else {
-      setCategories(filteredNames);
+      setCategories(categoryNames);
     }
   };
 
