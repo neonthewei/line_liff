@@ -2,6 +2,8 @@
 
 A LINE LIFF application for managing personal finances.
 
+_Last updated: April 1, 2024_
+
 ## Local Development
 
 To test the application locally without LIFF redirection:
