@@ -181,74 +181,81 @@ export function Category({
       {/* 類別選擇器 */}
       <div
         className={`overflow-hidden transition-all duration-300 ease-in-out ${
-          isExpanded ? "max-h-96 opacity-100 mt-4" : "max-h-0 opacity-0"
+          isExpanded ? "opacity-100 mt-4" : "max-h-0 opacity-0"
         }`}
       >
         {!isAddingCategory ? (
           <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-2">
-              {categories.map((category, index) => (
-                <div key={index} className="relative h-full">
-                  {isEditMode ? (
-                    // 編輯模式下點擊刪除類別
-                    <button
-                      className={`w-full h-full py-2 rounded-xl text-center transition-all duration-150 ${
-                        category === selectedCategory
-                          ? "bg-[#22c55e] text-white cursor-not-allowed"
-                          : "bg-gray-200 text-gray-600 active:bg-gray-300"
-                      }`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // 只有非选中类型才能删除
-                        if (category !== selectedCategory) {
-                          handleDeleteClick(category);
-                        }
-                      }}
-                      aria-label={`刪除${category}類型`}
-                      disabled={category === selectedCategory}
-                      title={category} // 添加tooltip以顯示完整類型名稱
-                    >
-                      <span className="block break-words px-1">{category}</span>
-                      {/* 不在當前選中的類別上顯示刪除圖標 */}
-                      {category !== selectedCategory && (
-                        <X
-                          size={18}
-                          className="absolute top-1/2 -translate-y-1/2 right-2 hover:text-red-500 transition-colors duration-200"
-                        />
-                      )}
-                    </button>
-                  ) : (
-                    // 非編輯模式下點擊選擇類別
-                    <button
-                      className={`w-full h-full py-2 rounded-xl text-center transition-all duration-150 ${
-                        category === selectedCategory
-                          ? "bg-[#22c55e] text-white"
-                          : "bg-gray-200 text-gray-600 active:bg-gray-300"
-                      }`}
-                      onClick={() => handleCategorySelection(category)}
-                      title={category} // 添加tooltip以顯示完整類型名稱
-                    >
-                      <span className="block break-words px-1">{category}</span>
-                    </button>
-                  )}
-                </div>
-              ))}
+            {/* Remove the max height and scrolling limitations */}
+            <div className="pb-2">
+              <div className="grid grid-cols-3 gap-2">
+                {categories.map((category, index) => (
+                  <div key={index} className="relative h-full">
+                    {isEditMode ? (
+                      // 編輯模式下點擊刪除類別
+                      <button
+                        className={`w-full h-full py-2 rounded-xl text-center transition-all duration-150 ${
+                          category === selectedCategory
+                            ? "bg-[#22c55e] text-white cursor-not-allowed"
+                            : "bg-gray-200 text-gray-600 active:bg-gray-300"
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // 只有非选中类型才能删除
+                          if (category !== selectedCategory) {
+                            handleDeleteClick(category);
+                          }
+                        }}
+                        aria-label={`刪除${category}類型`}
+                        disabled={category === selectedCategory}
+                        title={category} // 添加tooltip以顯示完整類型名稱
+                      >
+                        <span className="block break-words px-1">
+                          {category}
+                        </span>
+                        {/* 不在當前選中的類別上顯示刪除圖標 */}
+                        {category !== selectedCategory && (
+                          <X
+                            size={18}
+                            className="absolute top-1/2 -translate-y-1/2 right-2 hover:text-red-500 transition-colors duration-200"
+                          />
+                        )}
+                      </button>
+                    ) : (
+                      // 非編輯模式下點擊選擇類別
+                      <button
+                        className={`w-full h-full py-2 rounded-xl text-center transition-all duration-150 ${
+                          category === selectedCategory
+                            ? "bg-[#22c55e] text-white"
+                            : "bg-gray-200 text-gray-600 active:bg-gray-300"
+                        }`}
+                        onClick={() => handleCategorySelection(category)}
+                        title={category} // 添加tooltip以顯示完整類型名稱
+                      >
+                        <span className="block break-words px-1">
+                          {category}
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                ))}
 
-              {/* 新增類別按鈕，僅在編輯模式顯示 */}
-              {isEditMode && (
-                <div className="h-full">
-                  <button
-                    className="w-full h-full py-2 rounded-xl text-center bg-green-100 text-green-600 flex items-center justify-center transition-all duration-300 ease-in-out active:bg-green-200"
-                    onClick={handleAddClick}
-                  >
-                    <Plus size={16} className="mr-1" />
-                    <span>新增</span>
-                  </button>
-                </div>
-              )}
+                {/* 新增類別按鈕，僅在編輯模式顯示 */}
+                {isEditMode && (
+                  <div className="h-full">
+                    <button
+                      className="w-full h-full py-2 rounded-xl text-center bg-green-100 text-green-600 flex items-center justify-center transition-all duration-300 ease-in-out active:bg-green-200"
+                      onClick={handleAddClick}
+                    >
+                      <Plus size={16} className="mr-1" />
+                      <span>新增</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* 編輯按鈕 - 移至底部並佔滿整行 */}
+            {/* 編輯按鈕 - 保持在底部固定可見 */}
             <button
               className={`w-full py-2 rounded-xl flex items-center justify-center transition-all duration-300 ease-in-out ${
                 isEditMode
