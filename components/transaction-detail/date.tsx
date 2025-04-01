@@ -10,7 +10,7 @@ import {
   getFirstDayOfMonth,
   formatDateToChineseString,
   getMonthName,
-} from "../shared/utils";
+} from "./utils";
 
 interface DatePickerProps {
   date: string;

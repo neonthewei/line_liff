@@ -15,7 +15,7 @@ import TabSelector from "@/components/tab-selector";
 import TransactionList, {
   TransactionSkeleton,
   HeaderSkeleton,
-} from "@/components/transaction-list";
+} from "@/components/transaction-list/index";
 import DebugConsole from "@/components/debug-console";
 import {
   initConsoleCapture,

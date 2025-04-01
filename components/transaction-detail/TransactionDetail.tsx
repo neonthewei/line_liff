@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   initializeLiff,
@@ -9,39 +9,33 @@ import {
   navigateInLiff,
 } from "@/utils/liff";
 import liff from "@line/liff";
-import { Transaction } from "./transaction/shared/types";
-import {
-  useTransaction,
-  useCategories,
-  useToast,
-  useDebugInfo,
-} from "./transaction/shared/hooks";
-import { BYPASS_LIFF } from "./transaction/shared/constants";
-import { getUserIdFromLiff } from "./transaction/shared/utils";
+import { Transaction } from "./types";
+import { useTransaction, useCategories, useToast, useDebugInfo } from "./hooks";
+import { BYPASS_LIFF } from "./constants";
+import { getUserIdFromLiff } from "./utils";
 import {
   updateTransactionApi,
   deleteTransactionApi,
   clearTransactionCache,
   parseDateToISOString,
   formatTimestamp,
+  createTransactionApi,
+  fetchTransactionById,
   fetchTransactionsByCategory,
   batchDeleteTransactions,
-  fetchTransactionById,
 } from "@/utils/api";
 import { SUPABASE_URL, SUPABASE_KEY } from "@/utils/api";
 
-// Import modular components from transaction/detail
-import { Type } from "./transaction/detail/type";
-import { Category } from "./transaction/detail/category";
-import { Amount } from "./transaction/detail/amount";
-import { DatePicker } from "./transaction/detail/date";
-import { Note } from "./transaction/detail/note";
-import { ActionButtons, DeleteModal } from "./transaction/detail/buttons";
-import { Toast } from "./transaction/detail/toast";
-import { Skeleton } from "./transaction/detail/skeleton";
-import { Debug } from "./transaction/detail/debug";
+import { Type } from "./type";
+import { Category } from "./category";
+import { Amount } from "./amount";
+import { DatePicker } from "./date";
+import { Note } from "./note";
+import { ActionButtons, DeleteModal } from "./buttons";
+import { Toast } from "./toast";
+import { Skeleton } from "./skeleton";
+import { Debug } from "./debug";
 
-// Define the component props interface
 interface TransactionDetailProps {
   transaction?: Transaction; // Optional direct transaction object
   onError?: () => void;
@@ -65,17 +59,23 @@ export default function TransactionDetail({
   const [transactionId, setTransactionId] = useState<string | null>(
     initialTransaction?.id || null
   );
-  const [isMounted, setIsMounted] = useState(false);
   const [isButtonsDisabled, setIsButtonsDisabled] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [isEditingCategory, setIsEditingCategory] = useState(false);
-  const [isCategoryEditMode, setIsCategoryEditMode] = useState(false);
-  const [isAddingCategory, setIsAddingCategory] = useState(false);
-  const [newCategory, setNewCategory] = useState("");
+
+  // 将相关的类别编辑状态合并为一个对象，减少状态更新次数
+  const [categoryEditState, setCategoryEditState] = useState({
+    isEditingCategory: false,
+    isCategoryEditMode: false,
+    isAddingCategory: false,
+    newCategory: "",
+  });
+
   const [isInitializing, setIsInitializing] = useState(true);
-  const [selectedCategoryForDelete, setSelectedCategoryForDelete] =
-    useState("");
-  const [transactionCount, setTransactionCount] = useState(0);
+
+  // 用 useRef 替代 isMounted 状态，避免多余的重渲染
+  const isMountedRef = useRef(false);
+  // 添加一个初始化跟踪器，避免重复初始化
+  const initializationStartedRef = useRef(false);
 
   // 路由
   const router = useRouter();
@@ -87,236 +87,31 @@ export default function TransactionDetail({
   const { showToast, toastMessage, toastType, showToastNotification } =
     useToast();
 
-  // 基于原始showToastNotification创建支持更多类型的通知函数
-  const showNotification = (
-    message: string,
-    type: "success" | "error" | "warning" | "info" = "success",
-    duration = 3000,
-    callback?: () => void
-  ) => {
-    // 将类型映射到支持的类型
-    const mappedType: "success" | "error" =
-      type === "warning" || type === "info" ? "error" : type;
+  // 创建增强版的通知函数，将"info"和"warning"类型映射到支持的类型
+  const showNotification = useMemo(() => {
+    return (
+      message: string,
+      type: "success" | "error" | "warning" | "info" = "success",
+      duration = 3000,
+      callback?: () => void
+    ) => {
+      // 将类型映射到支持的类型
+      const mappedType: "success" | "error" =
+        type === "warning" || type === "info" ? "error" : type;
 
-    // 调用原始函数
-    showToastNotification(message, mappedType, duration, callback);
-  };
-
-  // 當獲取到交易 ID 後使用 useTransaction hook
-  const {
-    transaction,
-    setTransaction,
-    originalTransaction,
-    isLoading,
-    hasChanges,
-  } = useTransaction(transactionId, userId);
-
-  // 當獲取到交易資料後使用 useCategories hook
-  const {
-    categories,
-    dbCategories,
-    setDbCategories,
-    fetchCategoriesFromDb,
-    updateCategoryNamesByType,
-  } = useCategories(userId, transaction?.type || "expense");
-
-  // 標記組件為已掛載
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  // 如果直接傳入了 transaction，則直接使用它
-  useEffect(() => {
-    if (initialTransaction && !transaction) {
-      // 手動設置 transaction 數據
-      if (setTransaction) {
-        setTransaction(initialTransaction);
-      }
-
-      // 同步設置 user_id 和 transaction_id
-      setUserId(initialTransaction.user_id);
-      setTransactionId(initialTransaction.id);
-
-      // 跳過初始化過程
-      setIsInitializing(false);
-    }
-  }, [initialTransaction, transaction, setTransaction]);
-
-  // 初始化 LIFF 和獲取數據 - 只在沒有直接傳入 transaction 時執行
-  useEffect(() => {
-    // 如果已經通過 props 獲得 transaction，則跳過 LIFF 初始化
-    if (initialTransaction || !isMounted) return;
-
-    // Only set initializing to true if it's not already in a loading state
-    let isStartingInitialization = true;
-
-    async function initialize() {
-      try {
-        console.log("Initializing transaction detail component");
-        console.log("Current URL:", window.location.href);
-
-        // 初始化 LIFF
-        const liffInitialized = await initializeLiff();
-        console.log("LIFF initialization result:", liffInitialized);
-        setIsLiffInitialized(liffInitialized);
-
-        // 檢查 LIFF 是否已登入，如果未登入或 token 已過期，則重新登入
-        if (liffInitialized && !BYPASS_LIFF && typeof liff !== "undefined") {
-          try {
-            // 嘗試獲取 access token 來檢查是否有效
-            const token = liff.getAccessToken();
-            if (!token) {
-              console.log("No access token found, attempting to login");
-              liff.login();
-              return;
-            }
-            console.log("Access token exists, continuing");
-          } catch (tokenError) {
-            console.error(
-              "Error getting access token, may be expired:",
-              tokenError
-            );
-            console.log("Attempting to re-login");
-            try {
-              liff.login();
-              return;
-            } catch (loginError) {
-              console.error("Failed to re-login:", loginError);
-            }
-          }
-        }
-
-        // 獲取用戶ID
-        const userId = await getUserIdFromLiff();
-        if (!userId && !BYPASS_LIFF) {
-          console.error("No user ID available");
-          setIsInitializing(false);
-          if (onError) onError();
-          return;
-        }
-
-        setUserId(userId);
-
-        // 獲取 URL 參數
-        const params = getLiffUrlParams();
-        setDebugInfo({ url: window.location.href, params });
-
-        // 獲取交易 ID
-        let id = params.id;
-
-        // 如果沒有從 URL 參數獲取到 ID，嘗試從 URL 路徑獲取
-        if (!id) {
-          console.log("No ID in URL parameters, trying to extract from path");
-          try {
-            const pathParts = window.location.pathname.split("/");
-            if (
-              pathParts.length > 2 &&
-              pathParts[1] === "transaction" &&
-              pathParts[2]
-            ) {
-              id = pathParts[2];
-              console.log("Extracted ID from URL path:", id);
-            }
-          } catch (pathError) {
-            console.error("Failed to extract ID from path:", pathError);
-          }
-        }
-
-        // 如果仍然沒有 ID，嘗試從 localStorage 獲取
-        if (!id) {
-          console.log("Still no ID, trying localStorage");
-          try {
-            const storedId = localStorage.getItem("lastTransactionId");
-            if (storedId) {
-              id = storedId;
-              console.log("Retrieved ID from localStorage:", id);
-            }
-          } catch (storageError) {
-            console.error("Failed to access localStorage:", storageError);
-          }
-        }
-
-        if (!id) {
-          console.error("No transaction ID provided");
-          setIsInitializing(false);
-          if (onError) onError();
-          return;
-        }
-
-        // 設置交易 ID，這會觸發 useTransaction hook
-        setTransactionId(id);
-      } catch (error) {
-        console.error("Error initializing:", error);
-        setIsInitializing(false);
-        if (onError) onError();
-      }
-    }
-
-    if (isStartingInitialization) {
-      setIsInitializing(true);
-      isStartingInitialization = false;
-    }
-
-    initialize();
-  }, [isMounted, onError, initialTransaction, setTransactionId, setDebugInfo]);
-
-  // 當 transaction 加載完成時，結束初始化加載狀態
-  useEffect(() => {
-    // 只有當 transactionId 已設置且不在加載中時，才結束初始化
-    if (transactionId && !isLoading) {
-      setIsInitializing(false);
-    }
-  }, [transactionId, isLoading]);
-
-  // 防止意外點擊的延遲
-  useEffect(() => {
-    if (isMounted) {
-      const timer = setTimeout(() => {
-        setIsButtonsDisabled(false);
-      }, 300); // 300ms 延遲
-
-      return () => clearTimeout(timer);
-    }
-  }, [isMounted]);
-
-  // 處理交易類型變更
-  const handleTypeChange = async (type: "expense" | "income") => {
-    if (!transaction) return;
-
-    // 如果類型沒有變化，不做任何操作
-    if (transaction.type === type) return;
-
-    // 更新本地交易對象的類型和金額
-    const updatedTransaction = {
-      ...transaction,
-      type,
-      amount:
-        type === "expense"
-          ? -Math.abs(transaction.amount)
-          : Math.abs(transaction.amount),
-      // 重置類別，因為不同類型有不同的類別選項
-      category: "",
+      // 调用原始函数
+      showToastNotification(message, mappedType, duration, callback);
     };
-
-    // 更新本地狀態
-    setTransaction(updatedTransaction);
-
-    // 自動展開類型選擇區域
-    setIsEditingCategory(true);
-
-    // 顯示提示通知
-    showNotification("請選擇一個類型", "success", 2000);
-  };
+  }, [showToastNotification]);
 
   // 導航回列表頁的輔助函數
-  const navigateBackToList = () => {
+  const navigateBackToList = useCallback(() => {
     // 如果提供了 onBack 回調，優先使用它
     if (onBack) {
       onBack();
       return;
     }
 
-    // 否則使用默認的導航邏輯
     // 檢查是否在 LINE 環境中
     if (typeof window !== "undefined") {
       // 檢查是否是從 LINE LIFF 打開的
@@ -340,15 +135,263 @@ export default function TransactionDetail({
       // 在 SSR 環境中，使用 router 導航
       router.push("/");
     }
-  };
+  }, [router, onBack]);
 
-  // 處理刪除
-  const handleDelete = () => {
-    // 顯示確認視窗
+  // 當獲取到交易 ID 後使用 useTransaction hook
+  const {
+    transaction,
+    setTransaction,
+    originalTransaction,
+    isLoading,
+    hasChanges,
+  } = useTransaction(transactionId, userId);
+
+  // 當獲取到交易資料後使用 useCategories hook
+  const {
+    categories,
+    dbCategories,
+    setDbCategories,
+    fetchCategoriesFromDb,
+    updateCategoryNamesByType,
+  } = useCategories(userId, transaction?.type || "expense");
+
+  // 標記組件為已掛載
+  useEffect(() => {
+    isMountedRef.current = true;
+  }, []);
+
+  // 如果直接傳入了 transaction，則直接使用它
+  useEffect(() => {
+    if (initialTransaction && !transaction) {
+      // 手動設置 transaction 數據
+      if (setTransaction) {
+        setTransaction(initialTransaction);
+      }
+
+      // 同步設置 user_id 和 transaction_id
+      setUserId(initialTransaction.user_id);
+      setTransactionId(initialTransaction.id);
+
+      // 跳過初始化過程
+      setIsInitializing(false);
+    }
+  }, [initialTransaction, transaction, setTransaction]);
+
+  // 初始化 LIFF 和獲取數據 - 使用 useCallback 减少函数重新创建
+  const initialize = useCallback(async () => {
+    // 如果已經通過 props 獲得 transaction，則跳過 LIFF 初始化
+    if (initialTransaction) return;
+
+    if (initializationStartedRef.current) return;
+    initializationStartedRef.current = true;
+
+    try {
+      console.log("Initializing transaction detail component");
+      console.log("Current URL:", window.location.href);
+
+      // 初始化 LIFF
+      const liffInitialized = await initializeLiff();
+      console.log("LIFF initialization result:", liffInitialized);
+      setIsLiffInitialized(liffInitialized);
+
+      // 檢查 LIFF 是否已登入，如果未登入或 token 已過期，則重新登入
+      if (liffInitialized && !BYPASS_LIFF && typeof liff !== "undefined") {
+        try {
+          // 嘗試獲取 access token 來檢查是否有效
+          const token = liff.getAccessToken();
+          if (!token) {
+            console.log("No access token found, attempting to login");
+            // Don't turn off loading state when redirecting to login
+            // This prevents skeleton from disappearing and reappearing
+            liff.login();
+            return;
+          }
+          console.log("Access token exists, continuing");
+        } catch (tokenError) {
+          console.error(
+            "Error getting access token, may be expired:",
+            tokenError
+          );
+          console.log("Attempting to re-login");
+          try {
+            // Don't turn off loading state when redirecting to login
+            liff.login();
+            return;
+          } catch (loginError) {
+            console.error("Failed to re-login:", loginError);
+          }
+        }
+      }
+
+      // 獲取用戶ID
+      const userId = await getUserIdFromLiff();
+      if (!userId && !BYPASS_LIFF) {
+        console.error("No user ID available");
+        setIsInitializing(false);
+        if (onError) onError();
+        return;
+      }
+
+      setUserId(userId);
+
+      // 獲取 URL 參數
+      const params = getLiffUrlParams();
+      setDebugInfo({ url: window.location.href, params });
+
+      // 獲取交易 ID
+      let id = params.id;
+
+      // 如果沒有從 URL 參數獲取到 ID，嘗試從 URL 路徑獲取
+      if (!id) {
+        console.log("No ID in URL parameters, trying to extract from path");
+        try {
+          const pathParts = window.location.pathname.split("/");
+          if (
+            pathParts.length > 2 &&
+            pathParts[1] === "transaction" &&
+            pathParts[2]
+          ) {
+            id = pathParts[2];
+            console.log("Extracted ID from URL path:", id);
+          }
+        } catch (pathError) {
+          console.error("Failed to extract ID from path:", pathError);
+        }
+      }
+
+      // 如果仍然沒有 ID，嘗試從 localStorage 獲取
+      if (!id) {
+        console.log("Still no ID, trying localStorage");
+        try {
+          const storedId = localStorage.getItem("lastTransactionId");
+          if (storedId) {
+            id = storedId;
+            console.log("Retrieved ID from localStorage:", id);
+          }
+        } catch (storageError) {
+          console.error("Failed to access localStorage:", storageError);
+        }
+      }
+
+      if (!id) {
+        console.error("No transaction ID provided");
+        setIsInitializing(false);
+        if (onError) onError();
+        return;
+      }
+
+      // 設置交易 ID，這會觸發 useTransaction hook
+      setTransactionId(id);
+
+      // 注意: 我們不在這裡將 isInitializing 設為 false
+      // 讓 useTransaction 完成加載後再關閉加載狀態
+    } catch (error) {
+      console.error("Error initializing:", error);
+      setIsInitializing(false);
+      if (onError) onError();
+    }
+  }, [initialTransaction, onError, setTransactionId, setDebugInfo]);
+
+  // 使用 useEffect 仅在组件挂载时调用初始化
+  useEffect(() => {
+    // 只有在组件挂载后才执行初始化
+    if (isMountedRef.current) {
+      // 如果已經通過 props 獲得 transaction，則跳過 LIFF 初始化
+      if (!initialTransaction) {
+        initialize();
+      }
+    } else {
+      isMountedRef.current = true;
+    }
+  }, [initialize, initialTransaction]);
+
+  // 當 transaction 加載完成時，結束初始化加載狀態
+  useEffect(() => {
+    // 只有當 transactionId 已設置且不在加載中時，才結束初始化
+    if (transactionId && !isLoading) {
+      setIsInitializing(false);
+    }
+  }, [transactionId, isLoading]);
+
+  // 防止意外點擊的延遲
+  useEffect(() => {
+    if (isMountedRef.current) {
+      const timer = setTimeout(() => {
+        setIsButtonsDisabled(false);
+      }, 300); // 300ms 延遲
+
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  // 使用 useCallback 优化更多的处理函数
+  const handleAmountChange = useCallback(
+    (amount: number) => {
+      if (!transaction) return;
+      const updatedTransaction = { ...transaction, amount };
+      setTransaction(updatedTransaction);
+    },
+    [transaction, setTransaction]
+  );
+
+  const handleDateChange = useCallback(
+    (date: string) => {
+      if (!transaction) return;
+      const updatedTransaction = { ...transaction, date };
+      setTransaction(updatedTransaction);
+    },
+    [transaction, setTransaction]
+  );
+
+  const handleNoteChange = useCallback(
+    (note: string) => {
+      if (!transaction) return;
+      const updatedTransaction = { ...transaction, note };
+      setTransaction(updatedTransaction);
+    },
+    [transaction, setTransaction]
+  );
+
+  const handleTypeChange = useCallback(
+    async (type: "expense" | "income") => {
+      if (!transaction) return;
+
+      // 如果類型沒有變化，不做任何操作
+      if (transaction.type === type) return;
+
+      // 更新本地交易對象的類型和金額
+      const updatedTransaction = {
+        ...transaction,
+        type,
+        amount:
+          type === "expense"
+            ? -Math.abs(transaction.amount)
+            : Math.abs(transaction.amount),
+        // 重置類別，因為不同類型有不同的類別選項
+        category: "",
+      };
+
+      // 更新本地狀態
+      setTransaction(updatedTransaction);
+
+      // 自動展開類型選擇區域
+      setCategoryEditState((prev) => ({
+        ...prev,
+        isEditingCategory: true,
+      }));
+
+      // 顯示提示通知
+      showNotification("請選擇一個類型", "success", 2000);
+    },
+    [transaction, setTransaction, showNotification]
+  );
+
+  const handleDelete = useCallback(async () => {
+    if (!transaction) return;
+    // 顯示自定義確認視窗
     setShowDeleteModal(true);
-  };
+  }, [transaction]);
 
-  // 確認刪除交易
   const confirmDelete = async () => {
     if (!transaction) return;
     try {
@@ -378,10 +421,9 @@ export default function TransactionDetail({
     }
   };
 
-  // 取消刪除
-  const cancelDelete = () => {
+  const cancelDelete = useCallback(() => {
     setShowDeleteModal(false);
-  };
+  }, []);
 
   // 處理確認/更新
   const handleConfirm = async () => {
@@ -396,27 +438,34 @@ export default function TransactionDetail({
     // 驗證類別是否已選擇
     if (!transaction.category) {
       showNotification("請選擇一個類型", "error", 2000);
-      setIsEditingCategory(true);
+      setCategoryEditState((prev) => ({
+        ...prev,
+        isEditingCategory: true,
+      }));
       return;
     }
 
     try {
       // 檢查交易類型是否與原始類型不同
-      const originalType = originalTransaction?.type || "expense";
+      const originalType = getLiffUrlParams().type || "expense";
       const hasTypeChanged = transaction.type !== originalType;
 
       if (hasTypeChanged) {
         // 如果類型已更改，需要刪除舊交易並創建新交易
-        console.log("交易類型已變更，刪除舊交易並創建新交易");
+        console.log("Transaction type changed, deleting old and creating new");
 
         // 先刪除原有的交易
-        const deleteSuccess = await deleteTransactionApi(
-          transaction.id,
-          originalType
-        );
+        const deleteSuccess = await deleteTransactionApi(transaction.id);
 
         if (!deleteSuccess) {
           showNotification("儲存失敗，請稍後再試", "error");
+          return;
+        }
+
+        // 獲取用戶ID
+        const userId = await getUserIdFromLiff();
+        if (!userId) {
+          showNotification("無法獲取用戶ID，請重新登入", "error");
           return;
         }
 
@@ -424,22 +473,17 @@ export default function TransactionDetail({
         const url = `${SUPABASE_URL}/transactions`;
 
         // 準備要創建的數據
-        const createData: any = {
-          user_id: transaction.user_id,
+        const createData = {
+          user_id: userId,
           category: transaction.category,
           amount: Math.abs(transaction.amount),
           type: transaction.type, // 明確指定類型
           datetime: parseDateToISOString(transaction.date),
-          memo: transaction.note || "",
-          is_fixed: transaction.isFixed || false,
+          memo: transaction.note,
+          is_fixed: transaction.isFixed,
+          frequency: transaction.fixedFrequency,
+          interval: transaction.fixedInterval,
         };
-
-        if (transaction.isFixed) {
-          createData.frequency = transaction.fixedFrequency;
-          createData.interval = transaction.fixedInterval;
-        }
-
-        console.log("創建新交易:", createData);
 
         // 發送 API 請求創建新交易
         const response = await fetch(url, {
@@ -454,7 +498,7 @@ export default function TransactionDetail({
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error("創建交易失敗:", errorText);
+          console.error("Create error response body:", errorText);
           showNotification("儲存失敗，請稍後再試", "error");
           return;
         }
@@ -466,29 +510,17 @@ export default function TransactionDetail({
           return;
         }
 
-        // 清除快取
-        const match = transaction.date.match(/(\d+)年(\d+)月(\d+)日/);
-        if (match) {
-          const year = parseInt(match[1]);
-          const month = parseInt(match[2]);
-          clearTransactionCache(transaction.user_id, year, month);
+        // 清除緩存
+        if (userId) {
+          const match = transaction.date.match(/(\d+)年(\d+)月(\d+)日/);
+          if (match) {
+            const year = parseInt(match[1]);
+            const month = parseInt(match[2]);
+            clearTransactionCache(userId, year, month);
+          }
         }
 
-        // 如果提供了 onUpdate 函數，則調用它
-        if (onUpdate) {
-          const updatedTransaction: Transaction = {
-            ...transaction,
-            id: data[0].id,
-          };
-          onUpdate(updatedTransaction);
-          showNotification("儲存成功", "success");
-
-          // 給 UI 一點時間更新，然後再返回
-          setTimeout(navigateBackToList, 800);
-          return;
-        }
-
-        // 否則，使用默認的導航邏輯
+        // 顯示成功通知
         showNotification("儲存成功", "success", 800, navigateBackToList);
       } else {
         // 如果類型沒有變化，使用正常的更新流程
@@ -525,32 +557,49 @@ export default function TransactionDetail({
     }
   };
 
-  // 處理類別相關操作
-  const handleSelectCategory = async (category: string) => {
-    if (!transaction) return;
-    const updatedTransaction = { ...transaction, category };
-    setTransaction(updatedTransaction);
-  };
+  // 處理類別相關操作 - 使用 useCallback 避免重复创建函数
+  const handleSelectCategory = useCallback(
+    async (category: string) => {
+      if (!transaction) return;
+      const updatedTransaction = { ...transaction, category };
+      setTransaction(updatedTransaction);
+    },
+    [transaction, setTransaction]
+  );
 
-  const handleToggleCategoryEditMode = () => {
-    setIsCategoryEditMode(!isCategoryEditMode);
-    if (!isCategoryEditMode) {
-      setIsAddingCategory(false);
-    }
-  };
+  const handleToggleCategoryEditMode = useCallback(() => {
+    setCategoryEditState((prev) => {
+      const newState = {
+        ...prev,
+        isCategoryEditMode: !prev.isCategoryEditMode,
+      };
 
-  const handleAddCategory = () => {
-    setIsAddingCategory(true);
-    setNewCategory("");
-    // 自動展開類別選擇區域（如果尚未展開）
-    setIsEditingCategory(true);
-  };
+      // 如果关闭编辑模式，也关闭添加类别模式
+      if (!newState.isCategoryEditMode) {
+        newState.isAddingCategory = false;
+      }
+
+      return newState;
+    });
+  }, []);
+
+  const handleAddCategory = useCallback(() => {
+    setCategoryEditState((prev) => ({
+      ...prev,
+      isAddingCategory: true,
+      newCategory: "",
+      isEditingCategory: true,
+    }));
+  }, []);
 
   const handleSaveNewCategory = async (categoryName: string) => {
     if (!categoryName || categoryName.trim() === "") return;
 
     // 設置本地state以保持同步
-    setNewCategory(categoryName);
+    setCategoryEditState((prev) => ({
+      ...prev,
+      newCategory: categoryName.trim(),
+    }));
 
     // 檢查類別是否已存在
     if (categories.includes(categoryName.trim())) {
@@ -568,7 +617,7 @@ export default function TransactionDetail({
       if (success) {
         // 更新本地類別列表 - 已在 hook 中處理
         // 如果不在編輯模式，自動選擇新類別
-        if (!isCategoryEditMode) {
+        if (!categoryEditState.isCategoryEditMode) {
           handleSelectCategory(categoryName.trim());
         }
 
@@ -578,32 +627,74 @@ export default function TransactionDetail({
       }
     }
 
-    setIsAddingCategory(false);
+    setCategoryEditState((prev) => ({
+      ...prev,
+      isAddingCategory: false,
+    }));
   };
 
-  // 添加获取类型交易数量的方法
-  const getCategoryTransactionCount = async (
-    category: string
-  ): Promise<number> => {
+  // 新增類別到資料庫
+  const addCategoryToDatabase = async (
+    categoryName: string,
+    type: "income" | "expense"
+  ) => {
     try {
-      if (!transaction) return 0;
-
-      // 使用当前交易的用户ID
-      const userId = transaction.user_id;
+      // 獲取用戶ID
+      const userId = await getUserIdFromLiff();
       if (!userId) {
-        return 0;
+        showNotification("無法獲取用戶ID，請重新登入", "error");
+        return false;
       }
 
-      // 查询该类型的交易记录
-      const transactions = await fetchTransactionsByCategory(userId, category);
-      return transactions.length;
+      // 構建 API URL
+      const url = `${SUPABASE_URL}/categories`;
+
+      // 準備要創建的數據
+      const createData = {
+        user_id: userId,
+        name: categoryName,
+        type: type,
+        is_deleted: false,
+      };
+
+      // 發送 API 請求創建新類別
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_KEY,
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify(createData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Create category error response body:", errorText);
+        return false;
+      }
+
+      // 解析響應數據
+      const data = await response.json();
+      if (!data || data.length === 0) {
+        return false;
+      }
+
+      // 更新本地類別列表
+      const newCategory = data[0];
+      setDbCategories((prev) => [...prev, newCategory]);
+
+      // 重新獲取類別列表
+      await fetchCategoriesFromDb();
+
+      return true;
     } catch (error) {
-      console.error("Error getting category transaction count:", error);
-      return 0;
+      console.error("Error adding category to database:", error);
+      return false;
     }
   };
 
-  // 刪除類別 - 修改自 detail copy
+  // 刪除類別
   const handleDeleteCategory = async (categoryToDelete: string) => {
     // 不允許刪除當前選中的類別
     if (transaction && categoryToDelete === transaction.category) {
@@ -612,10 +703,8 @@ export default function TransactionDetail({
     }
 
     try {
-      if (!transaction) return;
-
       // 獲取用戶ID
-      const userId = transaction.user_id;
+      const userId = await getUserIdFromLiff();
       if (!userId) {
         showNotification("無法獲取用戶ID，請重新登入", "error");
         return;
@@ -633,12 +722,14 @@ export default function TransactionDetail({
       // 打印詳細的交易記錄信息
       if (categoryTransactions.length > 0) {
         console.log("以下交易記錄將被刪除:");
-        categoryTransactions.forEach((tx, index) => {
-          console.log(`[${index + 1}] ID: ${tx.id}`);
-          console.log(`    日期: ${tx.date}`);
-          console.log(`    類型: ${tx.type === "expense" ? "支出" : "收入"}`);
-          console.log(`    金額: ${Math.abs(tx.amount)}`);
-          console.log(`    備註: ${tx.note || "(無)"}`);
+        categoryTransactions.forEach((transaction, index) => {
+          console.log(`[${index + 1}] ID: ${transaction.id}`);
+          console.log(`    日期: ${transaction.date}`);
+          console.log(
+            `    類型: ${transaction.type === "expense" ? "支出" : "收入"}`
+          );
+          console.log(`    金額: ${Math.abs(transaction.amount)}`);
+          console.log(`    備註: ${transaction.note || "(無)"}`);
           console.log(`    ---------------------`);
         });
       } else {
@@ -820,85 +911,95 @@ export default function TransactionDetail({
     }
   };
 
-  // 添加類別到資料庫 - 修改自 detail copy
-  const addCategoryToDatabase = async (
-    categoryName: string,
-    type: "income" | "expense"
-  ) => {
+  // 添加获取类型交易数量的方法
+  const getCategoryTransactionCount = async (
+    category: string
+  ): Promise<number> => {
     try {
-      if (!transaction) {
-        console.error("Transaction is null when adding category");
-        return false;
+      // 获取用户ID
+      const userId = await getUserIdFromLiff();
+      if (!userId) {
+        return 0;
       }
 
-      // 構建 API URL
-      const url = `${SUPABASE_URL}/categories`;
-
-      // 準備要創建的數據
-      const createData = {
-        user_id: transaction.user_id,
-        name: categoryName,
-        type: type,
-        is_deleted: false,
-      };
-
-      // 發送 API 請求創建新類別
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-          Prefer: "return=representation",
-        },
-        body: JSON.stringify(createData),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Create category error response body:", errorText);
-        return false;
-      }
-
-      // 解析響應數據
-      const data = await response.json();
-      if (!data || data.length === 0) {
-        return false;
-      }
-
-      // 更新本地類別列表
-      const newCategory = data[0];
-      setDbCategories((prev) => [...prev, newCategory]);
-
-      // 重新獲取類別列表
-      await fetchCategoriesFromDb();
-
-      return true;
+      // 查询该类型的交易记录
+      const transactions = await fetchTransactionsByCategory(userId, category);
+      return transactions.length;
     } catch (error) {
-      console.error("Error adding category to database:", error);
-      return false;
+      console.error("Error getting category transaction count:", error);
+      return 0;
     }
   };
 
-  // 更新金額
-  const handleAmountChange = (amount: number) => {
-    if (!transaction) return;
-    const updatedTransaction = { ...transaction, amount };
-    setTransaction(updatedTransaction);
-  };
+  // 新增 useMemo 优化渲染性能
+  const categoryProps = useMemo(
+    () => ({
+      categories,
+      selectedCategory: transaction?.category || "",
+      isEditMode: categoryEditState.isCategoryEditMode,
+      onSelectCategory: handleSelectCategory,
+      onToggleEditMode: handleToggleCategoryEditMode,
+      onDeleteCategory: handleDeleteCategory,
+      onAddCategory: handleAddCategory,
+      onSaveNewCategory: handleSaveNewCategory,
+      getCategoryTransactionCount,
+    }),
+    [
+      categories,
+      transaction?.category,
+      categoryEditState.isCategoryEditMode,
+      handleSelectCategory,
+      handleToggleCategoryEditMode,
+      handleDeleteCategory,
+      handleAddCategory,
+      handleSaveNewCategory,
+      getCategoryTransactionCount,
+    ]
+  );
 
-  // 更新日期
-  const handleDateChange = (date: string) => {
-    if (!transaction) return;
-    const updatedTransaction = { ...transaction, date };
-    setTransaction(updatedTransaction);
-  };
+  const amountProps = useMemo(
+    () =>
+      transaction
+        ? {
+            amount: transaction.amount,
+            type: transaction.type,
+            onChange: handleAmountChange,
+          }
+        : null,
+    [transaction?.amount, transaction?.type, handleAmountChange]
+  );
 
-  // 更新備註
-  const handleNoteChange = (note: string) => {
-    if (!transaction) return;
-    const updatedTransaction = { ...transaction, note };
-    setTransaction(updatedTransaction);
-  };
+  const dateProps = useMemo(
+    () =>
+      transaction
+        ? {
+            date: transaction.date,
+            onChange: handleDateChange,
+          }
+        : null,
+    [transaction?.date, handleDateChange]
+  );
+
+  const noteProps = useMemo(
+    () =>
+      transaction
+        ? {
+            note: transaction.note,
+            onChange: handleNoteChange,
+          }
+        : null,
+    [transaction?.note, handleNoteChange]
+  );
+
+  const actionButtonProps = useMemo(
+    () => ({
+      hasChanges,
+      onConfirm: handleConfirm,
+      onDelete: handleDelete,
+      disabled: isButtonsDisabled,
+    }),
+    [hasChanges, handleConfirm, handleDelete, isButtonsDisabled]
+  );
 
   // 渲染加載狀態
   if (isInitializing || isLoading) return <Skeleton />;
@@ -930,11 +1031,7 @@ export default function TransactionDetail({
 
       {/* 刪除確認視窗 */}
       {showDeleteModal && (
-        <DeleteModal
-          onConfirm={confirmDelete}
-          onCancel={cancelDelete}
-          transactionCount={0} // 交易删除不显示计数，仅类型删除显示
-        />
+        <DeleteModal onConfirm={confirmDelete} onCancel={cancelDelete} />
       )}
 
       <div
@@ -946,50 +1043,33 @@ export default function TransactionDetail({
           {/* 合併屬性和類型到同一個卡片 */}
           <div className="bg-white rounded-2xl p-4 shadow-sm space-y-4">
             {/* 屬性 (交易類型) */}
-            <Type type={transaction.type} onChange={handleTypeChange} />
+            {transaction && (
+              <Type type={transaction.type} onChange={handleTypeChange} />
+            )}
 
             {/* 分隔線 */}
             <div className="border-t border-gray-100"></div>
 
             {/* 類型 */}
-            <Category
-              categories={categories}
-              selectedCategory={transaction.category}
-              isEditMode={isCategoryEditMode}
-              onSelectCategory={handleSelectCategory}
-              onToggleEditMode={handleToggleCategoryEditMode}
-              onDeleteCategory={handleDeleteCategory}
-              onAddCategory={handleAddCategory}
-              onSaveNewCategory={handleSaveNewCategory}
-              getCategoryTransactionCount={getCategoryTransactionCount}
-            />
+            {transaction && <Category {...categoryProps} />}
           </div>
 
           {/* 金額、日期 */}
           <div className="bg-white rounded-2xl shadow-sm space-y-4 p-4">
             {/* 金額 */}
-            <Amount
-              amount={transaction.amount}
-              type={transaction.type}
-              onChange={handleAmountChange}
-            />
+            {amountProps && <Amount {...amountProps} />}
 
             <div className="border-t border-gray-100"></div>
 
             {/* 日期 */}
-            <DatePicker date={transaction.date} onChange={handleDateChange} />
+            {dateProps && <DatePicker {...dateProps} />}
           </div>
 
           {/* 備註 */}
-          <Note note={transaction.note} onChange={handleNoteChange} />
+          {noteProps && <Note {...noteProps} />}
 
           {/* 按鈕區域 */}
-          <ActionButtons
-            hasChanges={hasChanges}
-            onConfirm={handleConfirm}
-            onDelete={handleDelete}
-            disabled={isButtonsDisabled}
-          />
+          <ActionButtons {...actionButtonProps} />
 
           {/* 調試信息 - 點擊五次才會顯示 */}
           {debugClickCount >= 5 && (
