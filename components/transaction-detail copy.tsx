@@ -1,219 +1,285 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
-  ChevronRight,
-  Trash2,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  ChevronLeft,
-  Plus,
-  Edit,
-  X,
-  ArrowLeft,
-} from "lucide-react";
-import { Transaction } from "@/types/transaction";
+  initializeLiff,
+  closeLiff,
+  getLiffUrlParams,
+  navigateInLiff,
+} from "@/utils/liff";
+import liff from "@line/liff";
+import { Transaction } from "./transaction/shared/types";
+import {
+  useTransaction,
+  useCategories,
+  useToast,
+  useDebugInfo,
+} from "./transaction/shared/hooks";
+import { BYPASS_LIFF } from "./transaction/shared/constants";
+import { getUserIdFromLiff } from "./transaction/shared/utils";
 import {
   updateTransactionApi,
   deleteTransactionApi,
   clearTransactionCache,
-  formatTimestamp,
-  SUPABASE_URL,
-  SUPABASE_KEY,
   parseDateToISOString,
+  formatTimestamp,
+  fetchTransactionsByCategory,
+  batchDeleteTransactions,
+  fetchTransactionById,
 } from "@/utils/api";
+import { SUPABASE_URL, SUPABASE_KEY } from "@/utils/api";
 
-// 定義類別介面
-interface Category {
-  id: number;
-  user_id: string | null;
-  name: string;
-  type: "income" | "expense";
-  is_deleted: boolean;
-  created_at: string;
-}
+// Import modular components from transaction/detail
+import { Type } from "./transaction/detail/type";
+import { Category } from "./transaction/detail/category";
+import { Amount } from "./transaction/detail/amount";
+import { DatePicker } from "./transaction/detail/date";
+import { Note } from "./transaction/detail/note";
+import { ActionButtons, DeleteModal } from "./transaction/detail/buttons";
+import { Toast } from "./transaction/detail/toast";
+import { Skeleton } from "./transaction/detail/skeleton";
+import { Debug } from "./transaction/detail/debug";
 
-// 預設類別選項 (僅在 API 請求失敗時使用)
-const defaultCategories = [
-  "餐飲",
-  "購物",
-  "交通",
-  "日常",
-  "娛樂",
-  "運動",
-  "旅行",
-  "通訊",
-  "醫療",
-  "其他",
-];
-
-// 在組件的 props 接口中添加 onError
+// Define the component props interface
 interface TransactionDetailProps {
+  transaction?: Transaction; // Optional direct transaction object
   onError?: () => void;
-  transaction: Transaction; // 改為直接接收 transaction
-  onUpdate?: (updatedTransaction: Transaction) => void; // 添加更新回調
-  onDelete?: () => void; // 添加刪除回調
-  onBack?: () => void; // 添加返回回調
+  onUpdate?: (updatedTransaction: Transaction) => void;
+  onDelete?: () => void;
+  onBack?: () => void;
 }
-
-// Define a consistent animation style for all content blocks
-const fadeInAnimation = {
-  opacity: 0,
-  animation: "fadeIn 0.3s ease-out forwards",
-};
 
 export default function TransactionDetail({
-  onError,
   transaction: initialTransaction,
+  onError,
   onUpdate,
   onDelete,
   onBack,
 }: TransactionDetailProps) {
-  // 確保初始交易數據包含所有必要字段
-  const [transaction, setTransaction] = useState<Transaction>({
-    ...initialTransaction,
-    user_id: initialTransaction.user_id || "", // 確保 user_id 存在
-  });
-  const [originalTransaction, setOriginalTransaction] = useState<Transaction>({
-    ...initialTransaction,
-    user_id: initialTransaction.user_id || "", // 確保 user_id 存在
-  });
-  const [isEditingAmount, setIsEditingAmount] = useState(false);
-  const [isEditingNote, setIsEditingNote] = useState(false);
-  const [isEditingDate, setIsEditingDate] = useState(false);
+  // 初始化相關狀態
+  const [isLiffInitialized, setIsLiffInitialized] = useState(false);
+  const [userId, setUserId] = useState<string | null>(
+    initialTransaction?.user_id || null
+  );
+  const [transactionId, setTransactionId] = useState<string | null>(
+    initialTransaction?.id || null
+  );
+  const [isMounted, setIsMounted] = useState(false);
+  const [isButtonsDisabled, setIsButtonsDisabled] = useState(true);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isEditingCategory, setIsEditingCategory] = useState(false);
   const [isCategoryEditMode, setIsCategoryEditMode] = useState(false);
-  const [editAmount, setEditAmount] = useState("");
-  const [editNote, setEditNote] = useState("");
-  const [editDate, setEditDate] = useState("");
-  const [calendarDate, setCalendarDate] = useState(new Date());
-  const [categories, setCategories] = useState<string[]>(defaultCategories);
-  const [dbCategories, setDbCategories] = useState<Category[]>([]);
-  const [newCategory, setNewCategory] = useState("");
   const [isAddingCategory, setIsAddingCategory] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
-  const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState("");
-  const [toastType, setToastType] = useState<"success" | "error">("success");
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  // Add a state to temporarily disable buttons
-  const [isButtonsDisabled, setIsButtonsDisabled] = useState(true);
+  const [newCategory, setNewCategory] = useState("");
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [selectedCategoryForDelete, setSelectedCategoryForDelete] =
+    useState("");
+  const [transactionCount, setTransactionCount] = useState(0);
 
-  // 檢查資料是否有變動
-  const hasChanges = useMemo(() => {
-    return (
-      transaction.type !== originalTransaction.type ||
-      transaction.category !== originalTransaction.category ||
-      transaction.amount !== originalTransaction.amount ||
-      transaction.date !== originalTransaction.date ||
-      transaction.note !== originalTransaction.note
-    );
-  }, [transaction, originalTransaction]);
+  // 路由
+  const router = useRouter();
 
-  // Mark component as mounted on client-side
+  // 使用自定義 hooks
+  const { debugClickCount, debugInfo, setDebugInfo, incrementDebugClickCount } =
+    useDebugInfo();
+
+  const { showToast, toastMessage, toastType, showToastNotification } =
+    useToast();
+
+  // 基于原始showToastNotification创建支持更多类型的通知函数
+  const showNotification = (
+    message: string,
+    type: "success" | "error" | "warning" | "info" = "success",
+    duration = 3000,
+    callback?: () => void
+  ) => {
+    // 将类型映射到支持的类型
+    const mappedType: "success" | "error" =
+      type === "warning" || type === "info" ? "error" : type;
+
+    // 调用原始函数
+    showToastNotification(message, mappedType, duration, callback);
+  };
+
+  // 當獲取到交易 ID 後使用 useTransaction hook
+  const {
+    transaction,
+    setTransaction,
+    originalTransaction,
+    isLoading,
+    hasChanges,
+  } = useTransaction(transactionId, userId);
+
+  // 當獲取到交易資料後使用 useCategories hook
+  const {
+    categories,
+    dbCategories,
+    setDbCategories,
+    fetchCategoriesFromDb,
+    updateCategoryNamesByType,
+  } = useCategories(userId, transaction?.type || "expense");
+
+  // 標記組件為已掛載
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // Add a small delay before enabling buttons to prevent accidental clicks
+  // 如果直接傳入了 transaction，則直接使用它
+  useEffect(() => {
+    if (initialTransaction && !transaction) {
+      // 手動設置 transaction 數據
+      if (setTransaction) {
+        setTransaction(initialTransaction);
+      }
+
+      // 同步設置 user_id 和 transaction_id
+      setUserId(initialTransaction.user_id);
+      setTransactionId(initialTransaction.id);
+
+      // 跳過初始化過程
+      setIsInitializing(false);
+    }
+  }, [initialTransaction, transaction, setTransaction]);
+
+  // 初始化 LIFF 和獲取數據 - 只在沒有直接傳入 transaction 時執行
+  useEffect(() => {
+    // 如果已經通過 props 獲得 transaction，則跳過 LIFF 初始化
+    if (initialTransaction || !isMounted) return;
+
+    // Only set initializing to true if it's not already in a loading state
+    let isStartingInitialization = true;
+
+    async function initialize() {
+      try {
+        console.log("Initializing transaction detail component");
+        console.log("Current URL:", window.location.href);
+
+        // 初始化 LIFF
+        const liffInitialized = await initializeLiff();
+        console.log("LIFF initialization result:", liffInitialized);
+        setIsLiffInitialized(liffInitialized);
+
+        // 檢查 LIFF 是否已登入，如果未登入或 token 已過期，則重新登入
+        if (liffInitialized && !BYPASS_LIFF && typeof liff !== "undefined") {
+          try {
+            // 嘗試獲取 access token 來檢查是否有效
+            const token = liff.getAccessToken();
+            if (!token) {
+              console.log("No access token found, attempting to login");
+              liff.login();
+              return;
+            }
+            console.log("Access token exists, continuing");
+          } catch (tokenError) {
+            console.error(
+              "Error getting access token, may be expired:",
+              tokenError
+            );
+            console.log("Attempting to re-login");
+            try {
+              liff.login();
+              return;
+            } catch (loginError) {
+              console.error("Failed to re-login:", loginError);
+            }
+          }
+        }
+
+        // 獲取用戶ID
+        const userId = await getUserIdFromLiff();
+        if (!userId && !BYPASS_LIFF) {
+          console.error("No user ID available");
+          setIsInitializing(false);
+          if (onError) onError();
+          return;
+        }
+
+        setUserId(userId);
+
+        // 獲取 URL 參數
+        const params = getLiffUrlParams();
+        setDebugInfo({ url: window.location.href, params });
+
+        // 獲取交易 ID
+        let id = params.id;
+
+        // 如果沒有從 URL 參數獲取到 ID，嘗試從 URL 路徑獲取
+        if (!id) {
+          console.log("No ID in URL parameters, trying to extract from path");
+          try {
+            const pathParts = window.location.pathname.split("/");
+            if (
+              pathParts.length > 2 &&
+              pathParts[1] === "transaction" &&
+              pathParts[2]
+            ) {
+              id = pathParts[2];
+              console.log("Extracted ID from URL path:", id);
+            }
+          } catch (pathError) {
+            console.error("Failed to extract ID from path:", pathError);
+          }
+        }
+
+        // 如果仍然沒有 ID，嘗試從 localStorage 獲取
+        if (!id) {
+          console.log("Still no ID, trying localStorage");
+          try {
+            const storedId = localStorage.getItem("lastTransactionId");
+            if (storedId) {
+              id = storedId;
+              console.log("Retrieved ID from localStorage:", id);
+            }
+          } catch (storageError) {
+            console.error("Failed to access localStorage:", storageError);
+          }
+        }
+
+        if (!id) {
+          console.error("No transaction ID provided");
+          setIsInitializing(false);
+          if (onError) onError();
+          return;
+        }
+
+        // 設置交易 ID，這會觸發 useTransaction hook
+        setTransactionId(id);
+      } catch (error) {
+        console.error("Error initializing:", error);
+        setIsInitializing(false);
+        if (onError) onError();
+      }
+    }
+
+    if (isStartingInitialization) {
+      setIsInitializing(true);
+      isStartingInitialization = false;
+    }
+
+    initialize();
+  }, [isMounted, onError, initialTransaction, setTransactionId, setDebugInfo]);
+
+  // 當 transaction 加載完成時，結束初始化加載狀態
+  useEffect(() => {
+    // 只有當 transactionId 已設置且不在加載中時，才結束初始化
+    if (transactionId && !isLoading) {
+      setIsInitializing(false);
+    }
+  }, [transactionId, isLoading]);
+
+  // 防止意外點擊的延遲
   useEffect(() => {
     if (isMounted) {
       const timer = setTimeout(() => {
         setIsButtonsDisabled(false);
-      }, 300); // 300ms delay
+      }, 300); // 300ms 延遲
 
       return () => clearTimeout(timer);
     }
   }, [isMounted]);
 
-  useEffect(() => {
-    if (!isMounted) return;
-
-    // 獲取類別
-    fetchCategories();
-  }, [isMounted]);
-
-  // 從資料庫獲取類別
-  const fetchCategories = async () => {
-    try {
-      // 構建 API URL
-      const url = `${SUPABASE_URL}/categories`;
-
-      // 發送 API 請求
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_KEY,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch categories: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      // 先找出用戶已刪除的類別名稱（包括系統預設類別）
-      const userDeletedCategoryNames = data
-        .filter(
-          (cat: Category) =>
-            cat.user_id === transaction.user_id && cat.is_deleted
-        )
-        .map((cat: Category) => cat.name);
-
-      // 過濾類別
-      const filteredCategories = data.filter(
-        (cat: Category) =>
-          (cat.user_id === transaction.user_id && !cat.is_deleted) ||
-          (cat.user_id === null && !userDeletedCategoryNames.includes(cat.name))
-      );
-
-      setDbCategories(filteredCategories);
-
-      // 更新類別名稱列表
-      updateCategoryNamesByType(filteredCategories, transaction.type);
-    } catch (error) {
-      console.error("Error fetching categories:", error);
-      setCategories(defaultCategories);
-    }
-  };
-
-  // 根據交易類型更新類別名稱列表
-  const updateCategoryNamesByType = (
-    cats: Category[],
-    type: "income" | "expense"
-  ) => {
-    const filteredNames = cats
-      .filter((cat) => cat.type === type)
-      .map((cat) => cat.name);
-
-    // 如果沒有找到任何類別，使用預設類別
-    if (filteredNames.length === 0) {
-      setCategories(defaultCategories);
-    } else {
-      setCategories(filteredNames);
-    }
-  };
-
-  // 當交易類型變更時，更新類別列表
-  useEffect(() => {
-    if (transaction && dbCategories.length > 0) {
-      updateCategoryNamesByType(dbCategories, transaction.type);
-    }
-  }, [transaction?.type, dbCategories]);
-
-  // 更新 setTransaction 的包裝函數，確保 user_id 始終存在
-  const updateTransaction = (updates: Partial<Transaction>) => {
-    setTransaction((current) => ({
-      ...current,
-      ...updates,
-      user_id: current.user_id, // 保留現有的 user_id
-    }));
-  };
-
-  // 修改 handleTypeChange 使用新的 updateTransaction 函數
+  // 處理交易類型變更
   const handleTypeChange = async (type: "expense" | "income") => {
     if (!transaction) return;
 
@@ -221,89 +287,122 @@ export default function TransactionDetail({
     if (transaction.type === type) return;
 
     // 更新本地交易對象的類型和金額
-    updateTransaction({
+    const updatedTransaction = {
+      ...transaction,
       type,
       amount:
         type === "expense"
           ? -Math.abs(transaction.amount)
           : Math.abs(transaction.amount),
-      category: "", // 重置類別，因為不同類型有不同的類別選項
-    });
+      // 重置類別，因為不同類型有不同的類別選項
+      category: "",
+    };
 
-    // 根據新類型更新類別列表
-    if (dbCategories.length > 0) {
-      updateCategoryNamesByType(dbCategories, type);
-    }
+    // 更新本地狀態
+    setTransaction(updatedTransaction);
 
     // 自動展開類型選擇區域
     setIsEditingCategory(true);
 
     // 顯示提示通知
-    showToastNotification("請選擇一個類型", "success", 2000);
+    showNotification("請選擇一個類型", "success", 2000);
   };
 
-  // 顯示 Toast 通知的輔助函數
-  const showToastNotification = (
-    message: string,
-    type: "success" | "error",
-    duration = 3000
-  ) => {
-    setToastMessage(message);
-    setToastType(type);
-    setShowToast(true);
+  // 導航回列表頁的輔助函數
+  const navigateBackToList = () => {
+    // 如果提供了 onBack 回調，優先使用它
+    if (onBack) {
+      onBack();
+      return;
+    }
 
-    setTimeout(() => {
-      setShowToast(false);
-    }, duration);
+    // 否則使用默認的導航邏輯
+    // 檢查是否在 LINE 環境中
+    if (typeof window !== "undefined") {
+      // 檢查是否是從 LINE LIFF 打開的
+      const isFromLiff =
+        window.location.href.includes("liff.line.me") ||
+        (liff.isInClient && liff.isInClient());
+
+      console.log("Is from LIFF:", isFromLiff);
+      console.log("Current URL:", window.location.href);
+
+      if (isFromLiff) {
+        // 如果是從 LINE LIFF 打開的，使用 closeLiff() 關閉視窗
+        console.log("Closing LIFF window");
+        closeLiff();
+      } else {
+        // 如果不是從 LINE LIFF 打開的，使用普通導航
+        console.log("Using normal navigation");
+        window.location.href = "/";
+      }
+    } else {
+      // 在 SSR 環境中，使用 router 導航
+      router.push("/");
+    }
   };
 
-  const handleDelete = async () => {
-    // Prevent accidental clicks
-    if (isButtonsDisabled) return;
-
-    if (!transaction) return;
+  // 處理刪除
+  const handleDelete = () => {
+    // 顯示確認視窗
     setShowDeleteModal(true);
   };
 
+  // 確認刪除交易
   const confirmDelete = async () => {
+    if (!transaction) return;
     try {
+      // 關閉確認視窗
       setShowDeleteModal(false);
+
       const success = await deleteTransactionApi(
         transaction.id,
         transaction.type
       );
 
       if (success) {
-        onDelete?.();
-        showToastNotification("刪除成功", "success");
+        // 如果提供了 onDelete 回調，優先使用它
+        if (onDelete) {
+          onDelete();
+          return;
+        }
+
+        // 否則顯示成功通知並導航回列表
+        showNotification("刪除成功", "success", 800, navigateBackToList);
       } else {
-        showToastNotification("刪除失敗，請稍後再試", "error");
+        showNotification("刪除失敗，請稍後再試", "error");
       }
     } catch (error) {
       console.error("刪除交易失敗", error);
-      showToastNotification("刪除失敗，請稍後再試", "error");
+      showNotification("刪除失敗，請稍後再試", "error");
     }
   };
 
-  const handleConfirm = async () => {
-    // Prevent accidental clicks
-    if (isButtonsDisabled) return;
+  // 取消刪除
+  const cancelDelete = () => {
+    setShowDeleteModal(false);
+  };
 
+  // 處理確認/更新
+  const handleConfirm = async () => {
+    if (!transaction) return;
+
+    // 如果沒有變更，直接返回，不顯示通知
     if (!hasChanges) {
-      onBack?.();
+      navigateBackToList();
       return;
     }
 
     // 驗證類別是否已選擇
     if (!transaction.category) {
-      showToastNotification("請選擇一個類型", "error", 2000);
+      showNotification("請選擇一個類型", "error", 2000);
       setIsEditingCategory(true);
       return;
     }
 
     try {
       // 檢查交易類型是否與原始類型不同
-      const originalType = originalTransaction.type;
+      const originalType = originalTransaction?.type || "expense";
       const hasTypeChanged = transaction.type !== originalType;
 
       if (hasTypeChanged) {
@@ -317,7 +416,7 @@ export default function TransactionDetail({
         );
 
         if (!deleteSuccess) {
-          showToastNotification("儲存失敗，請稍後再試", "error");
+          showNotification("儲存失敗，請稍後再試", "error");
           return;
         }
 
@@ -356,14 +455,14 @@ export default function TransactionDetail({
         if (!response.ok) {
           const errorText = await response.text();
           console.error("創建交易失敗:", errorText);
-          showToastNotification("儲存失敗，請稍後再試", "error");
+          showNotification("儲存失敗，請稍後再試", "error");
           return;
         }
 
         // 解析響應數據
         const data = await response.json();
         if (!data || data.length === 0) {
-          showToastNotification("儲存失敗，請稍後再試", "error");
+          showNotification("儲存失敗，請稍後再試", "error");
           return;
         }
 
@@ -375,19 +474,22 @@ export default function TransactionDetail({
           clearTransactionCache(transaction.user_id, year, month);
         }
 
-        // 使用新創建的交易 ID 更新 transaction 對象
-        const newTransaction = {
-          ...transaction,
-          id: data[0].id,
-        };
+        // 如果提供了 onUpdate 函數，則調用它
+        if (onUpdate) {
+          const updatedTransaction: Transaction = {
+            ...transaction,
+            id: data[0].id,
+          };
+          onUpdate(updatedTransaction);
+          showNotification("儲存成功", "success");
 
-        // 通知父組件更新成功
-        onUpdate?.(newTransaction);
-        showToastNotification("儲存成功", "success");
+          // 給 UI 一點時間更新，然後再返回
+          setTimeout(navigateBackToList, 800);
+          return;
+        }
 
-        // 確保在返回之前，父組件有足夠時間處理更新和清除快取
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        onBack?.();
+        // 否則，使用默認的導航邏輯
+        showNotification("儲存成功", "success", 800, navigateBackToList);
       } else {
         // 如果類型沒有變化，使用正常的更新流程
         const success = await updateTransactionApi(transaction);
@@ -401,88 +503,35 @@ export default function TransactionDetail({
             clearTransactionCache(transaction.user_id, year, month);
           }
 
-          // 通知父組件更新成功
-          onUpdate?.(transaction);
-          showToastNotification("儲存成功", "success");
+          // 如果提供了 onUpdate 函數，則調用它
+          if (onUpdate) {
+            onUpdate(transaction);
+            showNotification("儲存成功", "success");
 
-          // 確保在返回之前，父組件有足夠時間處理更新和清除快取
-          await new Promise((resolve) => setTimeout(resolve, 300));
-          onBack?.();
+            // 給 UI 一點時間更新，然後再返回
+            setTimeout(navigateBackToList, 800);
+            return;
+          }
+
+          // 否則，使用默認的導航邏輯
+          showNotification("儲存成功", "success", 800, navigateBackToList);
         } else {
-          showToastNotification("儲存失敗，請稍後再試", "error");
+          showNotification("儲存失敗，請稍後再試", "error");
         }
       }
     } catch (error) {
       console.error("儲存交易失敗", error);
-      showToastNotification("儲存失敗，請稍後再試", "error");
+      showNotification("儲存失敗，請稍後再試", "error");
     }
   };
 
-  // 開始編輯金額
-  const handleStartEditAmount = () => {
+  // 處理類別相關操作
+  const handleSelectCategory = async (category: string) => {
     if (!transaction) return;
-    setIsEditingAmount(true);
-    setEditAmount(Math.abs(transaction.amount).toString());
+    const updatedTransaction = { ...transaction, category };
+    setTransaction(updatedTransaction);
   };
 
-  // 修改其他更新函數使用 updateTransaction
-  const handleSaveAmount = async () => {
-    if (!transaction) return;
-    const amount = Number.parseFloat(editAmount);
-    if (!isNaN(amount)) {
-      updateTransaction({
-        amount: transaction.type === "expense" ? -amount : amount,
-      });
-      setIsEditingAmount(false);
-    } else {
-      setIsEditingAmount(false);
-    }
-  };
-
-  // 開始編輯日期
-  const handleToggleEditDate = () => {
-    if (!transaction) return;
-    setIsEditingDate(!isEditingDate);
-    // 關閉其他編輯狀態
-    if (!isEditingDate) {
-      setIsEditingCategory(false);
-    }
-  };
-
-  // 修改其他更新函數使用 updateTransaction
-  const handleSaveDate = async (date: Date) => {
-    if (!transaction) return;
-
-    const year = date.getFullYear();
-    const month = date.getMonth() + 1;
-    const day = date.getDate();
-
-    const formattedDate = `${year}年${month.toString().padStart(2, "0")}月${day
-      .toString()
-      .padStart(2, "0")}日`;
-
-    updateTransaction({ date: formattedDate });
-    setEditDate(formattedDate);
-    setCalendarDate(date);
-    setIsEditingDate(false);
-  };
-
-  // 開始編輯類別
-  const handleToggleEditCategory = () => {
-    if (!transaction) return;
-    setIsEditingCategory(!isEditingCategory);
-    // 關閉其他編輯狀態
-    if (!isEditingCategory) {
-      setIsEditingDate(false);
-    }
-    // 重置類別編輯模式
-    if (!isEditingCategory) {
-      setIsCategoryEditMode(false);
-      setIsAddingCategory(false);
-    }
-  };
-
-  // 切換類別編輯模式
   const handleToggleCategoryEditMode = () => {
     setIsCategoryEditMode(!isCategoryEditMode);
     if (!isCategoryEditMode) {
@@ -490,34 +539,188 @@ export default function TransactionDetail({
     }
   };
 
-  // 修改其他更新函數使用 updateTransaction
-  const handleSelectCategory = async (category: string) => {
-    if (!transaction) return;
-    updateTransaction({ category });
+  const handleAddCategory = () => {
+    setIsAddingCategory(true);
+    setNewCategory("");
+    // 自動展開類別選擇區域（如果尚未展開）
+    setIsEditingCategory(true);
   };
 
-  // 刪除類別
+  const handleSaveNewCategory = async (categoryName: string) => {
+    if (!categoryName || categoryName.trim() === "") return;
+
+    // 設置本地state以保持同步
+    setNewCategory(categoryName);
+
+    // 檢查類別是否已存在
+    if (categories.includes(categoryName.trim())) {
+      showNotification("此類別已存在", "error");
+      return;
+    }
+
+    // 添加到資料庫
+    if (transaction) {
+      const success = await addCategoryToDatabase(
+        categoryName.trim(),
+        transaction.type
+      );
+
+      if (success) {
+        // 更新本地類別列表 - 已在 hook 中處理
+        // 如果不在編輯模式，自動選擇新類別
+        if (!isCategoryEditMode) {
+          handleSelectCategory(categoryName.trim());
+        }
+
+        showNotification("新增類別成功", "success");
+      } else {
+        showNotification("新增類別失敗，請稍後再試", "error");
+      }
+    }
+
+    setIsAddingCategory(false);
+  };
+
+  // 添加获取类型交易数量的方法
+  const getCategoryTransactionCount = async (
+    category: string
+  ): Promise<number> => {
+    try {
+      if (!transaction) return 0;
+
+      // 使用当前交易的用户ID
+      const userId = transaction.user_id;
+      if (!userId) {
+        return 0;
+      }
+
+      // 查询该类型的交易记录
+      const transactions = await fetchTransactionsByCategory(userId, category);
+      return transactions.length;
+    } catch (error) {
+      console.error("Error getting category transaction count:", error);
+      return 0;
+    }
+  };
+
+  // 刪除類別 - 修改自 detail copy
   const handleDeleteCategory = async (categoryToDelete: string) => {
     // 不允許刪除當前選中的類別
     if (transaction && categoryToDelete === transaction.category) {
-      alert("無法刪除當前使用中的類別");
+      showNotification("無法刪除當前使用中的類別", "error");
       return;
     }
 
     try {
+      if (!transaction) return;
+
+      // 獲取用戶ID
+      const userId = transaction.user_id;
+      if (!userId) {
+        showNotification("無法獲取用戶ID，請重新登入", "error");
+        return;
+      }
+
+      // 首先获取该类型的所有交易记录
+      const categoryTransactions = await fetchTransactionsByCategory(
+        userId,
+        categoryToDelete
+      );
+
+      console.log(`====== 準備刪除類型: "${categoryToDelete}" ======`);
+      console.log(`找到 ${categoryTransactions.length} 筆相關交易記錄`);
+
+      // 打印詳細的交易記錄信息
+      if (categoryTransactions.length > 0) {
+        console.log("以下交易記錄將被刪除:");
+        categoryTransactions.forEach((tx, index) => {
+          console.log(`[${index + 1}] ID: ${tx.id}`);
+          console.log(`    日期: ${tx.date}`);
+          console.log(`    類型: ${tx.type === "expense" ? "支出" : "收入"}`);
+          console.log(`    金額: ${Math.abs(tx.amount)}`);
+          console.log(`    備註: ${tx.note || "(無)"}`);
+          console.log(`    ---------------------`);
+        });
+      } else {
+        console.log("沒有找到相關交易記錄，只刪除類型定義");
+      }
+
       // 找到要刪除的類別
       const categoryToRemove = dbCategories.find(
         (cat) => cat.name === categoryToDelete
       );
 
       if (categoryToRemove) {
+        // 设置加载状态
+        showNotification(`正在處理中...`, "info");
+
+        // 1. 首先删除所有相关交易
+        let deleteResult = { success: true, deletedCount: 0 };
+        const deletedTransactions: string[] = [];
+        const failedTransactions: string[] = [];
+
+        if (categoryTransactions.length > 0) {
+          const transactionIds = categoryTransactions.map((t) => t.id);
+          deleteResult = await batchDeleteTransactions(transactionIds);
+
+          // 記錄哪些交易被成功刪除
+          const results = await Promise.allSettled(
+            transactionIds.map(async (id, idx) => {
+              try {
+                // 嘗試獲取交易記錄，如果獲取不到則表示已被刪除
+                const tx = await fetchTransactionById(id);
+                if (!tx) {
+                  deletedTransactions.push(
+                    `${categoryTransactions[idx].date} ${Math.abs(
+                      categoryTransactions[idx].amount
+                    )}元`
+                  );
+                  return true;
+                } else {
+                  failedTransactions.push(id);
+                  return false;
+                }
+              } catch (error) {
+                // 如果出錯，假設交易已被刪除
+                deletedTransactions.push(
+                  `${categoryTransactions[idx].date} ${Math.abs(
+                    categoryTransactions[idx].amount
+                  )}元`
+                );
+                return true;
+              }
+            })
+          );
+
+          console.log(`====== 交易記錄刪除結果 ======`);
+          console.log(
+            `成功刪除: ${deleteResult.deletedCount}/${categoryTransactions.length} 筆交易`
+          );
+
+          if (deletedTransactions.length > 0) {
+            console.log("成功刪除的交易:");
+            deletedTransactions.forEach((tx, idx) => {
+              console.log(`[${idx + 1}] ${tx}`);
+            });
+          }
+
+          if (failedTransactions.length > 0) {
+            console.log("刪除失敗的交易ID:");
+            failedTransactions.forEach((id, idx) => {
+              console.log(`[${idx + 1}] ${id}`);
+            });
+          }
+        }
+
+        // 2. 然后删除类型
+        let categoryDeleteSuccess = false;
         if (categoryToRemove.user_id === null) {
-          // 系統預設類別 - 創建一個用戶特定的"刪除標記"記錄
+          // 系統預設類別 - 創建一個標記為已刪除的記錄
           const url = `${SUPABASE_URL}/categories`;
 
           // 準備要創建的數據 - 創建一個與系統預設同名但標記為已刪除的用戶特定記錄
           const createData = {
-            user_id: transaction.user_id,
+            user_id: userId,
             name: categoryToRemove.name,
             type: categoryToRemove.type,
             is_deleted: true,
@@ -534,103 +737,100 @@ export default function TransactionDetail({
             body: JSON.stringify(createData),
           });
 
-          if (!response.ok) {
+          categoryDeleteSuccess = response.ok;
+          if (!categoryDeleteSuccess) {
             const errorText = await response.text();
             console.error(
               "Create delete marker error response body:",
               errorText
             );
-            alert("刪除類別失敗，請稍後再試");
-            return;
           }
         } else {
-          // 用戶自定義類別 - 直接標記為已刪除
+          // 用戶自定義類別 - 直接從資料庫刪除
           const url = `${SUPABASE_URL}/categories?id=eq.${categoryToRemove.id}`;
 
-          // 發送 API 請求更新類別為已刪除
+          // 發送 API 請求刪除類別
           const response = await fetch(url, {
-            method: "PATCH",
+            method: "DELETE",
             headers: {
               "Content-Type": "application/json",
               apikey: SUPABASE_KEY,
-              Prefer: "return=representation",
+              Prefer: "return=minimal",
             },
-            body: JSON.stringify({
-              is_deleted: true,
-            }),
           });
 
-          if (!response.ok) {
+          categoryDeleteSuccess = response.ok;
+          if (!categoryDeleteSuccess) {
             const errorText = await response.text();
             console.error("Delete category error response body:", errorText);
-            alert("刪除類別失敗，請稍後再試");
-            return;
           }
         }
 
-        // 更新本地類別列表 - 從顯示中移除已刪除的類別
-        setDbCategories((prev) =>
-          prev.filter((cat) => cat.name !== categoryToDelete)
+        console.log(`====== 類型刪除結果 ======`);
+        console.log(
+          `類型 "${categoryToDelete}" ${
+            categoryDeleteSuccess ? "刪除成功" : "刪除失敗"
+          }`
         );
-        setCategories((prev) => prev.filter((cat) => cat !== categoryToDelete));
+        console.log(`====== 刪除操作完成 ======`);
 
-        // 顯示成功通知
-        showToastNotification("類別已刪除", "success");
+        // 重新獲取類別列表
+        await fetchCategoriesFromDb();
+
+        // 顯示結果通知
+        if (categoryDeleteSuccess) {
+          if (categoryTransactions.length > 0) {
+            if (deleteResult.success) {
+              // 构建删除交易的详细信息字符串
+              let deletedDetailsMsg = `類型及其 ${deleteResult.deletedCount} 筆交易已刪除`;
+              // 如果删除的交易数量不多，可以显示详细信息
+              if (
+                deletedTransactions.length > 0 &&
+                deletedTransactions.length <= 3
+              ) {
+                deletedDetailsMsg += `\n包括: ${deletedTransactions.join(
+                  ", "
+                )}`;
+              }
+              showNotification(deletedDetailsMsg, "success");
+            } else if (deleteResult.deletedCount > 0) {
+              showNotification(
+                `類型已刪除，但部分交易（${deleteResult.deletedCount}/${categoryTransactions.length}）刪除失敗`,
+                "warning"
+              );
+            } else {
+              showNotification("類型已刪除，但交易記錄刪除失敗", "warning");
+            }
+          } else {
+            showNotification("類型已刪除", "success");
+          }
+        } else {
+          showNotification("刪除類型失敗，請稍後再試", "error");
+        }
       } else {
-        // 如果找不到類別，只更新本地列表
-        setCategories((prev) => prev.filter((cat) => cat !== categoryToDelete));
+        // 如果找不到類別 (也許是本地測試數據)，只需更新本地狀態
+        if (transaction) {
+          updateCategoryNamesByType(dbCategories, transaction.type);
+        }
+        showNotification("類型已刪除", "success");
       }
     } catch (error) {
       console.error("Error deleting category:", error);
-      alert("刪除類別失敗，請稍後再試");
+      showNotification("刪除類型失敗，請稍後再試", "error");
     }
   };
 
-  // 處理新增類別
-  const handleAddCategory = () => {
-    setIsAddingCategory(true);
-    setNewCategory("");
-  };
-
-  // 儲存新類別
-  const handleSaveNewCategory = async () => {
-    if (newCategory.trim() === "") return;
-
-    // 檢查類別是否已存在
-    if (categories.includes(newCategory.trim())) {
-      alert("此類別已存在");
-      return;
-    }
-
-    // 添加到資料庫
-    if (transaction) {
-      const success = await addCategoryToDatabase(
-        newCategory.trim(),
-        transaction.type
-      );
-
-      if (success) {
-        // 更新本地類別列表
-        setCategories((prev) => [...prev, newCategory.trim()]);
-
-        // 如果不在編輯模式，自動選擇新類別
-        if (!isCategoryEditMode) {
-          handleSelectCategory(newCategory.trim());
-        }
-      } else {
-        alert("新增類別失敗，請稍後再試");
-      }
-    }
-
-    setIsAddingCategory(false);
-  };
-
-  // 修改 addCategoryToDatabase 函數
+  // 添加類別到資料庫 - 修改自 detail copy
   const addCategoryToDatabase = async (
     categoryName: string,
     type: "income" | "expense"
   ) => {
     try {
+      if (!transaction) {
+        console.error("Transaction is null when adding category");
+        return false;
+      }
+
       // 構建 API URL
       const url = `${SUPABASE_URL}/categories`;
 
@@ -669,6 +869,9 @@ export default function TransactionDetail({
       const newCategory = data[0];
       setDbCategories((prev) => [...prev, newCategory]);
 
+      // 重新獲取類別列表
+      await fetchCategoriesFromDb();
+
       return true;
     } catch (error) {
       console.error("Error adding category to database:", error);
@@ -676,631 +879,126 @@ export default function TransactionDetail({
     }
   };
 
-  // 開始編輯備註
-  const handleStartEditNote = () => {
+  // 更新金額
+  const handleAmountChange = (amount: number) => {
     if (!transaction) return;
-    setIsEditingNote(true);
-    setEditNote(transaction.note);
+    const updatedTransaction = { ...transaction, amount };
+    setTransaction(updatedTransaction);
   };
 
-  // 修改其他更新函數使用 updateTransaction
-  const handleSaveNote = async () => {
+  // 更新日期
+  const handleDateChange = (date: string) => {
     if (!transaction) return;
-    updateTransaction({ note: editNote });
-    setIsEditingNote(false);
+    const updatedTransaction = { ...transaction, date };
+    setTransaction(updatedTransaction);
   };
 
-  // 處理金額輸入變更
-  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setEditAmount(e.target.value);
+  // 更新備註
+  const handleNoteChange = (note: string) => {
+    if (!transaction) return;
+    const updatedTransaction = { ...transaction, note };
+    setTransaction(updatedTransaction);
   };
 
-  // 處理備註輸入變更
-  const handleNoteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setEditNote(e.target.value);
-  };
+  // 渲染加載狀態
+  if (isInitializing || isLoading) return <Skeleton />;
 
-  // 處理按鍵事件
-  const handleKeyDown = (e: React.KeyboardEvent, saveFunction: () => void) => {
-    if (e.key === "Enter") {
-      saveFunction();
-    }
-  };
+  // 渲染錯誤狀態 (找不到交易)
+  if (!transaction)
+    return (
+      <div className="w-full max-w-md mx-auto p-4 flex flex-col justify-center items-center h-screen">
+        <div
+          className="fixed inset-0 z-0"
+          onClick={() => incrementDebugClickCount()}
+        />
+        <div className="text-center">
+          <div className="text-xl font-medium text-gray-700 mb-8">
+            找不到該筆交易
+          </div>
+        </div>
 
-  // 日曆相關函數
-  const getDaysInMonth = (year: number, month: number) => {
-    return new Date(year, month + 1, 0).getDate();
-  };
+        {/* 調試信息 - 點擊五次才會顯示 */}
+        {debugClickCount >= 5 && <Debug info={debugInfo} />}
+      </div>
+    );
 
-  const getFirstDayOfMonth = (year: number, month: number) => {
-    return new Date(year, month, 1).getDay();
-  };
-
-  const handlePrevMonth = () => {
-    const newDate = new Date(calendarDate);
-    newDate.setMonth(newDate.getMonth() - 1);
-    setCalendarDate(newDate);
-  };
-
-  const handleNextMonth = () => {
-    const newDate = new Date(calendarDate);
-    newDate.setMonth(newDate.getMonth() + 1);
-    setCalendarDate(newDate);
-  };
-
-  const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const year = parseInt(e.target.value);
-    const newDate = new Date(calendarDate);
-    newDate.setFullYear(year);
-    setCalendarDate(newDate);
-  };
-
-  const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const month = parseInt(e.target.value);
-    const newDate = new Date(calendarDate);
-    newDate.setMonth(month);
-    setCalendarDate(newDate);
-  };
-
-  // 生成年份選項
-  const generateYearOptions = () => {
-    // Use a fixed year for server-side rendering
-    const currentYear = isMounted ? new Date().getFullYear() : 2025;
-    const years = [];
-    for (let i = currentYear - 5; i <= currentYear + 5; i++) {
-      years.push(i);
-    }
-    return years;
-  };
-
-  // 生成月份選項
-  const generateMonthOptions = () => {
-    const months = [];
-    for (let i = 0; i < 12; i++) {
-      months.push(i);
-    }
-    return months;
-  };
-
-  // 生成月曆
-  const renderCalendar = () => {
-    // Don't render calendar on server-side
-    if (!isMounted) {
-      return Array(42)
-        .fill(null)
-        .map((_, i) => <div key={`placeholder-${i}`} className="h-8"></div>);
-    }
-
-    const year = calendarDate.getFullYear();
-    const month = calendarDate.getMonth();
-    const daysInMonth = getDaysInMonth(year, month);
-    const firstDayOfMonth = getFirstDayOfMonth(year, month);
-
-    const days = [];
-
-    // 填充月初的空白
-    for (let i = 0; i < firstDayOfMonth; i++) {
-      days.push(<div key={`empty-${i}`} className="h-8"></div>);
-    }
-
-    // 填充日期
-    for (let i = 1; i <= daysInMonth; i++) {
-      const date = new Date(year, month, i);
-      const isSelected =
-        transaction?.date ===
-        `${year}年${(month + 1).toString().padStart(2, "0")}月${i
-          .toString()
-          .padStart(2, "0")}日`;
-
-      days.push(
-        <button
-          key={`day-${i}`}
-          className={`h-8 w-8 rounded-lg flex items-center justify-center ${
-            isSelected ? "bg-green-500 text-white" : ""
-          }`}
-          onClick={() => handleSaveDate(date)}
-        >
-          {i}
-        </button>
-      );
-    }
-
-    return days;
-  };
-
-  // 獲取月份名稱
-  const getMonthName = (month: number) => {
-    const monthNames = [
-      "1月",
-      "2月",
-      "3月",
-      "4月",
-      "5月",
-      "6月",
-      "7月",
-      "8月",
-      "9月",
-      "10月",
-      "11月",
-      "12月",
-    ];
-    return monthNames[month];
-  };
-
+  // 渲染主要內容
   return (
     <>
       {/* Toast 通知 */}
-      {showToast && (
-        <div
-          className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg transition-all duration-300 animate-fadeInDown ${
-            toastType === "success"
-              ? "bg-green-500 text-white"
-              : "bg-red-500 text-white"
-          }`}
-          style={{
-            animation:
-              "fadeInDown 0.3s ease-out, fadeOutUp 0.3s ease-in forwards 2.5s",
-          }}
-        >
-          <div className="flex items-center">
-            {toastType === "success" ? (
-              <Check className="mr-2 animate-pulse" size={18} />
-            ) : (
-              <X className="mr-2 animate-pulse" size={18} />
-            )}
-            <span className="animate-fadeIn">{toastMessage}</span>
-          </div>
-        </div>
-      )}
+      {showToast && <Toast message={toastMessage} type={toastType} />}
 
       {/* 刪除確認視窗 */}
       {showDeleteModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 animate-fadeIn"
-          onClick={() => setShowDeleteModal(false)}
-        >
-          <div
-            className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-xl transform animate-scaleInStatic"
-            onClick={(e) => e.stopPropagation()} // 防止點擊內容區域時關閉視窗
-          >
-            <div className="text-center mb-4">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
-                <Trash2 className="h-6 w-6 text-red-500" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                確定要刪除嗎？
-              </h3>
-              <p className="text-sm text-gray-500">
-                此操作無法復原，刪除後資料將永久消失。
-              </p>
-            </div>
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowDeleteModal(false)}
-                className="flex-1 py-2 rounded-xl bg-gray-200 text-gray-700 font-medium transition-all duration-150 active:bg-gray-300"
-              >
-                取消
-              </button>
-              <button
-                onClick={confirmDelete}
-                className="flex-1 py-2 rounded-xl bg-red-500 text-white font-medium transition-all duration-150 active:bg-red-600"
-              >
-                確定刪除
-              </button>
-            </div>
-          </div>
-        </div>
+        <DeleteModal
+          onConfirm={confirmDelete}
+          onCancel={cancelDelete}
+          transactionCount={0} // 交易删除不显示计数，仅类型删除显示
+        />
       )}
 
-      <div className="fixed inset-0 z-0 bg-[#F1F2F5]" />
+      <div
+        className="fixed inset-0 z-0 bg-[#F1F2F5]"
+        onClick={() => incrementDebugClickCount()}
+      />
       <div className="w-full max-w-md mx-auto pb-6 relative z-10">
         <div className="space-y-4 px-[20px] mt-[20px]">
           {/* 合併屬性和類型到同一個卡片 */}
           <div className="bg-white rounded-2xl p-4 shadow-sm space-y-4">
             {/* 屬性 (交易類型) */}
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600 pl-2">屬性</span>
-              <div className="flex gap-2">
-                <button
-                  className={`px-6 py-1 rounded-xl min-w-[5rem] transition-all duration-150 ${
-                    transaction.type === "expense"
-                      ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
-                      : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
-                  }`}
-                  onClick={() => handleTypeChange("expense")}
-                >
-                  支出
-                </button>
-                <button
-                  className={`px-6 py-1 rounded-xl min-w-[5rem] transition-all duration-150 ${
-                    transaction.type === "income"
-                      ? "bg-[#22c55e] text-white active:bg-green-600 active:scale-[0.98]"
-                      : "bg-gray-200 text-gray-600 active:bg-gray-300 active:scale-[0.98]"
-                  }`}
-                  onClick={() => handleTypeChange("income")}
-                >
-                  收入
-                </button>
-              </div>
-            </div>
+            <Type type={transaction.type} onChange={handleTypeChange} />
 
             {/* 分隔線 */}
             <div className="border-t border-gray-100"></div>
 
             {/* 類型 */}
-            <div className="flex flex-col">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600 pl-2">類型</span>
-                <div
-                  className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
-                  onClick={handleToggleEditCategory}
-                  tabIndex={0}
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && handleToggleEditCategory()
-                  }
-                  aria-label="展開類型選單"
-                >
-                  <span className="text-gray-800">{transaction.category}</span>
-                  {isEditingCategory ? (
-                    <ChevronUp className="ml-2 text-gray-400" />
-                  ) : (
-                    <ChevronDown className="ml-2 text-gray-400" />
-                  )}
-                </div>
-              </div>
-
-              {/* 類別選擇器 */}
-              <div
-                className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                  isEditingCategory
-                    ? "max-h-96 opacity-100 mt-4"
-                    : "max-h-0 opacity-0"
-                }`}
-              >
-                {!isAddingCategory ? (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-3 gap-2">
-                      {categories.map((category, index) => (
-                        <div
-                          key={index}
-                          className={`relative py-2 rounded-xl text-center ${
-                            category === transaction.category
-                              ? "bg-[#22c55e] text-white"
-                              : "bg-gray-200 text-gray-600"
-                          }`}
-                        >
-                          {isCategoryEditMode ? (
-                            // 編輯模式下點擊刪除類別
-                            <button
-                              className="w-full h-full flex items-center justify-center active:bg-gray-300 active:scale-[0.98] transition-all duration-150"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteCategory(category);
-                              }}
-                              aria-label={`刪除${category}類型`}
-                            >
-                              <span>{category}</span>
-                              {/* 不在當前選中的類別上顯示刪除圖標 */}
-                              {category !== transaction.category && (
-                                <X
-                                  size={18}
-                                  className="absolute right-2 hover:text-red-500 transition-colors duration-200"
-                                />
-                              )}
-                            </button>
-                          ) : (
-                            // 非編輯模式下點擊選擇類別
-                            <button
-                              className="w-full h-full active:bg-opacity-80 active:scale-[0.98] transition-all duration-150"
-                              onClick={() => handleSelectCategory(category)}
-                            >
-                              {category}
-                            </button>
-                          )}
-                        </div>
-                      ))}
-
-                      {/* 新增類別按鈕，僅在編輯模式顯示 */}
-                      {isCategoryEditMode && (
-                        <button
-                          className="py-2 rounded-xl text-center bg-green-100 text-green-600 flex items-center justify-center transition-all duration-300 ease-in-out active:bg-green-200"
-                          onClick={handleAddCategory}
-                        >
-                          <Plus size={16} className="mr-1" />
-                          <span>新增</span>
-                        </button>
-                      )}
-                    </div>
-
-                    {/* 編輯按鈕 - 移至底部並佔滿整行 */}
-                    <button
-                      className={`w-full py-2 rounded-xl flex items-center justify-center transition-all duration-300 ease-in-out ${
-                        isCategoryEditMode
-                          ? "bg-green-100 text-green-600 active:bg-green-200"
-                          : "bg-gray-100 text-gray-600 active:bg-gray-200"
-                      }`}
-                      onClick={handleToggleCategoryEditMode}
-                    >
-                      <div className="flex items-center justify-center">
-                        {isCategoryEditMode ? (
-                          <>
-                            <Check size={16} className="mr-1" />
-                            <span>完成</span>
-                          </>
-                        ) : (
-                          <>
-                            <Edit size={16} className="mr-1" />
-                            <span>編輯</span>
-                          </>
-                        )}
-                      </div>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="mt-3">
-                    <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-2">
-                      <input
-                        type="text"
-                        value={newCategory}
-                        onChange={(e) => {
-                          setNewCategory(e.target.value);
-                        }}
-                        placeholder="輸入新類型"
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none"
-                        autoFocus
-                        onKeyDown={(e) =>
-                          e.key === "Enter" && handleSaveNewCategory()
-                        }
-                      />
-                      <div className="flex space-x-2">
-                        <button
-                          className="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg transition-all duration-150 active:bg-green-600 active:scale-[0.98]"
-                          onClick={handleSaveNewCategory}
-                        >
-                          確定
-                        </button>
-                        <button
-                          className="flex-1 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg transition-all duration-150 active:bg-gray-300 active:scale-[0.98]"
-                          onClick={() => setIsAddingCategory(false)}
-                        >
-                          取消
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            <Category
+              categories={categories}
+              selectedCategory={transaction.category}
+              isEditMode={isCategoryEditMode}
+              onSelectCategory={handleSelectCategory}
+              onToggleEditMode={handleToggleCategoryEditMode}
+              onDeleteCategory={handleDeleteCategory}
+              onAddCategory={handleAddCategory}
+              onSaveNewCategory={handleSaveNewCategory}
+              getCategoryTransactionCount={getCategoryTransactionCount}
+            />
           </div>
 
-          {/* 金額、日期、屬性組合在一起 */}
+          {/* 金額、日期 */}
           <div className="bg-white rounded-2xl shadow-sm space-y-4 p-4">
             {/* 金額 */}
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600 pl-2">金額</span>
-              <div className="flex items-center">
-                {isEditingAmount ? (
-                  <div className="flex items-center">
-                    {transaction.type === "expense" && (
-                      <span className="text-gray-800">-</span>
-                    )}
-                    <span className="text-gray-800 mr-[0.5rem]">$</span>
-                    <div className="relative inline-block">
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        pattern="[0-9]*\.?[0-9]*"
-                        value={editAmount}
-                        onChange={handleAmountChange}
-                        onBlur={handleSaveAmount}
-                        onKeyDown={(e) => handleKeyDown(e, handleSaveAmount)}
-                        className="w-32 px-2 py-1 rounded-lg text-right focus:outline-none"
-                        autoFocus
-                      />
-                      <div className="absolute inset-0 pointer-events-none border border-gray-300 rounded-lg"></div>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
-                    onClick={handleStartEditAmount}
-                    tabIndex={0}
-                    onKeyDown={(e) =>
-                      e.key === "Enter" && handleStartEditAmount()
-                    }
-                    aria-label="編輯金額"
-                  >
-                    {transaction.type === "expense" && (
-                      <span className="text-gray-800">-</span>
-                    )}
-                    <span className="text-gray-800 mr-[0.5rem]">$</span>
-                    <span className="text-gray-800">
-                      {Math.abs(transaction.amount)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
+            <Amount
+              amount={transaction.amount}
+              type={transaction.type}
+              onChange={handleAmountChange}
+            />
 
-            {/* 分隔線 */}
             <div className="border-t border-gray-100"></div>
 
             {/* 日期 */}
-            <div className="flex flex-col">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600 pl-2">日期</span>
-                <div
-                  className="flex items-center cursor-pointer px-2 py-1 rounded-lg"
-                  onClick={handleToggleEditDate}
-                  tabIndex={0}
-                  onKeyDown={(e) => e.key === "Enter" && handleToggleEditDate()}
-                  aria-label="編輯日期"
-                >
-                  <span className="text-gray-800">{transaction.date}</span>
-                  {isEditingDate ? (
-                    <ChevronUp className="ml-2 text-gray-400" />
-                  ) : (
-                    <ChevronDown className="ml-2 text-gray-400" />
-                  )}
-                </div>
-              </div>
-
-              {/* 日曆選擇器 */}
-              <div
-                className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                  isEditingDate
-                    ? "max-h-96 opacity-100 mt-4"
-                    : "max-h-0 opacity-0"
-                }`}
-              >
-                <div className="bg-gray-50 rounded-2xl p-4">
-                  <div className="rounded-lg">
-                    {/* 年月選擇器 */}
-                    <div className="flex items-center justify-between mb-4">
-                      <button
-                        onClick={handlePrevMonth}
-                        className="p-1 rounded-full"
-                        aria-label="上個月"
-                      >
-                        <ChevronLeft size={20} />
-                      </button>
-
-                      <div className="flex space-x-2">
-                        <select
-                          value={isMounted ? calendarDate.getFullYear() : 2025}
-                          onChange={handleYearChange}
-                          className="px-2 py-1 pr-4 border border-gray-200 rounded-lg bg-white focus:outline-none"
-                        >
-                          {generateYearOptions().map((year) => (
-                            <option key={year} value={year}>
-                              {year}年
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          value={isMounted ? calendarDate.getMonth() : 0}
-                          onChange={handleMonthChange}
-                          className="px-2 py-1 pr-4 border border-gray-200 rounded-lg bg-white focus:outline-none"
-                        >
-                          {generateMonthOptions().map((month) => (
-                            <option key={month} value={month}>
-                              {getMonthName(month)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <button
-                        onClick={handleNextMonth}
-                        className="p-1 rounded-full"
-                        aria-label="下個月"
-                      >
-                        <ChevronRight size={20} />
-                      </button>
-                    </div>
-
-                    {/* 星期標題 */}
-                    <div className="grid grid-cols-7 mb-2">
-                      {["日", "一", "二", "三", "四", "五", "六"].map(
-                        (day, index) => (
-                          <div
-                            key={index}
-                            className="text-center text-gray-500 text-sm"
-                          >
-                            {day}
-                          </div>
-                        )
-                      )}
-                    </div>
-
-                    {/* 日曆主體 */}
-                    <div className="grid grid-cols-7 gap-1">
-                      {renderCalendar()}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <DatePicker date={transaction.date} onChange={handleDateChange} />
           </div>
 
           {/* 備註 */}
-          <div className="bg-white rounded-2xl p-4 shadow-sm">
-            <div className="flex flex-col space-y-2">
-              <span className="text-gray-600 pl-2">備註</span>
-              <div className="w-full">
-                <textarea
-                  value={transaction.note}
-                  onChange={(e) => {
-                    const updatedTransaction = {
-                      ...transaction,
-                      note: e.target.value,
-                    };
-                    setTransaction(updatedTransaction);
-
-                    // 自动调整高度
-                    e.target.style.height = "auto";
-                    e.target.style.height = e.target.scrollHeight + "px";
-                  }}
-                  onFocus={(e) => {
-                    // 聚焦时确保高度适应内容
-                    e.target.style.height = "auto";
-                    e.target.style.height = e.target.scrollHeight + "px";
-                  }}
-                  onBlur={() => {
-                    // 移除自動儲存
-                  }}
-                  className="w-full px-3 py-2 rounded-lg focus:outline-none border border-gray-300 text-gray-800 resize-none overflow-hidden"
-                  style={{
-                    height: "38px", // 初始高度设为一行
-                    minHeight: "38px", // 最小高度为一行
-                  }}
-                  placeholder="輸入備註"
-                  rows={1}
-                />
-              </div>
-            </div>
-          </div>
+          <Note note={transaction.note} onChange={handleNoteChange} />
 
           {/* 按鈕區域 */}
-          <div className="space-y-4">
-            {/* 確認按鈕 */}
-            <button
-              onClick={handleConfirm}
-              disabled={isButtonsDisabled}
-              className={`w-full py-3 rounded-2xl flex items-center justify-center ${
-                hasChanges
-                  ? "bg-[#22c55e] text-white active:bg-green-600"
-                  : "bg-gray-200 text-gray-600 active:bg-gray-300"
-              } transition-[background-color] duration-150 ${
-                isButtonsDisabled ? "pointer-events-none" : ""
-              }`}
-            >
-              {hasChanges ? (
-                <>
-                  <Check size={20} className="mr-2" />
-                  更新
-                </>
-              ) : (
-                <>
-                  <ArrowLeft size={20} className="mr-2" />
-                  返回
-                </>
-              )}
-            </button>
+          <ActionButtons
+            hasChanges={hasChanges}
+            onConfirm={handleConfirm}
+            onDelete={handleDelete}
+            disabled={isButtonsDisabled}
+          />
 
-            {/* 刪除按鈕 */}
-            <button
-              onClick={handleDelete}
-              disabled={isButtonsDisabled}
-              className={`w-full py-3 rounded-2xl bg-red-500 text-white flex items-center justify-center transition-colors duration-150 active:bg-red-600 ${
-                isButtonsDisabled ? "pointer-events-none" : ""
-              }`}
-            >
-              <Trash2 size={20} className="mr-2" />
-              刪除
-            </button>
-          </div>
+          {/* 調試信息 - 點擊五次才會顯示 */}
+          {debugClickCount >= 5 && (
+            <Debug
+              info={debugInfo}
+              lineId={transaction.id}
+              lineType={transaction.type}
+            />
+          )}
 
           {/* 更新時間顯示 */}
           {transaction.updated_at && (

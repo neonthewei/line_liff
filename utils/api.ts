@@ -963,3 +963,114 @@ export async function createTransactionApi(
     return null;
   }
 }
+
+/**
+ * 獲取指定類型的所有交易記錄
+ * @param userId 用戶ID
+ * @param category 交易類型
+ * @returns 交易記錄列表
+ */
+export async function fetchTransactionsByCategory(
+  userId: string,
+  category: string
+): Promise<Transaction[]> {
+  try {
+    console.log(
+      `Fetching transactions for user ${userId} with category ${category}`
+    );
+
+    // 獲取指定類型的所有交易
+    const url = `${SUPABASE_URL}/transactions?user_id=eq.${userId}&category=eq.${encodeURIComponent(
+      category
+    )}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        ...headers,
+        Prefer: "return=representation",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Error fetching transactions by category: ${errorText}`);
+      throw new Error(
+        `API request failed with status ${response.status}: ${errorText}`
+      );
+    }
+
+    const transactionsData = await response.json();
+
+    // 使用標準化函數轉換交易數據
+    const transactions: Transaction[] = transactionsData.map((item: any) =>
+      normalizeTransaction(item)
+    );
+
+    console.log(
+      `Found ${transactions.length} transactions with category ${category}`
+    );
+    return transactions;
+  } catch (error) {
+    console.error("Error fetching transactions by category:", error);
+    return [];
+  }
+}
+
+/**
+ * 批量刪除交易記錄
+ * @param transactionIds 交易記錄ID列表
+ * @returns 是否全部成功刪除
+ */
+export async function batchDeleteTransactions(
+  transactionIds: string[]
+): Promise<{ success: boolean; deletedCount: number }> {
+  if (!transactionIds.length) {
+    console.log("No transactions to delete");
+    return { success: true, deletedCount: 0 };
+  }
+
+  console.log(`Attempting to delete ${transactionIds.length} transactions`);
+
+  let deletedCount = 0;
+  let hasError = false;
+
+  // 一次最多處理 10 個刪除請求，避免請求過大
+  const batchSize = 10;
+
+  for (let i = 0; i < transactionIds.length; i += batchSize) {
+    const batch = transactionIds.slice(i, i + batchSize);
+
+    // 使用 Promise.allSettled 同時處理多個刪除請求
+    const results = await Promise.allSettled(
+      batch.map((id) => deleteTransactionApi(id))
+    );
+
+    // 統計結果
+    results.forEach((result, index) => {
+      if (result.status === "fulfilled" && result.value === true) {
+        deletedCount++;
+      } else {
+        console.error(
+          `Failed to delete transaction ${batch[index]}:`,
+          result.status === "rejected" ? result.reason : "API returned false"
+        );
+        hasError = true;
+      }
+    });
+
+    // 每批處理後稍微暫停，避免頻繁請求
+    if (i + batchSize < transactionIds.length) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+
+  console.log(
+    `Batch delete completed: ${deletedCount}/${transactionIds.length} transactions deleted`
+  );
+
+  return {
+    success: !hasError && deletedCount === transactionIds.length,
+    deletedCount,
+  };
+}
