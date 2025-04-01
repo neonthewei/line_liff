@@ -13,8 +13,6 @@ import {
   MessageCircle,
   Copy,
   CheckCircle,
-  Target,
-  Edit2,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -31,10 +29,7 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [goal, setGoal] = useState<string>("");
-  const [isEditingGoal, setIsEditingGoal] = useState(false);
-  const [newGoal, setNewGoal] = useState<string>("");
-  const [showOverlay, setShowOverlay] = useState(true);
+  const [showOverlay, setShowOverlay] = useState(false);
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -48,12 +43,6 @@ export default function ProfilePage() {
   }, []);
 
   useEffect(() => {
-    // 從 localStorage 獲取目標
-    const savedGoal = localStorage.getItem("userGoal");
-    if (savedGoal) {
-      setGoal(savedGoal);
-    }
-
     const initLiff = async () => {
       try {
         // 檢測是否在 LINE 內部瀏覽器中
@@ -217,27 +206,6 @@ export default function ProfilePage() {
     }
   };
 
-  // 保存新目標
-  const handleSaveGoal = () => {
-    if (newGoal.trim()) {
-      setGoal(newGoal.trim());
-      localStorage.setItem("userGoal", newGoal.trim());
-    }
-    setIsEditingGoal(false);
-  };
-
-  // 取消編輯目標
-  const handleCancelEditGoal = () => {
-    setNewGoal(goal);
-    setIsEditingGoal(false);
-  };
-
-  // 開始編輯目標
-  const handleStartEditGoal = () => {
-    setNewGoal(goal);
-    setIsEditingGoal(true);
-  };
-
   // 功能項目列表
   const menuItems = [
     {
@@ -350,71 +318,6 @@ export default function ProfilePage() {
             {localStorage.getItem("daysUsed") || "0"}
           </span>
           <span className="text-sm font-medium"> 天</span>
-        </div>
-
-        {/* 目標設定 - 特別設計 */}
-        <div className="w-full max-w-md bg-gradient-to-br from-green-50 to-blue-50 rounded-xl p-4 mb-6 border border-green-100 relative overflow-hidden">
-          {/* 裝飾元素 */}
-          <div className="absolute -top-10 -right-10 w-24 h-24 rounded-full bg-gradient-to-br from-green-200/30 to-blue-200/30"></div>
-          <div className="absolute -bottom-8 -left-8 w-20 h-20 rounded-full bg-gradient-to-tr from-green-200/20 to-blue-200/20"></div>
-
-          <div className="flex items-center justify-between mb-3 relative z-10">
-            <div className="flex items-center">
-              <div className="bg-white p-2 rounded-full mr-3">
-                <Target className="h-5 w-5 text-green-500" />
-              </div>
-              <h2 className="text-base font-semibold text-gray-700">
-                我的記帳目標
-              </h2>
-            </div>
-          </div>
-
-          {isEditingGoal ? (
-            <div className="relative z-10">
-              <textarea
-                value={newGoal}
-                onChange={(e) => setNewGoal(e.target.value)}
-                placeholder="設定您的記帳目標..."
-                className="w-full p-3 border border-green-100 rounded-lg text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
-                rows={3}
-              />
-              <div className="flex justify-end space-x-2">
-                <button
-                  onClick={handleCancelEditGoal}
-                  className="px-4 py-1.5 text-xs text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleSaveGoal}
-                  className="px-4 py-1.5 text-xs text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg hover:from-green-600 hover:to-green-700 transition-colors"
-                >
-                  保存
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div
-              className="bg-white p-4 rounded-lg relative z-10 cursor-pointer hover:bg-gray-50 transition-colors"
-              onClick={handleStartEditGoal}
-              tabIndex={0}
-              onKeyDown={(e) => e.key === "Enter" && handleStartEditGoal()}
-              aria-label="點擊編輯目標"
-            >
-              {goal ? (
-                <p className="text-sm text-gray-600">{goal}</p>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-3">
-                  <p className="text-sm text-gray-500 text-center mb-2">
-                    尚未設定目標
-                  </p>
-                  <button className="px-4 py-1.5 text-xs text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg hover:from-green-600 hover:to-green-700 transition-colors">
-                    立即設定
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
