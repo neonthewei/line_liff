@@ -188,11 +188,11 @@ export function Category({
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2">
               {categories.map((category, index) => (
-                <div key={index} className="relative">
+                <div key={index} className="relative h-full">
                   {isEditMode ? (
                     // 編輯模式下點擊刪除類別
                     <button
-                      className={`w-full py-2 rounded-xl text-center transition-all duration-150 ${
+                      className={`w-full h-full py-2 rounded-xl text-center transition-all duration-150 ${
                         category === selectedCategory
                           ? "bg-[#22c55e] text-white cursor-not-allowed"
                           : "bg-gray-200 text-gray-600 active:bg-gray-300"
@@ -208,9 +208,7 @@ export function Category({
                       disabled={category === selectedCategory}
                       title={category} // 添加tooltip以顯示完整類型名稱
                     >
-                      <span className="block break-words px-1 text-sm">
-                        {category}
-                      </span>
+                      <span className="block break-words px-1">{category}</span>
                       {/* 不在當前選中的類別上顯示刪除圖標 */}
                       {category !== selectedCategory && (
                         <X
@@ -222,7 +220,7 @@ export function Category({
                   ) : (
                     // 非編輯模式下點擊選擇類別
                     <button
-                      className={`w-full py-2 rounded-xl text-center transition-all duration-150 ${
+                      className={`w-full h-full py-2 rounded-xl text-center transition-all duration-150 ${
                         category === selectedCategory
                           ? "bg-[#22c55e] text-white"
                           : "bg-gray-200 text-gray-600 active:bg-gray-300"
@@ -230,9 +228,7 @@ export function Category({
                       onClick={() => handleCategorySelection(category)}
                       title={category} // 添加tooltip以顯示完整類型名稱
                     >
-                      <span className="block break-words px-1 text-sm">
-                        {category}
-                      </span>
+                      <span className="block break-words px-1">{category}</span>
                     </button>
                   )}
                 </div>
@@ -240,13 +236,15 @@ export function Category({
 
               {/* 新增類別按鈕，僅在編輯模式顯示 */}
               {isEditMode && (
-                <button
-                  className="py-2 rounded-xl text-center bg-green-100 text-green-600 flex items-center justify-center transition-all duration-300 ease-in-out active:bg-green-200"
-                  onClick={handleAddClick}
-                >
-                  <Plus size={16} className="mr-1" />
-                  <span>新增</span>
-                </button>
+                <div className="h-full">
+                  <button
+                    className="w-full h-full py-2 rounded-xl text-center bg-green-100 text-green-600 flex items-center justify-center transition-all duration-300 ease-in-out active:bg-green-200"
+                    onClick={handleAddClick}
+                  >
+                    <Plus size={16} className="mr-1" />
+                    <span>新增</span>
+                  </button>
+                </div>
               )}
             </div>
 
