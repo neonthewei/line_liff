@@ -24,6 +24,10 @@ import {
   clearTransactionCache,
   parseDateToISOString,
   formatTimestamp,
+  createTransactionApi,
+  fetchTransactionById,
+  fetchTransactionsByCategory,
+  batchDeleteTransactions,
 } from "@/utils/api";
 import { SUPABASE_URL, SUPABASE_KEY } from "@/utils/api";
 
@@ -460,13 +464,18 @@ export default function TransactionDetail({
   const handleAddCategory = () => {
     setIsAddingCategory(true);
     setNewCategory("");
+    // 自動展開類別選擇區域（如果尚未展開）
+    setIsEditingCategory(true);
   };
 
-  const handleSaveNewCategory = async () => {
-    if (newCategory.trim() === "") return;
+  const handleSaveNewCategory = async (categoryName: string) => {
+    if (!categoryName || categoryName.trim() === "") return;
+
+    // 設置本地state以保持同步
+    setNewCategory(categoryName);
 
     // 檢查類別是否已存在
-    if (categories.includes(newCategory.trim())) {
+    if (categories.includes(categoryName.trim())) {
       showToastNotification("此類別已存在", "error");
       return;
     }
@@ -474,7 +483,7 @@ export default function TransactionDetail({
     // 添加到資料庫
     if (transaction) {
       const success = await addCategoryToDatabase(
-        newCategory.trim(),
+        categoryName.trim(),
         transaction.type
       );
 
@@ -482,7 +491,7 @@ export default function TransactionDetail({
         // 更新本地類別列表 - 已在 hook 中處理
         // 如果不在編輯模式，自動選擇新類別
         if (!isCategoryEditMode) {
-          handleSelectCategory(newCategory.trim());
+          handleSelectCategory(categoryName.trim());
         }
 
         showToastNotification("新增類別成功", "success");
@@ -541,6 +550,10 @@ export default function TransactionDetail({
         return false;
       }
 
+      // 更新本地類別列表
+      const newCategory = data[0];
+      setDbCategories((prev) => [...prev, newCategory]);
+
       // 重新獲取類別列表
       await fetchCategoriesFromDb();
 
@@ -567,14 +580,103 @@ export default function TransactionDetail({
         return;
       }
 
+      // 首先获取该类型的所有交易记录
+      const categoryTransactions = await fetchTransactionsByCategory(
+        userId,
+        categoryToDelete
+      );
+
+      console.log(`====== 準備刪除類型: "${categoryToDelete}" ======`);
+      console.log(`找到 ${categoryTransactions.length} 筆相關交易記錄`);
+
+      // 打印詳細的交易記錄信息
+      if (categoryTransactions.length > 0) {
+        console.log("以下交易記錄將被刪除:");
+        categoryTransactions.forEach((transaction, index) => {
+          console.log(`[${index + 1}] ID: ${transaction.id}`);
+          console.log(`    日期: ${transaction.date}`);
+          console.log(
+            `    類型: ${transaction.type === "expense" ? "支出" : "收入"}`
+          );
+          console.log(`    金額: ${Math.abs(transaction.amount)}`);
+          console.log(`    備註: ${transaction.note || "(無)"}`);
+          console.log(`    ---------------------`);
+        });
+      } else {
+        console.log("沒有找到相關交易記錄，只刪除類型定義");
+      }
+
       // 找到要刪除的類別
       const categoryToRemove = dbCategories.find(
         (cat) => cat.name === categoryToDelete
       );
 
       if (categoryToRemove) {
+        // 设置加载状态
+        showToastNotification(`正在處理，請稍候...`, "info");
+
+        // 1. 首先删除所有相关交易
+        let deleteResult = { success: true, deletedCount: 0 };
+        const deletedTransactions: string[] = [];
+        const failedTransactions: string[] = [];
+
+        if (categoryTransactions.length > 0) {
+          const transactionIds = categoryTransactions.map((t) => t.id);
+          deleteResult = await batchDeleteTransactions(transactionIds);
+
+          // 記錄哪些交易被成功刪除
+          const results = await Promise.allSettled(
+            transactionIds.map(async (id, idx) => {
+              try {
+                // 嘗試獲取交易記錄，如果獲取不到則表示已被刪除
+                const tx = await fetchTransactionById(id);
+                if (!tx) {
+                  deletedTransactions.push(
+                    `${categoryTransactions[idx].date} ${Math.abs(
+                      categoryTransactions[idx].amount
+                    )}元`
+                  );
+                  return true;
+                } else {
+                  failedTransactions.push(id);
+                  return false;
+                }
+              } catch (error) {
+                // 如果出錯，假設交易已被刪除
+                deletedTransactions.push(
+                  `${categoryTransactions[idx].date} ${Math.abs(
+                    categoryTransactions[idx].amount
+                  )}元`
+                );
+                return true;
+              }
+            })
+          );
+
+          console.log(`====== 交易記錄刪除結果 ======`);
+          console.log(
+            `成功刪除: ${deleteResult.deletedCount}/${categoryTransactions.length} 筆交易`
+          );
+
+          if (deletedTransactions.length > 0) {
+            console.log("成功刪除的交易:");
+            deletedTransactions.forEach((tx, idx) => {
+              console.log(`[${idx + 1}] ${tx}`);
+            });
+          }
+
+          if (failedTransactions.length > 0) {
+            console.log("刪除失敗的交易ID:");
+            failedTransactions.forEach((id, idx) => {
+              console.log(`[${idx + 1}] ${id}`);
+            });
+          }
+        }
+
+        // 2. 然后删除类型
+        let categoryDeleteSuccess = false;
         if (categoryToRemove.user_id === null) {
-          // 系統預設類別 - 創建一個用戶特定的"刪除標記"記錄
+          // 系統預設類別 - 創建一個標記為已刪除的記錄
           const url = `${SUPABASE_URL}/categories`;
 
           // 準備要創建的數據 - 創建一個與系統預設同名但標記為已刪除的用戶特定記錄
@@ -596,54 +698,109 @@ export default function TransactionDetail({
             body: JSON.stringify(createData),
           });
 
-          if (!response.ok) {
+          categoryDeleteSuccess = response.ok;
+          if (!categoryDeleteSuccess) {
             const errorText = await response.text();
             console.error(
               "Create delete marker error response body:",
               errorText
             );
-            showToastNotification("刪除類別失敗，請稍後再試", "error");
-            return;
           }
         } else {
-          // 用戶自定義類別 - 直接標記為已刪除
+          // 用戶自定義類別 - 直接從資料庫刪除
           const url = `${SUPABASE_URL}/categories?id=eq.${categoryToRemove.id}`;
 
-          // 發送 API 請求更新類別為已刪除
+          // 發送 API 請求刪除類別
           const response = await fetch(url, {
-            method: "PATCH",
+            method: "DELETE",
             headers: {
               "Content-Type": "application/json",
               apikey: SUPABASE_KEY,
-              Prefer: "return=representation",
+              Prefer: "return=minimal",
             },
-            body: JSON.stringify({
-              is_deleted: true,
-            }),
           });
 
-          if (!response.ok) {
+          categoryDeleteSuccess = response.ok;
+          if (!categoryDeleteSuccess) {
             const errorText = await response.text();
             console.error("Delete category error response body:", errorText);
-            showToastNotification("刪除類別失敗，請稍後再試", "error");
-            return;
           }
         }
+
+        console.log(`====== 類型刪除結果 ======`);
+        console.log(
+          `類型 "${categoryToDelete}" ${
+            categoryDeleteSuccess ? "刪除成功" : "刪除失敗"
+          }`
+        );
+        console.log(`====== 刪除操作完成 ======`);
 
         // 重新獲取類別列表
         await fetchCategoriesFromDb();
 
-        // 顯示成功通知
-        showToastNotification("類別已刪除", "success");
+        // 顯示結果通知
+        if (categoryDeleteSuccess) {
+          if (categoryTransactions.length > 0) {
+            if (deleteResult.success) {
+              // 构建删除交易的详细信息字符串
+              let deletedDetailsMsg = `類型及其 ${deleteResult.deletedCount} 筆交易已刪除`;
+              // 如果删除的交易数量不多，可以显示详细信息
+              if (
+                deletedTransactions.length > 0 &&
+                deletedTransactions.length <= 3
+              ) {
+                deletedDetailsMsg += `\n包括: ${deletedTransactions.join(
+                  ", "
+                )}`;
+              }
+              showToastNotification(deletedDetailsMsg, "success");
+            } else if (deleteResult.deletedCount > 0) {
+              showToastNotification(
+                `類型已刪除，但部分交易（${deleteResult.deletedCount}/${categoryTransactions.length}）刪除失敗`,
+                "warning"
+              );
+            } else {
+              showToastNotification(
+                "類型已刪除，但交易記錄刪除失敗",
+                "warning"
+              );
+            }
+          } else {
+            showToastNotification("類型已刪除", "success");
+          }
+        } else {
+          showToastNotification("刪除類型失敗，請稍後再試", "error");
+        }
       } else {
         // 如果找不到類別 (也許是本地測試數據)，只需更新本地狀態
         if (transaction) {
           updateCategoryNamesByType(dbCategories, transaction.type);
         }
+        showToastNotification("類型已刪除", "success");
       }
     } catch (error) {
       console.error("Error deleting category:", error);
-      showToastNotification("刪除類別失敗，請稍後再試", "error");
+      showToastNotification("刪除類型失敗，請稍後再試", "error");
+    }
+  };
+
+  // 添加获取类型交易数量的方法
+  const getCategoryTransactionCount = async (
+    category: string
+  ): Promise<number> => {
+    try {
+      // 获取用户ID
+      const userId = await getUserIdFromLiff();
+      if (!userId) {
+        return 0;
+      }
+
+      // 查询该类型的交易记录
+      const transactions = await fetchTransactionsByCategory(userId, category);
+      return transactions.length;
+    } catch (error) {
+      console.error("Error getting category transaction count:", error);
+      return 0;
     }
   };
 
@@ -724,6 +881,8 @@ export default function TransactionDetail({
               onToggleEditMode={handleToggleCategoryEditMode}
               onDeleteCategory={handleDeleteCategory}
               onAddCategory={handleAddCategory}
+              onSaveNewCategory={handleSaveNewCategory}
+              getCategoryTransactionCount={getCategoryTransactionCount}
             />
           </div>
 

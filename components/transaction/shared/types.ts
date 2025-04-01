@@ -8,11 +8,11 @@ export interface Transaction {
   date: string;
   type: "expense" | "income";
   note: string;
-  isFixed: boolean;
+  isFixed?: boolean;
   fixedInterval?: number;
   fixedFrequency?: "day" | "week" | "month";
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // 定義類別介面

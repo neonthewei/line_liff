@@ -106,8 +106,8 @@ export function useCategories(
 
     try {
       setIsLoading(true);
-      // 構建 API URL
-      const url = `${SUPABASE_URL}/categories`;
+      // 構建 API URL 避免 rest/v1 路徑重複
+      const url = `${SUPABASE_URL}/categories?or=(user_id.eq.${userId},user_id.is.null)`;
 
       // 發送 API 請求
       const response = await fetch(url, {
@@ -115,6 +115,7 @@ export function useCategories(
         headers: {
           "Content-Type": "application/json",
           apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
         },
       });
 
@@ -123,6 +124,9 @@ export function useCategories(
       }
 
       const data = await response.json();
+
+      // Log categories before filtering
+      console.log("Fetched categories before filtering:", data);
 
       // 先找出用戶已刪除的類別名稱（包括系統預設類別）
       const userDeletedCategoryNames = data

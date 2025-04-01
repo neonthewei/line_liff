@@ -13,6 +13,7 @@ interface ActionButtonsProps {
 interface DeleteModalProps {
   onConfirm: () => void;
   onCancel: () => void;
+  transactionCount?: number;
 }
 
 // 操作按鈕元件
@@ -76,7 +77,7 @@ export function ActionButtons({
 }
 
 // 刪除確認對話框元件
-export function DeleteModal({ onConfirm, onCancel }: DeleteModalProps) {
+export function DeleteModal({ onConfirm, onCancel, transactionCount = 0 }: DeleteModalProps) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 animate-fadeIn"
@@ -93,9 +94,15 @@ export function DeleteModal({ onConfirm, onCancel }: DeleteModalProps) {
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             確定要刪除嗎？
           </h3>
-          <p className="text-sm text-gray-500">
-            此操作無法復原，刪除後資料將永久消失。
-          </p>
+          {transactionCount > 0 ? (
+            <p className="text-sm text-red-500 font-medium">
+              注意: 所有 {transactionCount} 筆屬於此類型的交易記錄也將被刪除。
+            </p>
+          ) : (
+            <p className="text-sm text-gray-500">
+              此操作無法復原，刪除後資料將永久消失。
+            </p>
+          )}
         </div>
         <div className="flex gap-3 mt-6">
           <button

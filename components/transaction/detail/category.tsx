@@ -9,6 +9,62 @@ interface CategoryProps {
   onToggleEditMode: () => void;
   onDeleteCategory: (category: string) => void;
   onAddCategory: () => void;
+  onSaveNewCategory?: (category: string) => void;
+  getCategoryTransactionCount?: (category: string) => Promise<number>;
+}
+
+// 添加DeleteModal组件
+interface DeleteModalProps {
+  category: string;
+  transactionCount: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+// 删除确认对话框组件
+function DeleteModal({
+  category,
+  transactionCount,
+  onConfirm,
+  onCancel,
+}: DeleteModalProps) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 animate-fadeIn"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-white rounded-2xl p-6 w-full max-w-xs shadow-xl transform animate-scaleInStatic"
+        onClick={(e) => e.stopPropagation()} // 防止点击内容区域时关闭窗口
+      >
+        <div className="text-center mb-4">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-100 mb-4">
+            <X className="h-6 w-6 text-red-500" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-3">
+            確定要刪除類型嗎？
+          </h3>
+          <p className="text-sm text-red-500 font-medium">
+            注意：屬於此類型的 {transactionCount} 筆記錄也將被刪除。
+          </p>
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2 rounded-xl bg-gray-200 text-gray-700 font-medium transition-all duration-150 active:bg-gray-300"
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 py-2 rounded-xl bg-red-500 text-white font-medium transition-all duration-150 active:bg-red-600"
+          >
+            確定刪除
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function Category({
@@ -19,35 +75,85 @@ export function Category({
   onToggleEditMode,
   onDeleteCategory,
   onAddCategory,
+  onSaveNewCategory,
+  getCategoryTransactionCount,
 }: CategoryProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState("");
+
+  // 添加删除确认相关状态
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState("");
+  const [transactionCount, setTransactionCount] = useState(0);
 
   const handleToggleExpand = () => {
     setIsExpanded(!isExpanded);
   };
 
   const handleAddClick = () => {
+    // Tell the parent component we're starting to add a category
+    onAddCategory();
+    // Then update our local state
     setIsAddingCategory(true);
     setNewCategory("");
-    onAddCategory();
   };
 
   const handleSaveNewCategory = () => {
     if (newCategory.trim() !== "") {
-      // 調用父組件傳入的方法來保存新類別
-      // 這個函數通常會在父組件中實現
+      onSaveNewCategory?.(newCategory.trim());
     }
     setIsAddingCategory(false);
   };
 
   const handleCancelAddCategory = () => {
     setIsAddingCategory(false);
+    setNewCategory("");
+    // Notify parent component if needed
+  };
+
+  // 修改处理删除点击的函数，添加获取交易数量的参数
+  const handleDeleteClick = async (category: string) => {
+    setCategoryToDelete(category);
+
+    // 查询交易数量
+    try {
+      // 这里只设置为准备删除的状态，交易数量会由父组件通过回调函数提供
+      const count = (await getCategoryTransactionCount?.(category)) || 0;
+      setTransactionCount(count);
+    } catch (error) {
+      console.error("Error checking category transactions count:", error);
+      setTransactionCount(0);
+    }
+
+    setShowDeleteModal(true);
+  };
+
+  // 确认删除
+  const confirmDelete = () => {
+    if (categoryToDelete) {
+      onDeleteCategory(categoryToDelete);
+    }
+    setShowDeleteModal(false);
+  };
+
+  // 取消删除
+  const cancelDelete = () => {
+    setShowDeleteModal(false);
   };
 
   return (
     <div className="flex flex-col">
+      {/* 删除确认弹窗 */}
+      {showDeleteModal && (
+        <DeleteModal
+          category={categoryToDelete}
+          transactionCount={transactionCount}
+          onConfirm={confirmDelete}
+          onCancel={cancelDelete}
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <span className="text-gray-600 pl-2">類型</span>
         <div
@@ -90,7 +196,7 @@ export function Category({
                       className="w-full h-full flex items-center justify-center active:bg-gray-300 active:scale-[0.98] transition-all duration-150"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onDeleteCategory(category);
+                        handleDeleteClick(category);
                       }}
                       aria-label={`刪除${category}類型`}
                     >
@@ -157,9 +263,7 @@ export function Category({
               <input
                 type="text"
                 value={newCategory}
-                onChange={(e) => {
-                  setNewCategory(e.target.value);
-                }}
+                onChange={(e) => setNewCategory(e.target.value)}
                 placeholder="輸入新類型"
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none"
                 autoFocus
