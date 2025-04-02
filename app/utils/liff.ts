@@ -3,12 +3,6 @@ import liff from "@line/liff";
 // LIFF 初始化狀態
 let isInitialized = false;
 
-// 追蹤最後一次初始化時間和登錄嘗試時間，用於防止短時間內重複操作
-let lastInitTime = 0;
-let lastLoginTime = 0;
-// 最短重複操作間隔 (毫秒)
-const MIN_OPERATION_INTERVAL = 3000; // 3秒
-
 // 開發模式標誌 - 設置為 true 可以在本地開發時繞過 LIFF 初始化
 const DEV_MODE = process.env.NODE_ENV === "development";
 const BYPASS_LIFF = DEV_MODE && process.env.NEXT_PUBLIC_BYPASS_LIFF === "true";
@@ -58,70 +52,11 @@ export function getLiffId(): string {
 
 // 初始化 LIFF
 export async function initializeLiff() {
-  // 檢查LIFF對象是否可用，如果已初始化
-  if (isInitialized && isLiffAvailable()) {
-    console.log("LIFF already initialized (module state) and available");
+  // 避免重複初始化
+  if (isInitialized) {
+    console.log("LIFF already initialized");
     return true;
   }
-
-  // 如果標記了初始化，但LIFF對象不可用，則重置狀態
-  if (isInitialized && !isLiffAvailable()) {
-    console.log(
-      "LIFF was marked as initialized but object is not available, resetting state"
-    );
-    isInitialized = false;
-    try {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("liff_initialized");
-      }
-    } catch (error) {
-      console.error("Failed to clear localStorage initialization flag:", error);
-    }
-  }
-
-  // 檢查localStorage中的初始化狀態
-  try {
-    if (
-      typeof window !== "undefined" &&
-      localStorage.getItem("liff_initialized") === "true" &&
-      isLiffAvailable()
-    ) {
-      console.log(
-        "LIFF already initialized (localStorage state) and available"
-      );
-      isInitialized = true;
-      return true;
-    } else if (
-      typeof window !== "undefined" &&
-      localStorage.getItem("liff_initialized") === "true" &&
-      !isLiffAvailable()
-    ) {
-      console.log(
-        "LIFF was marked as initialized in localStorage but object is not available, resetting"
-      );
-      localStorage.removeItem("liff_initialized");
-    }
-  } catch (error) {
-    console.error(
-      "Failed to check localStorage for LIFF initialization status:",
-      error
-    );
-  }
-
-  // 防止短時間內重複初始化 (防抖)
-  const now = Date.now();
-  if (now - lastInitTime < MIN_OPERATION_INTERVAL) {
-    console.log(
-      `Throttling LIFF initialization, last attempt was ${
-        now - lastInitTime
-      }ms ago`
-    );
-    return isInitialized; // 返回當前初始化狀態
-  }
-  lastInitTime = now;
-
-  // 記錄初始化嘗試
-  console.log("Attempting to initialize LIFF...");
 
   // 在開發模式下，如果設置了繞過 LIFF，則直接返回
   if (BYPASS_LIFF) {
@@ -138,14 +73,7 @@ export async function initializeLiff() {
           pictureUrl: "https://profile.line-scdn.net/placeholder-image.png",
           statusMessage: "開發模式測試用戶",
         }),
-        login: () => {
-          console.log("LIFF login called in dev mode");
-          // 模擬登錄成功事件
-          if (typeof window !== "undefined") {
-            const event = new Event("liffLoginSuccess");
-            window.dispatchEvent(event);
-          }
-        },
+        login: () => console.log("LIFF login called in dev mode"),
         getAccessToken: () => "dev-token",
         getContext: async () => ({ type: "external" }),
         closeWindow: () => console.log("LIFF closeWindow called in dev mode"),
@@ -158,18 +86,6 @@ export async function initializeLiff() {
     }
 
     isInitialized = true;
-    // 保存初始化狀態到localStorage
-    try {
-      if (typeof window !== "undefined") {
-        localStorage.setItem("liff_initialized", "true");
-      }
-    } catch (error) {
-      console.error(
-        "Failed to save LIFF initialization status to localStorage:",
-        error
-      );
-    }
-
     return true;
   }
 
@@ -197,14 +113,6 @@ export async function initializeLiff() {
 
     console.log("Is in LINE internal browser:", isInLineInternalBrowser);
 
-    // 確保liff SDK已加載
-    if (typeof liff.init !== "function") {
-      console.error(
-        "LIFF SDK is not loaded properly. liff.init is not a function."
-      );
-      throw new Error("LIFF SDK not loaded properly");
-    }
-
     // 初始化 LIFF，參考官方範例
     await liff.init({
       liffId: liffId,
@@ -212,25 +120,7 @@ export async function initializeLiff() {
       withLoginOnExternalBrowser: !isInLineInternalBrowser,
     });
 
-    // 檢查初始化後LIFF對象是否可用
-    if (!isLiffAvailable()) {
-      throw new Error("LIFF initialized but object is not available");
-    }
-
     isInitialized = true;
-
-    // 保存初始化狀態到localStorage
-    try {
-      if (typeof window !== "undefined") {
-        localStorage.setItem("liff_initialized", "true");
-      }
-    } catch (error) {
-      console.error(
-        "Failed to save LIFF initialization status to localStorage:",
-        error
-      );
-    }
-
     console.log("LIFF initialization completed");
 
     // 記錄當前環境信息
@@ -248,91 +138,41 @@ export async function initializeLiff() {
   } catch (error) {
     console.error("LIFF initialization failed:", error);
     isInitialized = false;
-
-    // 清除失敗的初始化狀態
-    try {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("liff_initialized");
-      }
-    } catch (error) {
-      console.error(
-        "Failed to clear LIFF initialization status in localStorage:",
-        error
-      );
-    }
-
     return false;
   }
 }
 
-// 安全的LIFF登入函數，防止重複登入
-export function safeLogin(redirectUri?: string) {
-  // 檢查LIFF對象是否可用
-  if (!isLiffAvailable()) {
-    console.error("Cannot perform login - LIFF object is not available");
-    // 嘗試重新初始化
-    console.log("Attempting to re-initialize LIFF before login");
-    initializeLiff().then((initialized) => {
-      if (initialized && isLiffAvailable()) {
-        console.log(
-          "LIFF re-initialized successfully, now proceeding with login"
-        );
-        // 重新調用登錄（只有在成功重新初始化時）
-        safeLogin(redirectUri);
-      } else {
-        console.error(
-          "Failed to re-initialize LIFF, cannot proceed with login"
-        );
-        // 考慮重載頁面
-        if (typeof window !== "undefined" && window.location) {
-          console.log("Reloading page to recover");
-          window.location.reload();
-        }
-      }
-    });
+// 簡單的登入函數
+export function login(redirectUri?: string) {
+  if (typeof window === "undefined" || !window.liff) {
+    console.error("LIFF not available, cannot login");
     return;
   }
 
-  // 防止短時間內重複登入 (防抖)
-  const now = Date.now();
-  if (now - lastLoginTime < MIN_OPERATION_INTERVAL) {
-    console.log(
-      `Throttling LIFF login, last attempt was ${now - lastLoginTime}ms ago`
-    );
-    return;
-  }
-  lastLoginTime = now;
-
-  // 檢查是否已經登入
   try {
-    if (
-      typeof window !== "undefined" &&
-      window.liff &&
-      typeof window.liff.isLoggedIn === "function" &&
-      window.liff.isLoggedIn()
-    ) {
-      console.log("User is already logged in, skipping login");
+    // 檢查是否在 LINE 內部瀏覽器中
+    const isInLineInternalBrowser =
+      window.navigator.userAgent.includes("Line") &&
+      !window.navigator.userAgent.includes("LIFF");
+
+    // 在 LINE 內部瀏覽器中，可能已經登入，無需額外登入
+    if (isInLineInternalBrowser) {
+      console.log("In LINE internal browser, login may not be needed");
       return;
     }
-  } catch (error) {
-    console.error("Error checking login status:", error);
-  }
 
-  console.log("Proceeding with LIFF login");
-  try {
-    if (
-      typeof window !== "undefined" &&
-      window.liff &&
-      typeof window.liff.login === "function"
-    ) {
-      // 如果提供了重定向URI，使用它，否則使用默認
-      if (redirectUri) {
-        window.liff.login({ redirectUri });
-      } else {
-        window.liff.login();
-      }
+    // 檢查是否已登入
+    if (window.liff.isLoggedIn()) {
+      console.log("User already logged in");
+      return;
+    }
+
+    // 執行登入
+    console.log("Logging in with LIFF");
+    if (redirectUri) {
+      window.liff.login({ redirectUri });
     } else {
-      console.error("LIFF login method is not available");
+      window.liff.login();
     }
   } catch (error) {
     console.error("Error during login:", error);
@@ -356,13 +196,13 @@ export function closeLiff() {
 
   try {
     // Check if liff is available
-    if (!isLiffAvailable()) {
-      console.log("LIFF is not available, cannot close window");
+    if (typeof liff === "undefined") {
+      console.log("LIFF is undefined, cannot close window");
       return;
     }
 
     // Check if isInClient method exists
-    if (typeof window.liff.isInClient !== "function") {
+    if (typeof liff.isInClient !== "function") {
       console.log(
         "liff.isInClient is not a function, cannot check if in client"
       );
@@ -370,9 +210,9 @@ export function closeLiff() {
     }
 
     // Only close if in LIFF client
-    if (window.liff.isInClient()) {
+    if (liff.isInClient()) {
       console.log("In LIFF client, closing window");
-      window.liff.closeWindow();
+      liff.closeWindow();
     } else {
       console.log("Not in LIFF client, cannot close window");
     }

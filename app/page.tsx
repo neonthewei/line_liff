@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { initializeLiff, navigateInLiff, safeLogin } from "@/utils/liff";
+import { initializeLiff, navigateInLiff, login } from "@/utils/liff";
 import type { Transaction } from "@/types/transaction";
 import {
   MonthSelector,
@@ -100,7 +100,10 @@ export default function Home() {
         setIsLiffInitialized(isInitialized);
 
         if (!isInitialized) {
-          throw new Error("LIFF 初始化失敗");
+          console.error("LIFF 初始化失敗");
+          setError("LINE應用程式初始化失敗，請重新載入頁面");
+          setShowDebug(true);
+          return;
         }
 
         // 檢查LIFF對象是否可用
@@ -169,9 +172,9 @@ export default function Home() {
 
         // 檢查是否已登入
         if (!window.liff.isLoggedIn()) {
-          // 如果未登入，則導向登入（使用安全登入函數）
+          // 如果未登入，則導向登入
           console.log("用戶未登入，導向登入頁面");
-          safeLogin();
+          login();
           return;
         }
 
@@ -188,14 +191,14 @@ export default function Home() {
             const token = window.liff.getAccessToken();
             if (!token) {
               console.log("Access token 不存在，重新登入");
-              safeLogin();
+              login();
               return;
             }
             console.log("Access token 存在，繼續獲取用戶資料");
           } catch (tokenError) {
             console.error("獲取 access token 失敗，可能已過期", tokenError);
             console.log("嘗試重新登入");
-            safeLogin();
+            login();
             return;
           }
 
@@ -236,9 +239,9 @@ export default function Home() {
               profileError.message.includes("token"))
           ) {
             console.log("Access token 已過期，嘗試重新登入");
-            // 嘗試重新登入（使用安全登入函數）
+            // 嘗試重新登入
             try {
-              safeLogin();
+              login();
               return;
             } catch (loginError) {
               console.error("重新登入失敗", loginError);

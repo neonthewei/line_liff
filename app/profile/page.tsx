@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { initializeLiff, safeLogin } from "@/utils/liff";
+import { initializeLiff, login } from "@/utils/liff";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/shared/ui";
 import {
   ChevronRight,
@@ -153,7 +153,7 @@ export default function ProfilePage() {
         if (!window.liff.isLoggedIn()) {
           // 如果未登入，則導向登入（使用安全登入函數）
           console.log("User not logged in, redirecting to login");
-          safeLogin();
+          login();
           return;
         }
 
@@ -171,7 +171,7 @@ export default function ProfilePage() {
             const token = window.liff.getAccessToken();
             if (!token) {
               console.log("Access token does not exist, redirecting to login");
-              safeLogin();
+              login();
               return;
             }
             console.log("Access token exists, continuing to get user profile");
@@ -181,7 +181,7 @@ export default function ProfilePage() {
               tokenError
             );
             console.log("Attempting to login again");
-            safeLogin();
+            login();
             return;
           }
 

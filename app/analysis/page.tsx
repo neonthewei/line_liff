@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic"; // Import dynamic for better code splitting
-import { initializeLiff, safeLogin } from "@/utils/liff";
+import { initializeLiff, login } from "@/utils/liff";
 import type { Transaction } from "@/types/transaction";
 import { MonthSelector, ViewType, SkeletonCharts } from "@/components/analysis";
 import {
@@ -174,7 +174,7 @@ export default function AnalysePage() {
       if (!window.liff.isLoggedIn()) {
         // 如果未登入，則導向登入（使用安全登入函數）
         console.log("用戶未登入，導向登入頁面");
-        safeLogin();
+        login();
         return;
       }
 
