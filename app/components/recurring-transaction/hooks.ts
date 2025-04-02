@@ -5,6 +5,7 @@ import {
   createEmptyTransaction,
   standardizeIntervalValue,
 } from "./list";
+import { getTaipeiISOString } from "@/utils/date";
 
 // 定義 hook 的返回類型
 interface UseRecurringTransactionManagerReturn {
@@ -85,8 +86,8 @@ export const useRecurringTransactionManager = (
           frequency: newTransaction.frequency,
           start_date: newTransaction.start_date,
           end_date: newTransaction.end_date,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          created_at: getTaipeiISOString(),
+          updated_at: getTaipeiISOString(),
         }),
       });
 
@@ -144,7 +145,7 @@ export const useRecurringTransactionManager = (
             frequency: updatedTransaction.frequency,
             start_date: updatedTransaction.start_date,
             end_date: updatedTransaction.end_date,
-            updated_at: new Date().toISOString(),
+            updated_at: getTaipeiISOString(),
           }),
         }
       );

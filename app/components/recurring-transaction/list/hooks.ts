@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { RecurringTransaction, GroupedTransactions } from "./types";
 import { SUPABASE_URL, SUPABASE_KEY } from "@/utils/api";
+import { getTaipeiDateString, getTaipeiISOString } from "@/utils/date";
 
 // Hook to fetch recurring transactions
 export const useRecurringTransactions = (userId: string) => {
@@ -163,7 +164,7 @@ export const useRecurringTransactions = (userId: string) => {
 export const createEmptyTransaction = (
   userId: string
 ): RecurringTransaction => {
-  const today = new Date().toISOString().split("T")[0]; // Format as YYYY-MM-DD
+  const today = getTaipeiDateString(); // 使用台北时区的日期
   return {
     id: `temp-${Date.now()}`, // Temporary ID that will be replaced by the database
     user_id: userId,
@@ -173,7 +174,7 @@ export const createEmptyTransaction = (
     start_date: today,
     interval: "monthly",
     frequency: 1,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    created_at: getTaipeiISOString(), // 使用台北时区的ISO时间字符串
+    updated_at: getTaipeiISOString(), // 使用台北时区的ISO时间字符串
   };
 };

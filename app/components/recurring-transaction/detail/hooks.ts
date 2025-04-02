@@ -3,6 +3,7 @@ import { RecurringTransaction, Category } from "../list/types";
 import { SUPABASE_URL, SUPABASE_KEY } from "@/utils/api";
 import { isTemporaryTransaction } from "../list/utils";
 import { defaultCategories } from "./constants";
+import { getTaipeiDate } from "@/utils/date";
 
 // Hook to manage transaction editing
 export const useTransactionEditor = (
@@ -19,7 +20,7 @@ export const useTransactionEditor = (
   const [editName, setEditName] = useState("");
   const [editAmount, setEditAmount] = useState("");
   const [selectedDate, setSelectedDate] = useState<"start" | "end">("start");
-  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [calendarDate, setCalendarDate] = useState(getTaipeiDate());
   const [categories, setCategories] = useState<string[]>(defaultCategories);
   const [dbCategories, setDbCategories] = useState<Category[]>([]);
   const [isEditingCategory, setIsEditingCategory] = useState(false);
@@ -110,7 +111,7 @@ export const useTransactionEditor = (
     setEditedTransaction(transaction);
     if (transaction) {
       setEditName(transaction.memo);
-      setEditAmount(Math.abs(transaction.amount).toString());
+      setEditAmount(transaction.amount.toString());
     }
   }, [transaction]);
 
@@ -145,8 +146,8 @@ export const useTransactionEditor = (
           setCalendarDate(date);
         }
       } catch (error) {
-        // If there's an error parsing the date, use current date
-        setCalendarDate(new Date());
+        // If there's an error parsing the date, use current date in Taipei timezone
+        setCalendarDate(getTaipeiDate());
       }
     }
   }, [isEditingDates, selectedDate, editedTransaction]);

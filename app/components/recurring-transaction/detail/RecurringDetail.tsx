@@ -18,6 +18,7 @@ import { useTransactionEditor } from "./hooks";
 import { formatDateForDisplay, showToastNotification } from "./utils";
 import { isTemporaryTransaction } from "../list/utils";
 import { SUPABASE_URL, SUPABASE_KEY } from "@/utils/api";
+import { getTaipeiISOString, getTaipeiDate } from "@/utils/date";
 
 export default function RecurringDetail({
   transaction,
@@ -71,14 +72,10 @@ export default function RecurringDetail({
     // 如果類型沒有變化，不做任何操作
     if (editedTransaction.type === type) return;
 
-    // 更新本地交易對象的類型和金額
+    // 更新本地交易對象的類型，不再更改金額正負值
     const updatedTransaction = {
       ...editedTransaction,
       type,
-      amount:
-        type === "expense"
-          ? -Math.abs(editedTransaction.amount)
-          : Math.abs(editedTransaction.amount),
       // 重置類別，因為不同類型有不同的類別選項
       category: "",
     };
@@ -127,7 +124,7 @@ export default function RecurringDetail({
   // Start editing amount
   const handleStartEditAmount = () => {
     setIsEditingAmount(true);
-    setEditAmount(Math.abs(editedTransaction.amount).toString());
+    setEditAmount(editedTransaction.amount.toString());
   };
 
   // Save amount
@@ -136,10 +133,7 @@ export default function RecurringDetail({
     if (!isNaN(value)) {
       setEditedTransaction({
         ...editedTransaction,
-        amount:
-          editedTransaction.type === "expense"
-            ? -Math.abs(value)
-            : Math.abs(value),
+        amount: value, // 直接使用输入的金额，不根据类型设置正负
       });
     }
     setIsEditingAmount(false);
@@ -297,7 +291,7 @@ export default function RecurringDetail({
 
   // Generate year options for select
   const generateYearOptions = () => {
-    const currentYear = new Date().getFullYear();
+    const currentYear = getTaipeiDate().getFullYear();
     const years = [];
     for (let i = currentYear - 5; i <= currentYear + 5; i++) {
       years.push(i);
@@ -483,7 +477,7 @@ export default function RecurringDetail({
           },
           body: JSON.stringify({
             category,
-            updated_at: new Date().toISOString(),
+            updated_at: getTaipeiISOString(),
           }),
         }
       );
