@@ -27,6 +27,16 @@ export default function RecurringTransactionManager({
     handleDeleteTransaction,
   } = useRecurringTransactionManager(userId, onClose, onDataChanged);
 
+  // 自定義關閉處理器，確保在退出管理頁面時觸發數據刷新
+  const handleManagerClose = () => {
+    // 當用戶直接關閉管理器時，通知數據變更並關閉
+    if (onDataChanged) {
+      onDataChanged();
+    }
+    // 這裡調用 onClose 會真正退出整個管理器
+    onClose();
+  };
+
   // If editing or creating a transaction, show the editor
   if ((isEditing || isCreating) && selectedTransaction) {
     return (
@@ -43,7 +53,7 @@ export default function RecurringTransactionManager({
   return (
     <RecurringList
       userId={userId}
-      onClose={onClose}
+      onClose={handleManagerClose}
       onDataChanged={onDataChanged}
       onSelect={handleTransactionClick}
       onCreate={handleCreateTransaction}

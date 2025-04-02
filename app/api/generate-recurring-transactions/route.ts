@@ -32,11 +32,10 @@ export async function POST(request: NextRequest) {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // 調用 RPC 函數生成固定收支交易
+    // SQL: SELECT generate_daily_recurring_transactions('U08946a96a3892561e1c3baa589ffeaee');
     const { data, error } = await supabase.rpc(
       "generate_daily_recurring_transactions",
-      {
-        user_id_param: userId,
-      }
+      { target_user_id: userId }
     );
 
     if (error) {
@@ -106,11 +105,10 @@ export async function GET(request: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // SQL: SELECT generate_daily_recurring_transactions('U08946a96a3892561e1c3baa589ffeaee');
     const { data, error } = await supabase.rpc(
       "generate_daily_recurring_transactions",
-      {
-        user_id_param: userId,
-      }
+      { target_user_id: userId }
     );
 
     if (error) {

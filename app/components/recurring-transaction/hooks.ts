@@ -13,7 +13,7 @@ interface UseRecurringTransactionManagerReturn {
   isEditing: boolean;
   isCreating: boolean;
   handleCreateTransaction: () => void;
-  handleCloseEditor: () => void;
+  handleCloseEditor: (skipDataRefresh?: boolean) => void;
   handleTransactionClick: (transaction: RecurringTransaction) => void;
   handleSaveNewTransaction: (
     newTransaction: RecurringTransaction
@@ -33,6 +33,7 @@ export const useRecurringTransactionManager = (
     useState<RecurringTransaction | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [needsDataRefresh, setNeedsDataRefresh] = useState(false);
 
   // Handle creating a new transaction
   const handleCreateTransaction = () => {
@@ -41,10 +42,20 @@ export const useRecurringTransactionManager = (
   };
 
   // Handle close editor
-  const handleCloseEditor = () => {
+  const handleCloseEditor = (skipDataRefresh = false) => {
+    // 關閉編輯器狀態
     setIsEditing(false);
     setIsCreating(false);
     setSelectedTransaction(null);
+
+    // 如果需要刷新數據且不跳過刷新，則通知父組件
+    if (needsDataRefresh && !skipDataRefresh && onDataChanged) {
+      // 設置一個很短的延時，確保關閉編輯器的畫面切換完成後再刷新數據
+      setTimeout(() => {
+        onDataChanged();
+        setNeedsDataRefresh(false);
+      }, 50);
+    }
   };
 
   // Handle click on a recurring transaction
@@ -97,15 +108,14 @@ export const useRecurringTransactionManager = (
         );
       }
 
-      // Close editor
-      setIsCreating(false);
-      setSelectedTransaction(null);
-
       // Generate recurring transactions (this would be handled by hook in RecurringList)
       await generateRecurringTransactionsForUser(userId);
 
-      // Notify parent about data change
-      if (onDataChanged) onDataChanged();
+      // 標記需要刷新，但不立即刷新
+      setNeedsDataRefresh(true);
+
+      // 使用 handleCloseEditor 函數關閉編輯器，並跳過數據刷新
+      handleCloseEditor(true);
     } catch (error) {
       console.error("Error creating transaction:", error);
     }
@@ -156,15 +166,14 @@ export const useRecurringTransactionManager = (
         );
       }
 
-      // Close editor
-      setIsEditing(false);
-      setSelectedTransaction(null);
-
       // Generate recurring transactions for this user after update
       await generateRecurringTransactionsForUser(userId);
 
-      // Notify parent about data change
-      if (onDataChanged) onDataChanged();
+      // 標記需要刷新，但不立即刷新
+      setNeedsDataRefresh(true);
+
+      // 使用 handleCloseEditor 函數關閉編輯器，並跳過數據刷新
+      handleCloseEditor(true);
     } catch (error) {
       console.error("Error updating transaction:", error);
     }
@@ -193,13 +202,11 @@ export const useRecurringTransactionManager = (
         throw new Error(`Failed to delete transaction: ${response.statusText}`);
       }
 
-      // Close editor
-      setIsEditing(false);
-      setIsCreating(false);
-      setSelectedTransaction(null);
+      // 標記需要刷新，但不立即刷新
+      setNeedsDataRefresh(true);
 
-      // Notify parent about data change
-      if (onDataChanged) onDataChanged();
+      // 使用 handleCloseEditor 函數關閉編輯器，並跳過數據刷新
+      handleCloseEditor(true);
     } catch (error) {
       console.error("Error deleting transaction:", error);
     }
