@@ -4,26 +4,29 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { initializeLiff, navigateInLiff } from "@/utils/liff";
 import type { Transaction } from "@/types/transaction";
-import MonthSelector from "@/components/month-selector";
+import {
+  MonthSelector,
+  MonthSummary,
+  TabSelector,
+} from "@/components/shared/ui";
 import {
   fetchTransactionsByUser,
   fetchMonthlySummary,
   clearTransactionCache,
 } from "@/utils/api";
-import MonthSummary from "@/components/month-summary";
-import TabSelector from "@/components/tab-selector";
-import TransactionList, {
+import { TransactionList } from "@/components/general-transaction";
+import {
   TransactionSkeleton,
   HeaderSkeleton,
-} from "@/components/transaction-list/index";
-import DebugConsole from "@/components/debug-console";
+} from "@/components/general-transaction/list/Skeletons";
+import { DebugConsole } from "@/components/shared/utils";
 import {
   initConsoleCapture,
   getCaptureLogs,
   getCaptureErrors,
   addCustomLog,
 } from "@/utils/debug";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/shared/ui";
 
 // LIFF 類型聲明
 declare global {
@@ -395,7 +398,9 @@ export default function Home() {
                   onTransactionClick={handleTransactionClick}
                   showDebugInfo={showDebug}
                   userId={userId}
-                  onTransactionUpdate={async (updatedTransactions) => {
+                  onTransactionUpdate={async (
+                    updatedTransactions: Transaction[]
+                  ) => {
                     console.log("onTransactionUpdate 被調用，開始更新數據...");
 
                     // 清除快取

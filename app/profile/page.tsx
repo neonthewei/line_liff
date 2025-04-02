@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { initializeLiff } from "@/utils/liff";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/shared/ui";
 import {
   ChevronRight,
   BookOpen,
@@ -212,31 +212,31 @@ export default function ProfilePage() {
       id: "tutorial",
       name: "新手教學",
       icon: <BookOpen className="h-5 w-5 text-gray-600" />,
-      href: "/tutorial",
+      disabled: true,
     },
     {
       id: "feedback",
       name: "回饋表單",
       icon: <MessageSquare className="h-5 w-5 text-gray-600" />,
-      href: "/feedback",
+      disabled: true,
     },
     {
       id: "export",
       name: "匯出帳本",
       icon: <Download className="h-5 w-5 text-gray-600" />,
-      href: "/export",
+      disabled: true,
     },
     {
       id: "payment",
       name: "付費狀況",
       icon: <CreditCard className="h-5 w-5 text-gray-600" />,
-      href: "/payment",
+      disabled: true,
     },
     {
       id: "replies",
       name: "個性回覆",
       icon: <MessageCircle className="h-5 w-5 text-gray-600" />,
-      href: "/replies",
+      disabled: true,
     },
   ];
 
@@ -325,19 +325,34 @@ export default function ProfilePage() {
       <div className="flex-1 pt-0">
         <div className="bg-white rounded-lg overflow-hidden">
           {menuItems.map((item, index) => (
-            <Link
+            <button
               key={item.id}
-              href={item.href}
-              className={`flex items-center justify-between p-4 bg-gray-50 mb-2 rounded-2xl hover:bg-gray-100 transition-colors`}
+              className={`flex items-center justify-between p-4 w-full bg-gray-50 mb-2 rounded-2xl transition-colors ${
+                item.disabled
+                  ? "opacity-60 cursor-not-allowed"
+                  : "hover:bg-gray-100"
+              }`}
               aria-label={item.name}
-              tabIndex={0}
+              tabIndex={item.disabled ? -1 : 0}
+              disabled={item.disabled}
+              onClick={() => {
+                if (!item.disabled) {
+                  router.push(`/${item.id}`);
+                }
+              }}
             >
               <div className="flex items-center">
                 {item.icon}
                 <span className="ml-3 text-gray-700">{item.name}</span>
               </div>
-              <ChevronRight className="h-5 w-5 text-gray-400" />
-            </Link>
+              {item.disabled ? (
+                <span className="text-xs text-gray-500 px-2 py-1 bg-gray-200 rounded-md">
+                  即將上線
+                </span>
+              ) : (
+                <ChevronRight className="h-5 w-5 text-gray-400" />
+              )}
+            </button>
           ))}
         </div>
       </div>

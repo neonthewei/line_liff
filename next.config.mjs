@@ -16,6 +16,10 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // Path aliases
+  experimental: {
+    appDir: true,
+  },
   // Production optimizations
   swcMinify: true, // Use SWC for minification (faster than Terser)
   reactStrictMode: true,
@@ -37,6 +41,7 @@ const nextConfig = {
         : false,
   },
   experimental: {
+    appDir: true,
     webpackBuildWorker: true,
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
