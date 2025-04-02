@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { initializeLiff, navigateInLiff } from "@/utils/liff";
+import { initializeLiff, navigateInLiff, safeLogin } from "@/utils/liff";
 import type { Transaction } from "@/types/transaction";
 import {
   MonthSelector,
@@ -103,6 +103,18 @@ export default function Home() {
           throw new Error("LIFF 初始化失敗");
         }
 
+        // 檢查LIFF對象是否可用
+        if (
+          typeof window === "undefined" ||
+          !window.liff ||
+          typeof window.liff !== "object"
+        ) {
+          console.error("LIFF object is not available after initialization");
+          setError("LIFF 對象不可用，請重新載入頁面");
+          setShowDebug(true);
+          return;
+        }
+
         // 如果在 LINE 內部瀏覽器中，跳過登入檢查
         if (isInLineInternalBrowser) {
           console.log("In LINE internal browser, skipping login check");
@@ -122,7 +134,7 @@ export default function Home() {
             // 嘗試從 LIFF context 獲取用戶 ID
             try {
               if (window.liff && typeof window.liff.getContext === "function") {
-                const context = window.liff.getContext();
+                const context = await window.liff.getContext();
                 console.log("LIFF Context for user ID:", context);
 
                 if (context && context.userId) {
@@ -147,11 +159,19 @@ export default function Home() {
           }
         }
 
+        // 安全檢查 isLoggedIn 方法是否存在
+        if (typeof window.liff.isLoggedIn !== "function") {
+          console.error("window.liff.isLoggedIn is not a function");
+          setError("LIFF 功能不可用，請重新載入頁面");
+          setShowDebug(true);
+          return;
+        }
+
         // 檢查是否已登入
         if (!window.liff.isLoggedIn()) {
-          // 如果未登入，則導向登入
+          // 如果未登入，則導向登入（使用安全登入函數）
           console.log("用戶未登入，導向登入頁面");
-          window.liff.login();
+          safeLogin();
           return;
         }
 
@@ -159,18 +179,30 @@ export default function Home() {
         try {
           // 先檢查 access token 是否有效
           try {
+            // 安全檢查 getAccessToken 方法是否存在
+            if (typeof window.liff.getAccessToken !== "function") {
+              console.error("window.liff.getAccessToken is not a function");
+              throw new Error("LIFF getAccessToken method is not available");
+            }
+
             const token = window.liff.getAccessToken();
             if (!token) {
               console.log("Access token 不存在，重新登入");
-              window.liff.login();
+              safeLogin();
               return;
             }
             console.log("Access token 存在，繼續獲取用戶資料");
           } catch (tokenError) {
             console.error("獲取 access token 失敗，可能已過期", tokenError);
             console.log("嘗試重新登入");
-            window.liff.login();
+            safeLogin();
             return;
+          }
+
+          // 安全檢查 getProfile 方法是否存在
+          if (typeof window.liff.getProfile !== "function") {
+            console.error("window.liff.getProfile is not a function");
+            throw new Error("LIFF getProfile method is not available");
           }
 
           const profile = await window.liff.getProfile();
@@ -204,9 +236,9 @@ export default function Home() {
               profileError.message.includes("token"))
           ) {
             console.log("Access token 已過期，嘗試重新登入");
-            // 嘗試重新登入
+            // 嘗試重新登入（使用安全登入函數）
             try {
-              window.liff.login();
+              safeLogin();
               return;
             } catch (loginError) {
               console.error("重新登入失敗", loginError);

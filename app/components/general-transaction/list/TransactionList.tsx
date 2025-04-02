@@ -76,18 +76,10 @@ export default function TransactionList({
     setIsDebugMode(showDebugInfo);
   }, [showDebugInfo, setIsDebugMode]);
 
-  // 更新前一个标签引用
+  // 更新前一个标签引用 - 移除动画重置和延迟
   useEffect(() => {
     if (prevTabRef.current !== activeTab) {
-      // Tab is changing, trigger animation reset
-      setAnimationKey((prev) => prev + 1);
-
-      // Set a small delay before updating the previous tab reference
-      const timer = setTimeout(() => {
-        prevTabRef.current = activeTab;
-      }, 50);
-
-      return () => clearTimeout(timer);
+      prevTabRef.current = activeTab;
     }
   }, [activeTab]);
 
@@ -254,7 +246,8 @@ export default function TransactionList({
               : {
                   opacity: 1,
                   maxHeight: "1000px",
-                  transition: "all 250ms cubic-bezier(0.4, 0, 0.2, 1)",
+                  // 移除非动画状态下的过渡效果
+                  transition: "none",
                 };
 
             return (

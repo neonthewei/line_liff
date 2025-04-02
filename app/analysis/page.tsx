@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic"; // Import dynamic for better code splitting
-import { initializeLiff } from "@/utils/liff";
+import { initializeLiff, safeLogin } from "@/utils/liff";
 import type { Transaction } from "@/types/transaction";
 import { MonthSelector, ViewType, SkeletonCharts } from "@/components/analysis";
 import {
@@ -126,13 +126,24 @@ export default function AnalysePage() {
         throw new Error("LIFF 初始化失敗");
       }
 
+      // 檢查LIFF對象是否可用
+      if (
+        typeof window === "undefined" ||
+        !window.liff ||
+        typeof window.liff !== "object"
+      ) {
+        console.error("LIFF object is not available after initialization");
+        setError("LIFF 對象不可用，請重新載入頁面");
+        return;
+      }
+
       // 如果在 LINE 內部瀏覽器中，嘗試從 LIFF context 獲取用戶 ID
       if (isInLineInternalBrowser) {
         console.log("In LINE internal browser, checking for user ID");
 
         try {
           if (window.liff && typeof window.liff.getContext === "function") {
-            const context = window.liff.getContext();
+            const context = await window.liff.getContext();
             console.log("LIFF Context for user ID:", context);
 
             if (context && context.userId) {
@@ -152,12 +163,25 @@ export default function AnalysePage() {
         return;
       }
 
+      // 安全檢查 isLoggedIn 方法是否存在
+      if (typeof window.liff.isLoggedIn !== "function") {
+        console.error("window.liff.isLoggedIn is not a function");
+        setError("LIFF 功能不可用，請重新載入頁面");
+        return;
+      }
+
       // 檢查是否已登入
       if (!window.liff.isLoggedIn()) {
-        // 如果未登入，則導向登入
+        // 如果未登入，則導向登入（使用安全登入函數）
         console.log("用戶未登入，導向登入頁面");
-        window.liff.login();
+        safeLogin();
         return;
+      }
+
+      // 安全檢查 getProfile 方法是否存在
+      if (typeof window.liff.getProfile !== "function") {
+        console.error("window.liff.getProfile is not a function");
+        throw new Error("LIFF getProfile method is not available");
       }
 
       // 用戶已登入，獲取用戶資料

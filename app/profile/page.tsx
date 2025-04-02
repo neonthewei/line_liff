@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { initializeLiff } from "@/utils/liff";
+import { initializeLiff, safeLogin } from "@/utils/liff";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/shared/ui";
 import {
   ChevronRight,
@@ -60,6 +60,18 @@ export default function ProfilePage() {
           throw new Error("LIFF 初始化失敗");
         }
 
+        // 檢查LIFF對象是否可用
+        if (
+          typeof window === "undefined" ||
+          !window.liff ||
+          typeof window.liff !== "object"
+        ) {
+          console.error("LIFF object is not available after initialization");
+          setError("LIFF 對象不可用，請重新載入頁面");
+          setIsLoading(false);
+          return;
+        }
+
         // 如果在 LINE 內部瀏覽器中，嘗試從 localStorage 獲取用戶資料
         if (isInLineInternalBrowser) {
           console.log(
@@ -88,13 +100,20 @@ export default function ProfilePage() {
             // 嘗試從 LIFF context 獲取用戶 ID
             try {
               if (window.liff && typeof window.liff.getContext === "function") {
-                const context = window.liff.getContext();
+                const context = await window.liff.getContext();
                 console.log("LIFF Context for user ID:", context);
 
                 if (context && context.userId) {
                   console.log("Found user ID in LIFF context:", context.userId);
                   // 如果有 userId 但沒有完整資料，可以嘗試獲取完整資料
                   try {
+                    if (typeof window.liff.getProfile !== "function") {
+                      console.error("window.liff.getProfile is not a function");
+                      throw new Error(
+                        "LIFF getProfile method is not available"
+                      );
+                    }
+
                     const profile = await window.liff.getProfile();
                     if (profile && profile.userId) {
                       setUserProfile(profile);
@@ -122,11 +141,19 @@ export default function ProfilePage() {
           }
         }
 
+        // 安全檢查 isLoggedIn 方法是否存在
+        if (typeof window.liff.isLoggedIn !== "function") {
+          console.error("window.liff.isLoggedIn is not a function");
+          setError("LIFF 功能不可用，請重新載入頁面");
+          setIsLoading(false);
+          return;
+        }
+
         // 檢查是否已登入
         if (!window.liff.isLoggedIn()) {
-          // 如果未登入，則導向登入
+          // 如果未登入，則導向登入（使用安全登入函數）
           console.log("User not logged in, redirecting to login");
-          window.liff.login();
+          safeLogin();
           return;
         }
 
@@ -135,10 +162,16 @@ export default function ProfilePage() {
         try {
           // 先檢查 access token 是否有效
           try {
+            // 安全檢查 getAccessToken 方法是否存在
+            if (typeof window.liff.getAccessToken !== "function") {
+              console.error("window.liff.getAccessToken is not a function");
+              throw new Error("LIFF getAccessToken method is not available");
+            }
+
             const token = window.liff.getAccessToken();
             if (!token) {
               console.log("Access token does not exist, redirecting to login");
-              window.liff.login();
+              safeLogin();
               return;
             }
             console.log("Access token exists, continuing to get user profile");
@@ -148,8 +181,14 @@ export default function ProfilePage() {
               tokenError
             );
             console.log("Attempting to login again");
-            window.liff.login();
+            safeLogin();
             return;
+          }
+
+          // 安全檢查 getProfile 方法是否存在
+          if (typeof window.liff.getProfile !== "function") {
+            console.error("window.liff.getProfile is not a function");
+            throw new Error("LIFF getProfile method is not available");
           }
 
           const profile = await window.liff.getProfile();

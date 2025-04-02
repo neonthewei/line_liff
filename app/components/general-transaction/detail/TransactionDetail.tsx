@@ -461,7 +461,8 @@ export default function TransactionDetail({
         // 如果提供了 onUpdate 函數，則調用它
         if (onUpdate) {
           onUpdate(transaction);
-          showNotification("儲存成功", "success");
+          // For both income and expense, use the same approach without showing a toast here
+          // The parent component will handle any necessary UI updates
 
           // 給 UI 一點時間更新，然後再返回
           setTimeout(navigateBackToList, 800);
@@ -924,7 +925,7 @@ export default function TransactionDetail({
   );
 
   // 渲染加載狀態
-  if (isInitializing || isLoading) return <Skeleton />;
+  if ((isInitializing || isLoading) && !initialTransaction) return <Skeleton />;
 
   // 渲染錯誤狀態 (找不到交易)
   if (!transaction)
