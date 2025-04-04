@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { Button } from "@/components/shared/ui/button";
@@ -164,7 +164,8 @@ const login = () => {
   }
 };
 
-export default function AuthTestPage() {
+// 這個組件將使用 useSearchParams
+function AuthContent() {
   const searchParams = useSearchParams();
   const callbackStatus = searchParams.get("callback");
   const [logs, setLogs] = useState<string[]>([]);
@@ -724,5 +725,20 @@ export default function AuthTestPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// 主頁面組件
+export default function AuthTestPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex justify-center items-center min-h-screen">
+          <Spinner />
+        </div>
+      }
+    >
+      <AuthContent />
+    </Suspense>
   );
 }

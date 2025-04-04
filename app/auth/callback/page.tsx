@@ -1,17 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
 
-export default function AuthCallback() {
-  const router = useRouter();
-
-  useEffect(() => {
-    // Supabase 會自動處理 OAuth 回調和會話設置
-    // 我們只需將用戶重定向回主認證頁面
-    router.push("/auth");
-  }, [router]);
-
+// 加載組件
+function LoadingScreen() {
   return (
     <div className="flex h-screen w-full flex-col items-center justify-center">
       <div className="w-full max-w-md p-8 space-y-4 bg-white rounded-lg shadow-md">
@@ -22,5 +15,26 @@ export default function AuthCallback() {
         </div>
       </div>
     </div>
+  );
+}
+
+// 使用 useRouter 的組件
+function CallbackContent() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Supabase 會自動處理 OAuth 回調和會話設置
+    // 我們只需將用戶重定向回主認證頁面
+    router.push("/auth");
+  }, [router]);
+
+  return <LoadingScreen />;
+}
+
+export default function AuthCallback() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <CallbackContent />
+    </Suspense>
   );
 }
