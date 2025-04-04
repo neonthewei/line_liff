@@ -13,6 +13,8 @@ import {
   fetchTransactionsByUser,
   fetchMonthlySummary,
   clearTransactionCache,
+  fetchAccountBookMonthlySummary,
+  fetchUserAccountBooks,
 } from "@/utils/api";
 import { TransactionList } from "@/components/general-transaction";
 import {
@@ -35,6 +37,17 @@ declare global {
   }
 }
 
+// 帳本類型定義
+interface AccountBook {
+  id: string;
+  name: string;
+  summary: {
+    totalExpense: number;
+    totalIncome: number;
+    balance: number;
+  };
+}
+
 export default function Home() {
   const router = useRouter();
   const [isLiffInitialized, setIsLiffInitialized] = useState(false);
@@ -49,6 +62,16 @@ export default function Home() {
     totalIncome: 0,
     balance: 0,
   });
+  // 帳本相關狀態
+  const [accountBooks, setAccountBooks] = useState<AccountBook[]>([
+    {
+      id: "default",
+      name: "默认账本",
+      summary: { totalExpense: 0, totalIncome: 0, balance: 0 },
+    },
+  ]);
+  const [currentAccountBook, setCurrentAccountBook] =
+    useState<string>("default");
   const [error, setError] = useState<string | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
@@ -127,6 +150,14 @@ export default function Home() {
             console.log("Using stored user ID:", storedUserId);
             setUserId(storedUserId);
             addCustomLog(`使用存儲的用戶 ID: ${storedUserId}`);
+
+            // 載入存儲的當前帳本
+            const storedAccountBook =
+              localStorage.getItem("currentAccountBook");
+            if (storedAccountBook) {
+              setCurrentAccountBook(storedAccountBook);
+              console.log("Using stored account book:", storedAccountBook);
+            }
 
             // 直接設置 LIFF 初始化完成，以便開始獲取數據
             setIsLiffInitialized(true);
@@ -217,6 +248,14 @@ export default function Home() {
             try {
               localStorage.setItem("userId", profile.userId);
               console.log("Saved user ID to localStorage:", profile.userId);
+
+              // 載入存儲的當前帳本
+              const storedAccountBook =
+                localStorage.getItem("currentAccountBook");
+              if (storedAccountBook) {
+                setCurrentAccountBook(storedAccountBook);
+                console.log("Using stored account book:", storedAccountBook);
+              }
             } catch (storageError) {
               console.error(
                 "Failed to save user ID to localStorage:",
@@ -261,6 +300,54 @@ export default function Home() {
     initLiff();
   }, []);
 
+  // 獲取帳本列表
+  const fetchAccountBooks = useCallback(async () => {
+    if (!userId) return;
+
+    try {
+      // 從數據庫獲取帳本列表
+      const accountBooks = await fetchUserAccountBooks(userId);
+
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth() + 1;
+
+      // 並行獲取所有帳本的摘要
+      const summaries = await Promise.all(
+        accountBooks.map(async (book) => {
+          const summary = await fetchAccountBookMonthlySummary(
+            userId,
+            book.id,
+            year,
+            month
+          );
+          return {
+            id: book.id,
+            name: book.name,
+            summary,
+          };
+        })
+      );
+
+      console.log(`成功獲取 ${summaries.length} 個帳本摘要`);
+      setAccountBooks(summaries);
+
+      // 設定當前帳本的摘要
+      const currentBook = summaries.find(
+        (book) => book.id === currentAccountBook
+      );
+      if (currentBook) {
+        setSummary(currentBook.summary);
+      } else if (summaries.length > 0) {
+        // 如果當前帳本不存在，設置為默認帳本
+        setCurrentAccountBook(summaries[0].id);
+        setSummary(summaries[0].summary);
+        localStorage.setItem("currentAccountBook", summaries[0].id);
+      }
+    } catch (error) {
+      console.error("獲取帳本列表失敗", error);
+    }
+  }, [userId, currentDate, currentAccountBook]);
+
   // 定義獲取數據的函數
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -283,15 +370,68 @@ export default function Home() {
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth() + 1; // JavaScript 月份從 0 開始，API需要 1-12
 
-      // 並行獲取交易數據和月度摘要
-      const [transactionsData, summaryData] = await Promise.all([
-        fetchTransactionsByUser(userId, year, month),
-        fetchMonthlySummary(userId, year, month),
-      ]);
+      // 並行獲取交易數據和帳本列表
+      await Promise.all([
+        fetchTransactionsByUser(userId, year, month).then((data) => {
+          console.log(`成功獲取 ${data.length} 筆交易數據`);
 
-      console.log(`成功獲取 ${transactionsData.length} 筆交易數據`);
-      setTransactions(transactionsData);
-      setSummary(summaryData);
+          // 輸出每個交易的帳本信息以進行調試
+          console.log("=== 交易帳本調試信息 ===");
+          data.forEach((tx, index) => {
+            console.log(`交易 ${index + 1} (ID: ${tx.id}):`);
+            console.log(`  - 類型: ${tx.type}, 金額: ${tx.amount}`);
+            console.log(`  - 帳本ID: "${tx.accountBook || "未設置"}"`);
+            console.log(`  - 日期: ${tx.date}`);
+          });
+          console.log("========================");
+
+          // 統計各帳本交易數量以便調試
+          const accountBookStats: { [key: string]: number } = {};
+          data.forEach((tx) => {
+            const book = tx.accountBook || "unknown";
+            accountBookStats[book] = (accountBookStats[book] || 0) + 1;
+          });
+          console.log(`各帳本交易統計:`, accountBookStats);
+
+          // 根據當前選中的帳本過濾交易
+          console.log(`當前選擇的帳本: ${currentAccountBook}`);
+
+          // 簡化過濾邏輯
+          if (currentAccountBook === "default") {
+            // 帳目總覽：顯示所有交易
+            console.log(`帳目總覽顯示所有 ${data.length} 筆交易`);
+            setTransactions(data);
+          } else {
+            // 特定帳本：按ID過濾
+            console.log(`開始篩選帳本 ${currentAccountBook} 的交易`);
+            const filteredData = data.filter(
+              (tx) => tx.accountBook === currentAccountBook
+            );
+            console.log(
+              `篩選結果: ${filteredData.length}/${data.length} 筆交易`
+            );
+
+            // 調試：檢查所有交易的帳本字段
+            if (filteredData.length === 0) {
+              console.log(
+                `警告: 帳本 ${currentAccountBook} 沒有交易，檢查所有交易的 accountBook 字段:`
+              );
+              data.forEach((tx, i) => {
+                if (i < 10) {
+                  console.log(
+                    `交易 ${tx.id}: accountBook = "${
+                      tx.accountBook || "未設置"
+                    }"`
+                  );
+                }
+              });
+            }
+
+            setTransactions(filteredData);
+          }
+        }),
+        fetchAccountBooks(),
+      ]);
     } catch (error) {
       console.error("獲取交易數據失敗", error);
       setError("獲取數據失敗，請稍後再試");
@@ -301,7 +441,7 @@ export default function Home() {
       setIsLoading(false);
       setIsDataLoading(false);
     }
-  }, [userId, currentDate]);
+  }, [userId, currentDate, currentAccountBook, fetchAccountBooks]);
 
   // 每次組件掛載或獲得焦點時刷新數據
   useEffect(() => {
@@ -363,8 +503,70 @@ export default function Home() {
 
     console.log(`點擊交易: id=${id}`);
 
-    // 使用 LIFF 導航而不是 Next.js 路由，不再需要傳遞type
-    navigateInLiff("/transaction", { id });
+    // 使用 LIFF 導航而不是 Next.js 路由，傳遞當前選擇的帳本信息
+    navigateInLiff("/transaction", { id, accountBook: currentAccountBook });
+  };
+
+  // 處理帳本切換
+  const handleAccountBookChange = (accountBookId: string) => {
+    console.log(`切換帳本至: ${accountBookId}`);
+    console.log(`目前有 ${accountBooks.length} 個帳本可選`);
+    accountBooks.forEach((book) => {
+      console.log(
+        `帳本: ${book.id} - ${book.name}, 餘額: ${book.summary.balance}`
+      );
+    });
+
+    // 如果選擇了與當前相同的帳本，無需操作
+    if (accountBookId === currentAccountBook) {
+      console.log(`已經在 ${accountBookId} 帳本中，無需切換`);
+      return;
+    }
+
+    setCurrentAccountBook(accountBookId);
+
+    // 儲存目前選中的帳本到 localStorage
+    localStorage.setItem("currentAccountBook", accountBookId);
+
+    // 更新摘要數據到當前選中的帳本
+    const selectedBook = accountBooks.find((book) => book.id === accountBookId);
+    if (selectedBook) {
+      setSummary(selectedBook.summary);
+      console.log(`已更新摘要到帳本: ${selectedBook.name}`);
+    } else {
+      console.warn(`找不到 ID 為 ${accountBookId} 的帳本`);
+    }
+
+    // 清除緩存，確保獲取最新數據
+    if (userId) {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth() + 1;
+      try {
+        // 清除交易緩存
+        clearTransactionCache(userId, year, month);
+        console.log(`已清除 ${year}年${month}月 的交易緩存`);
+
+        // 清除帳本緩存
+        sessionStorage.removeItem(`account_books_${userId}`);
+        console.log(`已清除帳本列表緩存`);
+
+        // 清除帳本摘要緩存
+        sessionStorage.removeItem(
+          `summary_${userId}_${accountBookId}_${year}_${month}`
+        );
+        console.log(`已清除帳本 ${accountBookId} 的摘要緩存`);
+      } catch (error) {
+        console.error("清除緩存失敗", error);
+      }
+    }
+
+    // 重新獲取交易數據，根據選中的帳本過濾
+    console.log(`開始重新獲取數據`);
+    setIsLoading(true);
+    setIsDataLoading(true);
+    if (userId) {
+      fetchData();
+    }
   };
 
   return (
@@ -405,6 +607,9 @@ export default function Home() {
               currentDate={currentDate}
               summary={summary}
               isLoading={isDataLoading}
+              accountBooks={accountBooks}
+              onAccountBookChange={handleAccountBookChange}
+              currentAccountBook={currentAccountBook}
             />
 
             <TabSelector activeTab={activeTab} onTabChange={handleTabChange} />
@@ -453,30 +658,8 @@ export default function Home() {
                     console.log("設置載入狀態為 true");
 
                     try {
-                      const year = currentDate.getFullYear();
-                      const month = currentDate.getMonth() + 1;
-                      console.log(
-                        `開始並行獲取 ${year}-${month} 的交易數據和月度摘要`
-                      );
-
-                      // 並行獲取交易數據和月度摘要
-                      const [newTransactions, newSummary] = await Promise.all([
-                        fetchTransactionsByUser(userId, year, month),
-                        fetchMonthlySummary(userId, year, month),
-                      ]);
-
-                      console.log(
-                        `成功獲取 ${newTransactions.length} 筆交易數據`
-                      );
-                      console.log(
-                        `新的月度摘要: 支出=${newSummary.totalExpense}, 收入=${newSummary.totalIncome}, 結餘=${newSummary.balance}`
-                      );
-
-                      // 更新兩個狀態
-                      setTransactions(newTransactions);
-                      setSummary(newSummary);
-
-                      console.log("已更新交易列表和月度摘要");
+                      // 重新獲取所有數據，包括交易和帳本
+                      await fetchData();
                     } catch (error) {
                       console.error("Error fetching updated data:", error);
                     } finally {
@@ -484,6 +667,7 @@ export default function Home() {
                       setIsLoading(false);
                     }
                   }}
+                  currentAccountBook={currentAccountBook}
                 />
 
                 {showDebug && (

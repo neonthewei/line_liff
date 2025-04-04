@@ -35,8 +35,14 @@ function normalizeTransaction(apiTransaction: any): Transaction {
     formattedDate = formatDate(new Date().toISOString());
   }
 
+  // 添加更多調試輸出
+  const accountBook = apiTransaction.account_book || "default";
+  console.log(
+    `正在標準化交易 ID:${apiTransaction.id}, 帳本字段: "${accountBook}"`
+  );
+
   // 標準化交易資料
-  return {
+  const normalizedTransaction = {
     id: apiTransaction.id.toString(),
     user_id: apiTransaction.user_id,
     category: apiTransaction.category || "其他",
@@ -49,6 +55,7 @@ function normalizeTransaction(apiTransaction: any): Transaction {
       | "income"
       | "expense",
     note: apiTransaction.memo || "",
+    accountBook: accountBook,
     isFixed: apiTransaction.is_fixed || false,
     fixedFrequency:
       (apiTransaction.frequency as "day" | "week" | "month") || undefined,
@@ -57,6 +64,11 @@ function normalizeTransaction(apiTransaction: any): Transaction {
     updated_at:
       apiTransaction.updated_at || apiTransaction.created_at || undefined,
   };
+
+  console.log(
+    `標準化結果 - accountBook: "${normalizedTransaction.accountBook}"`
+  );
+  return normalizedTransaction;
 }
 
 /**
@@ -131,6 +143,18 @@ export async function fetchTransactionsByUser(
 
     const transactionsData = await transactionsResponse.json();
 
+    // 添加調試信息：檢查API返回的原始數據中的account_book字段
+    console.log("=== API返回交易數據中的account_book字段 ===");
+    transactionsData.slice(0, 5).forEach((item: any, index: number) => {
+      console.log(`API交易 ${index + 1} (ID: ${item.id}):`);
+      console.log(`  - account_book: "${item.account_book || "未設置"}"`);
+      console.log(`  - 類型: ${item.type}, 金額: ${item.amount}`);
+    });
+    if (transactionsData.length > 5) {
+      console.log(`...還有 ${transactionsData.length - 5} 筆交易記錄`);
+    }
+    console.log("=========================================");
+
     // 使用標準化函數轉換交易數據
     const transactions: Transaction[] = transactionsData.map((item: any) =>
       normalizeTransaction(item)
@@ -138,9 +162,19 @@ export async function fetchTransactionsByUser(
 
     const expenses = transactions.filter((t) => t.type === "expense");
     const incomes = transactions.filter((t) => t.type === "income");
+
+    // 統計各帳本的交易數量
+    const accountBookCounts: { [key: string]: number } = {};
+    transactions.forEach((tx) => {
+      const accountBook = tx.accountBook || "default";
+      accountBookCounts[accountBook] =
+        (accountBookCounts[accountBook] || 0) + 1;
+    });
+
     console.log(
       `Found ${transactions.length} transactions: ${expenses.length} expenses, ${incomes.length} incomes`
     );
+    console.log(`帳本交易統計:`, accountBookCounts);
 
     // 更新緩存
     sessionStorage.setItem(
@@ -377,6 +411,7 @@ export async function updateTransactionApi(
       type: transaction.type, // 現在需要明確儲存類型
       datetime: parseDateToISOString(transaction.date), // 使用 datetime 而不是 date
       memo: transaction.note, // 使用 memo 而不是 note
+      account_book: transaction.accountBook || "default", // 添加帳本欄位
       is_fixed: transaction.isFixed, // 添加是否為固定支出/收入
       frequency: transaction.fixedFrequency, // 固定支出/收入頻率
       interval: transaction.fixedInterval, // 固定支出/收入間隔
@@ -386,6 +421,14 @@ export async function updateTransactionApi(
     console.log("URL:", url);
     console.log("Headers:", JSON.stringify(headers, null, 2));
     console.log("Data:", JSON.stringify(updateData, null, 2));
+    console.log(
+      "帳本字段檢查: 接收到的 accountBook =",
+      transaction.accountBook
+    );
+    console.log(
+      "帳本字段檢查: 發送到 API 的 account_book =",
+      updateData.account_book
+    );
 
     // 發送 API 請求
     const response = await fetch(url, {
@@ -406,6 +449,18 @@ export async function updateTransactionApi(
     }
 
     console.log("Transaction updated successfully");
+
+    // 再次獲取更新後的交易數據以驗證
+    try {
+      const updatedTransaction = await fetchTransactionById(transaction.id);
+      console.log("更新後的交易數據:", updatedTransaction);
+      console.log(
+        "帳本字段檢查: 更新後的 accountBook =",
+        updatedTransaction?.accountBook
+      );
+    } catch (validateError) {
+      console.error("獲取更新後交易數據失敗", validateError);
+    }
 
     // 發送 LINE 通知
     try {
@@ -927,12 +982,21 @@ export async function createTransactionApi(
       type: transaction.type, // 指定類型
       datetime: parseDateToISOString(transaction.date),
       memo: transaction.note,
+      account_book: transaction.accountBook || "default", // 添加帳本欄位
       is_fixed: transaction.isFixed || false,
       frequency: transaction.fixedFrequency,
       interval: transaction.fixedInterval,
     };
 
     console.log("Creating new transaction:", transactionData);
+    console.log(
+      "帳本字段檢查: 接收到的 accountBook =",
+      transaction.accountBook
+    );
+    console.log(
+      "帳本字段檢查: 發送到 API 的 account_book =",
+      transactionData.account_book
+    );
 
     // 發送 POST 請求
     const response = await fetch(url, {
@@ -960,6 +1024,8 @@ export async function createTransactionApi(
 
     const createdId = data[0].id;
     console.log("Transaction created with ID:", createdId);
+    console.log("創建的交易數據:", data[0]);
+    console.log("帳本字段檢查: 返回的 account_book =", data[0].account_book);
 
     // 清除緩存
     const match = transaction.date.match(/(\d+)年(\d+)月(\d+)日/);
@@ -1098,4 +1164,188 @@ export async function batchDeleteTransactions(
     success: !hasError && deletedCount === transactionIds.length,
     deletedCount,
   };
+}
+
+/**
+ * 獲取特定帳本的月度摘要
+ * @param userId 用戶ID
+ * @param accountBookId 帳本ID
+ * @param year 年份
+ * @param month 月份 (1-12)
+ * @returns 帳本月度摘要數據
+ */
+export async function fetchAccountBookMonthlySummary(
+  userId: string,
+  accountBookId: string,
+  year: number,
+  month: number
+): Promise<{
+  totalExpense: number;
+  totalIncome: number;
+  balance: number;
+}> {
+  try {
+    // 緩存鍵
+    const cacheKey = `summary_${userId}_${accountBookId}_${year}_${month}`;
+
+    // 清除緩存，強制重新計算
+    sessionStorage.removeItem(cacheKey);
+
+    // 獲取用戶該月的所有交易
+    const transactions = await fetchTransactionsByUser(userId, year, month);
+    console.log(
+      `計算帳本摘要: 用戶 ${userId}, 帳本 ${accountBookId}, 共 ${transactions.length} 筆交易`
+    );
+
+    // 過濾邏輯
+    let filteredTransactions = transactions;
+
+    // 只有非預設帳本才需要過濾
+    if (accountBookId !== "default") {
+      filteredTransactions = transactions.filter(
+        (tx) => tx.accountBook === accountBookId
+      );
+      console.log(
+        `帳本 ${accountBookId}: 過濾後剩餘 ${filteredTransactions.length} 筆交易`
+      );
+
+      // 如果過濾後無交易，顯示帳本信息
+      if (filteredTransactions.length === 0) {
+        console.log(`警告: 帳本 ${accountBookId} 無交易，所有帳本分佈:`);
+        const bookCounts: Record<string, number> = {};
+        transactions.forEach((tx) => {
+          const book = tx.accountBook || "未設置";
+          bookCounts[book] = (bookCounts[book] || 0) + 1;
+        });
+        console.log(bookCounts);
+      }
+    } else {
+      console.log(`帳目總覽: 顯示所有 ${transactions.length} 筆交易`);
+    }
+
+    // 計算總支出和總收入
+    const summary = filteredTransactions.reduce(
+      (acc, transaction) => {
+        if (transaction.type === "expense") {
+          acc.totalExpense += Math.abs(transaction.amount);
+        } else {
+          acc.totalIncome += transaction.amount;
+        }
+        return acc;
+      },
+      { totalExpense: 0, totalIncome: 0, balance: 0 }
+    );
+
+    // 計算結餘
+    summary.balance = summary.totalIncome - summary.totalExpense;
+
+    console.log(
+      `帳本 ${accountBookId} 摘要結果: 支出=${summary.totalExpense}, 收入=${summary.totalIncome}, 結餘=${summary.balance}`
+    );
+
+    // 更新緩存
+    sessionStorage.setItem(
+      cacheKey,
+      JSON.stringify({
+        data: summary,
+        timestamp: Date.now(),
+      })
+    );
+
+    return summary;
+  } catch (error) {
+    console.error(`帳本摘要計算錯誤:`, error);
+    return { totalExpense: 0, totalIncome: 0, balance: 0 };
+  }
+}
+
+/**
+ * 獲取用戶的帳本列表
+ * @param userId 用戶ID
+ * @returns 帳本列表
+ */
+export async function fetchUserAccountBooks(
+  userId: string
+): Promise<{ id: string; name: string }[]> {
+  try {
+    // 緩存鍵
+    const cacheKey = `account_books_${userId}`;
+
+    // 清除緩存，確保獲取最新數據
+    sessionStorage.removeItem(cacheKey);
+
+    // 從 account_books 表中獲取用戶的帳本列表
+    const url = `${SUPABASE_URL}/account_books?user_id=eq.${userId}`;
+    console.log(`獲取帳本列表: ${url}`);
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        ...headers,
+        Prefer: "return=representation",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`獲取帳本API錯誤: ${errorText}`);
+      throw new Error(`API錯誤 ${response.status}: ${errorText}`);
+    }
+
+    const accountBooksData = await response.json();
+    console.log(`API返回 ${accountBooksData.length} 個帳本`);
+
+    // 檢查是否有數據
+    if (!accountBooksData || accountBooksData.length === 0) {
+      console.log(`用戶 ${userId} 無帳本記錄，使用帳目總覽`);
+      return [{ id: "default", name: "帳目總覽" }];
+    }
+
+    // 轉換帳本數據
+    const accountBooks = accountBooksData.map(
+      (book: { id: string | number; name?: string }) => ({
+        id: String(book.id), // 確保ID是字符串
+        name: book.name || "未命名帳本",
+      })
+    );
+
+    console.log(`處理後獲得 ${accountBooks.length} 個帳本`);
+
+    // 確保每個帳本的ID是簡單字符串，避免複雜的UUID
+    accountBooks.forEach((book: { id: string; name: string }) => {
+      if (book.id !== "default" && book.id !== "帳本1" && book.id !== "帳本2") {
+        // 將帳本1、帳本2之外的ID規範為簡單形式
+        if (book.name.includes("帳本1")) {
+          book.id = "帳本1";
+        } else if (book.name.includes("帳本2")) {
+          book.id = "帳本2";
+        }
+      }
+    });
+
+    // 確保帳目總覽存在
+    if (
+      !accountBooks.some(
+        (book: { id: string; name: string }) => book.id === "default"
+      )
+    ) {
+      accountBooks.unshift({ id: "default", name: "帳目總覽" });
+      console.log(`添加帳目總覽到列表`);
+    }
+
+    // 更新緩存
+    sessionStorage.setItem(
+      cacheKey,
+      JSON.stringify({
+        data: accountBooks,
+        timestamp: Date.now(),
+      })
+    );
+
+    return accountBooks;
+  } catch (error) {
+    console.error("獲取帳本列表失敗:", error);
+    // 出錯時返回帳目總覽
+    return [{ id: "default", name: "帳目總覽" }];
+  }
 }

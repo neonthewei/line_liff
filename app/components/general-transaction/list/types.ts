@@ -11,6 +11,7 @@ export interface TransactionListProps {
   showDebugInfo?: boolean;
   userId: string;
   onTransactionUpdate?: (transactions: Transaction[]) => void;
+  currentAccountBook?: string;
 }
 
 // TransactionItem 组件的属性
